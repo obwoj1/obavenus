@@ -10,10 +10,11 @@
 - Created the first runnable-shell files: a sandboxed Electron window, a narrow preload bridge, and an original dark workspace/chat layout. Added local project-folder selection and a clearly labeled placeholder response; no model or project-file reads are connected yet.
 - Set the product name to `Obavenus` in the package metadata, app window, renderer bridge, and UI.
 - Added a narrow IPC operation for selecting a project folder, displaying up to 80 immediate entry names without reading file contents, prompt submission with a clear no-model placeholder, and local launch instructions.
-- GitHub CLI authentication check failed because the saved token is invalid. The local repository is ready for a private remote after re-authentication.
+- Created the private GitHub repository at https://github.com/obwoj1/obavenus and pushed the `main` branch.
+- Added local restoration of the last selected project folder, plus a close action. The saved path stays in Electron's user-data directory; the UI still receives only the folder name and immediate entry names.
+- Added a focused test for directory sorting, the 80-entry cap, and keeping the absolute path out of the renderer summary.
 
 ## Next
 
-- Confirm the first core workflow with the user.
-- Create a minimal Electron shell and verify it launches locally.
-- Configure the GitHub remote as private after GitHub CLI authentication is restored.
+- Add an explicit, narrow project-file reading workflow before connecting project context to a model.
+- Connect a model provider through a main-process-only secret path after the user chooses a provider.
