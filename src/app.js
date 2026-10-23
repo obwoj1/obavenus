@@ -36,12 +36,29 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
 });
 
 document.querySelector('#open-project').addEventListener('click', async () => {
-  const projectName = await window.obavenus.chooseProject();
-  if (!projectName) return;
+  const project = await window.obavenus.chooseProject();
+  if (!project) return;
   workspace.replaceChildren();
   const title = document.createElement('span');
-  title.textContent = projectName;
+  title.textContent = project.name;
   const detail = document.createElement('small');
-  detail.textContent = 'Project selected on this Mac';
+  detail.textContent = 'Selected project folder';
   workspace.append(title, detail);
+
+  const contextCard = document.querySelector('#context-card');
+  contextCard.replaceChildren();
+  const contextTitle = document.createElement('strong');
+  contextTitle.textContent = project.name;
+  const fileList = document.createElement('ul');
+  fileList.className = 'file-list';
+  project.entries.forEach((entry) => {
+    const item = document.createElement('li');
+    item.textContent = `${entry.kind === 'folder' ? '▸' : '·'} ${entry.name}`;
+    fileList.append(item);
+  });
+  const note = document.createElement('small');
+  note.textContent = project.truncated
+    ? 'Showing the first 80 entries. File contents are not read.'
+    : `${project.entries.length} top-level entries · contents are not read`;
+  contextCard.append(contextTitle, fileList, note);
 });

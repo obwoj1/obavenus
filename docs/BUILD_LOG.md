@@ -9,7 +9,7 @@
 - No files from the installed app were copied into this project. The product should be implemented independently.
 - Created the first runnable-shell files: a sandboxed Electron window, a narrow preload bridge, and an original dark workspace/chat layout. Added local project-folder selection and a clearly labeled placeholder response; no model or project-file reads are connected yet.
 - Set the product name to `Obavenus` in the package metadata, app window, renderer bridge, and UI.
-- Added a narrow IPC operation for selecting a project folder, prompt submission with a clear no-model placeholder, and local launch instructions.
+- Added a narrow IPC operation for selecting a project folder, displaying up to 80 immediate entry names without reading file contents, prompt submission with a clear no-model placeholder, and local launch instructions.
 - GitHub CLI authentication check failed because the saved token is invalid. The local repository is ready for a private remote after re-authentication.
 
 ## Next

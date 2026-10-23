@@ -1,10 +1,22 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { readdir, realpath } = require('node:fs/promises');
 const path = require('node:path');
 
 ipcMain.handle('project:choose', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   if (result.canceled || result.filePaths.length === 0) return null;
-  return path.basename(result.filePaths[0]);
+
+  const projectPath = await realpath(result.filePaths[0]);
+  const dirents = await readdir(projectPath, { withFileTypes: true });
+  const entries = dirents
+    .map((entry) => ({
+      name: entry.name,
+      kind: entry.isDirectory() ? 'folder' : entry.isFile() ? 'file' : 'link or special item',
+    }))
+    .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'folder' ? -1 : 1))
+    .slice(0, 80);
+
+  return { name: path.basename(projectPath), entries, truncated: dirents.length > entries.length };
 });
 
 function createWindow() {

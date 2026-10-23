@@ -43,6 +43,9 @@
       .context h2 { margin: 0 0 18px; color: #bebdc6; font-size: 11px; font-weight: 650; }
       .context-card { padding: 13px; border: 1px solid #30313a; border-radius: 10px; color: #9d9ca7; font-size: 10px; line-height: 1.6; }
       .context-card strong { display: block; margin-bottom: 6px; color: #e7e6eb; font-size: 11px; }
+      .file-list { max-height: 56vh; margin: 8px 0; padding: 0; overflow: auto; list-style: none; }
+      .file-list li { overflow: hidden; padding: 4px 0; color: #aaa9b3; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+      .context-card small { color: #777783; font-size: 9px; }
       .message { width: min(680px, 100%); margin: 12px auto; padding: 14px 16px; border: 1px solid #30313a; border-radius: 12px; color: #e8e7ec; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
       .user-message { background: #20212a; }
       .assistant-message { color: #aaa9b3; }
@@ -77,7 +80,7 @@
               <button type="button">Turn an idea into steps</button>
             </div>
           </section>
-          <aside class="context"><h2>Workspace context</h2><div class="context-card"><strong>Nothing connected yet</strong>When you choose a project folder, its name and selected files can appear here.</div></aside>
+          <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. Obavenus does not read their contents yet.</div></aside>
         </div>
       </main>
     </div>
