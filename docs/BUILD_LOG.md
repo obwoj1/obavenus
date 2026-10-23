@@ -13,8 +13,10 @@
 - Created the private GitHub repository at https://github.com/obwoj1/obavenus and pushed the `main` branch.
 - Added local restoration of the last selected project folder, plus a close action. The saved path stays in Electron's user-data directory; the UI still receives only the folder name and immediate entry names.
 - Added a focused test for directory sorting, the 80-entry cap, and keeping the absolute path out of the renderer summary.
+- Added explicit top-level text-file preview: only regular files under 64 KB can be opened, and the content remains local and is never sent to a service.
+- Added tests for safe file previews, traversal rejection, and the size limit.
 
 ## Next
 
-- Add an explicit, narrow project-file reading workflow before connecting project context to a model.
+- Add selective context handoff so the user can choose which opened files to include in a future model request.
 - Connect a model provider through a main-process-only secret path after the user chooses a provider.
