@@ -1,0 +1,14 @@
+{
+  "name": "orbit-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An original Electron desktop assistant prototype.",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "45.0.0"
+  }
+}

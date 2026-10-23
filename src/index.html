@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+    />
+    <title>Orbit</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #101116; color: #f5f4f1; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 900px; min-height: 100vh; }
+      button { font: inherit; color: inherit; }
+      .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+      aside { padding: 26px 18px; border-right: 1px solid #272830; background: #14151b; }
+      .brand { display: flex; align-items: center; gap: 11px; font-size: 16px; font-weight: 650; letter-spacing: .01em; }
+      .brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 10px; background: linear-gradient(140deg, #c3a5ff, #8265ef); color: #171320; font-weight: 800; }
+      .section-label { margin: 38px 0 12px; color: #83838e; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+      .workspace { padding: 11px 12px; border: 1px solid #34343f; border-radius: 10px; background: #1b1c24; font-size: 12px; }
+      .workspace small { display: block; margin-top: 5px; color: #898995; font-size: 10px; }
+      .nav-item { display: flex; gap: 10px; align-items: center; padding: 11px 9px; color: #c7c6cf; font-size: 12px; }
+      .nav-item.active { border-radius: 8px; background: #252630; color: #fff; }
+      main { display: flex; min-height: 100vh; flex-direction: column; }
+      header { display: flex; height: 66px; flex: 0 0 auto; align-items: center; justify-content: space-between; padding: 0 28px; border-bottom: 1px solid #272830; }
+      .crumb { color: #a5a4af; font-size: 12px; }
+      .status { padding: 6px 9px; border: 1px solid #34343f; border-radius: 99px; color: #a8a7b1; font-size: 10px; }
+      .content { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) 240px; }
+      .welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 32px; }
+      .eyebrow { color: #bda8ff; font-size: 11px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; }
+      h1 { margin: 15px 0 8px; font-size: clamp(30px, 4vw, 44px); font-weight: 560; letter-spacing: -.045em; }
+      .subhead { max-width: 470px; margin: 0; color: #9999a5; font-size: 13px; line-height: 1.7; text-align: center; }
+      .composer { width: min(680px, 100%); margin-top: 36px; padding: 13px; border: 1px solid #393943; border-radius: 16px; background: #191a21; box-shadow: 0 16px 60px #0003; }
+      .composer textarea { width: 100%; min-height: 76px; resize: vertical; border: 0; outline: 0; background: transparent; color: #f5f4f1; font: inherit; font-size: 13px; }
+      .composer textarea::placeholder { color: #777783; }
+      .composer-footer { display: flex; justify-content: space-between; align-items: center; color: #898995; font-size: 10px; }
+      .send { padding: 8px 13px; border: 0; border-radius: 8px; background: #c1a9ff; color: #191522; font-size: 11px; font-weight: 700; }
+      .suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 17px; }
+      .suggestions button { padding: 8px 11px; border: 1px solid #30313a; border-radius: 99px; background: transparent; color: #aaa9b3; font-size: 10px; }
+      .context { padding: 26px 18px; border-left: 1px solid #272830; background: #14151b; }
+      .context h2 { margin: 0 0 18px; color: #bebdc6; font-size: 11px; font-weight: 650; }
+      .context-card { padding: 13px; border: 1px solid #30313a; border-radius: 10px; color: #9d9ca7; font-size: 10px; line-height: 1.6; }
+      .context-card strong { display: block; margin-bottom: 6px; color: #e7e6eb; font-size: 11px; }
+      @media (max-width: 1100px) { .content { grid-template-columns: minmax(0, 1fr); } .context { display: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside>
+        <div class="brand"><span class="brand-mark">O</span> Orbit</div>
+        <div class="section-label">Workspace</div>
+        <div class="workspace">No project open<small>Choose a folder to add project context</small></div>
+        <div class="section-label">Navigation</div>
+        <div class="nav-item active"><span>✦</span> Assistant</div>
+        <div class="nav-item"><span>▤</span> Projects</div>
+        <div class="nav-item"><span>◷</span> Recent work</div>
+      </aside>
+      <main>
+        <header><div class="crumb">Orbit <span aria-hidden="true">/</span> Assistant</div><div class="status">Local prototype · no model connected</div></header>
+        <div class="content">
+          <section class="welcome" aria-labelledby="welcome-title">
+            <div class="eyebrow">A clear place to start</div>
+            <h1 id="welcome-title">What are we working on?</h1>
+            <p class="subhead">Open a project to give Orbit context, or sketch out a plan here. This prototype keeps your workspace on this Mac.</p>
+            <form class="composer" id="prompt-form">
+              <textarea aria-label="Message Orbit" placeholder="Ask a question or describe a task…"></textarea>
+              <div class="composer-footer"><span>Return to send · Shift + Return for a new line</span><button class="send" type="submit">Send ↗</button></div>
+            </form>
+            <div class="suggestions" aria-label="Starter prompts">
+              <button type="button">Plan a feature</button>
+              <button type="button">Explore a codebase</button>
+              <button type="button">Turn an idea into steps</button>
+            </div>
+          </section>
+          <aside class="context"><h2>Workspace context</h2><div class="context-card"><strong>Nothing connected yet</strong>When you choose a project folder, its name and selected files can appear here.</div></aside>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
