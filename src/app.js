@@ -5,8 +5,18 @@ const workspace = document.querySelector('#workspace-label');
 const contextCard = document.querySelector('#context-card');
 let selectedProject = null;
 const CONVERSATIONS_KEY = 'obavenus.conversations.v1';
+const LOCAL_PLACEHOLDER = 'This is the local UI prototype. Connect an AI provider in a later build step to get an assistant response.';
 let conversations = loadConversations();
 let activeConversationId = conversations.at(-1)?.id ?? null;
+let sending = false;
+
+const providerDialog = document.querySelector('#provider-dialog');
+const providerForm = document.querySelector('#provider-form');
+const providerModelInput = document.querySelector('#provider-model');
+const providerKeyInput = document.querySelector('#provider-key');
+const providerKeyState = document.querySelector('#provider-key-state');
+const providerFormStatus = document.querySelector('#provider-form-status');
+const removeProviderKeyButton = document.querySelector('#remove-provider-key');
 
 function loadConversations() {
   try {
@@ -21,8 +31,15 @@ function loadConversations() {
       title: conversation.title,
       createdAt: conversation.createdAt,
       messages: conversation.messages.filter((message) =>
-        (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string',
-      ),
+        (message.role === 'user' || message.role === 'assistant')
+        && typeof message.text === 'string'
+        && message.status !== 'pending',
+      ).map((message) => ({
+        role: message.role,
+        text: message.text,
+        localOnly: message.localOnly === true || message.text === LOCAL_PLACEHOLDER,
+        status: message.status === 'error' ? 'error' : 'complete',
+      })),
     }));
   } catch {
     return [];
@@ -142,6 +159,7 @@ function addMessage(text, kind) {
   message.className = `message ${kind}`;
   message.textContent = text;
   form.insertAdjacentElement('beforebegin', message);
+  return message;
 }
 
 function getActiveConversation() {
@@ -154,7 +172,8 @@ function renderMessages() {
   const title = document.querySelector('#welcome-title');
   title.textContent = current?.messages.length ? current.title : 'What are we working on?';
   current?.messages.forEach((message) => {
-    addMessage(message.text, message.role === 'user' ? 'user-message' : 'assistant-message');
+    const rendered = addMessage(message.text, message.role === 'user' ? 'user-message' : 'assistant-message');
+    if (message.status === 'pending') rendered.classList.add('pending');
   });
   renderRecentWork();
 }
@@ -190,10 +209,10 @@ function startConversation() {
   promptInput.focus();
 }
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const prompt = promptInput.value.trim();
-  if (!prompt) return;
+  if (!prompt || sending) return;
 
   let current = getActiveConversation();
   if (!current) {
@@ -207,14 +226,47 @@ form.addEventListener('submit', (event) => {
     activeConversationId = current.id;
   }
   if (current.messages.length === 0) current.title = prompt.slice(0, 48);
-  current.messages.push({ role: 'user', text: prompt });
-  current.messages.push({
+  current.messages.push({ role: 'user', text: prompt, status: 'complete' });
+  const pendingReply = {
     role: 'assistant',
-    text: 'This is the local UI prototype. Connect an AI provider in a later build step to get an assistant response.',
-  });
+    text: 'Thinking…',
+    status: 'pending',
+  };
+  current.messages.push(pendingReply);
+  sending = true;
+  promptInput.disabled = true;
+  form.querySelector('.send').disabled = true;
+  form.querySelector('.send').textContent = 'Sending…';
   saveConversations();
   renderMessages();
   promptInput.value = '';
+
+  try {
+    const settings = await window.obavenus.getProviderSettings();
+    if (!settings.configured) {
+      pendingReply.text = 'Connect an OpenAI API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
+      pendingReply.localOnly = true;
+      pendingReply.status = 'error';
+    } else {
+      const messages = current.messages
+        .filter((message) => !message.localOnly && message.status !== 'pending')
+        .map(({ role, text }) => ({ role, text }));
+      pendingReply.text = await window.obavenus.sendChat(messages);
+      pendingReply.status = 'complete';
+    }
+  } catch (error) {
+    pendingReply.text = `Request failed: ${error.message || 'Unknown error.'}`;
+    pendingReply.localOnly = true;
+    pendingReply.status = 'error';
+  } finally {
+    sending = false;
+    promptInput.disabled = false;
+    form.querySelector('.send').disabled = false;
+    form.querySelector('.send').textContent = 'Send ↗';
+    saveConversations();
+    renderRecentWork();
+    if (activeConversationId === current.id) renderMessages();
+  }
 });
 
 promptInput.addEventListener('keydown', (event) => {
@@ -235,7 +287,72 @@ document.querySelector('#open-project').addEventListener('click', chooseProject)
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
 
+async function updateProviderBadge() {
+  const badge = document.querySelector('#provider-settings');
+  try {
+    const settings = await window.obavenus.getProviderSettings();
+    badge.textContent = settings.configured
+      ? `${settings.model} connected · Settings`
+      : `${settings.model} not connected · Settings`;
+    return settings;
+  } catch {
+    badge.textContent = 'Provider settings unavailable';
+    return { model: 'gpt-5.5', configured: false };
+  }
+}
+
+document.querySelector('#provider-settings').addEventListener('click', async () => {
+  providerFormStatus.textContent = '';
+  providerKeyInput.value = '';
+  try {
+    const settings = await window.obavenus.getProviderSettings();
+    providerModelInput.value = settings.model;
+    providerKeyState.textContent = settings.configured
+      ? 'A key is saved in encrypted device storage. Enter a new key to replace it.'
+      : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
+    removeProviderKeyButton.hidden = !settings.configured;
+  } catch (error) {
+    providerFormStatus.textContent = error.message || 'Could not load settings.';
+  }
+  providerDialog.showModal();
+});
+
+document.querySelector('#cancel-provider-settings').addEventListener('click', () => providerDialog.close());
+
+providerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  providerFormStatus.textContent = 'Saving settings…';
+  try {
+    const settings = await window.obavenus.saveProviderSettings({
+      model: providerModelInput.value,
+      apiKey: providerKeyInput.value,
+    });
+    providerKeyInput.value = '';
+    providerKeyState.textContent = settings.configured ? 'Key saved in encrypted device storage.' : 'No key saved.';
+    removeProviderKeyButton.hidden = !settings.configured;
+    providerFormStatus.textContent = 'Settings saved.';
+    await updateProviderBadge();
+  } catch (error) {
+    providerFormStatus.textContent = error.message || 'Could not save settings.';
+  }
+});
+
+removeProviderKeyButton.addEventListener('click', async () => {
+  providerFormStatus.textContent = 'Removing saved key…';
+  try {
+    const settings = await window.obavenus.clearProviderKey();
+    providerKeyInput.value = '';
+    providerKeyState.textContent = 'No key saved.';
+    removeProviderKeyButton.hidden = true;
+    providerFormStatus.textContent = 'Saved key removed.';
+    await updateProviderBadge();
+  } catch (error) {
+    providerFormStatus.textContent = error.message || 'Could not remove the saved key.';
+  }
+});
+
 renderMessages();
+updateProviderBadge();
 
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);

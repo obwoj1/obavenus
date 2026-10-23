@@ -44,6 +44,7 @@
       .composer textarea::placeholder { color: #777783; }
       .composer-footer { display: flex; justify-content: space-between; align-items: center; color: #898995; font-size: 10px; }
       .send { padding: 8px 13px; border: 0; border-radius: 8px; background: #c1a9ff; color: #191522; font-size: 11px; font-weight: 700; }
+      .send:disabled { cursor: wait; opacity: .7; }
       .suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 17px; }
       .suggestions button { padding: 8px 11px; border: 1px solid #30313a; border-radius: 99px; background: transparent; color: #aaa9b3; font-size: 10px; }
       .context { padding: 26px 18px; border-left: 1px solid #272830; background: #14151b; }
@@ -56,6 +57,19 @@
       .file-list button:hover { color: #d5c6ff; }
       .file-preview { max-height: 48vh; margin: 10px 0 0; padding: 10px; overflow: auto; border-radius: 8px; background: #101116; color: #d0cfd6; font: 10px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
       .context-action { padding: 0; border: 0; background: transparent; color: #c1a9ff; font-size: 10px; cursor: pointer; }
+      dialog { width: min(520px, calc(100vw - 32px)); padding: 0; border: 1px solid #393943; border-radius: 16px; background: #17181f; color: #f5f4f1; box-shadow: 0 24px 90px #0009; }
+      dialog::backdrop { background: #08090dbb; backdrop-filter: blur(5px); }
+      .settings { padding: 24px; }
+      .settings h2 { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
+      .settings p { color: #aaa9b3; font-size: 11px; line-height: 1.6; }
+      .settings label { display: block; margin: 17px 0 7px; color: #d7d6de; font-size: 11px; }
+      .settings input { width: 100%; padding: 11px 12px; border: 1px solid #393943; border-radius: 8px; outline: 0; background: #101116; color: #f5f4f1; font: inherit; font-size: 12px; }
+      .settings input:focus { border-color: #bda8ff; }
+      .settings small { display: block; margin-top: 7px; color: #898995; font-size: 10px; line-height: 1.5; }
+      .settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+      .settings-actions button { padding: 9px 12px; border: 1px solid #393943; border-radius: 8px; background: #24252e; font-size: 11px; cursor: pointer; }
+      .settings-actions .primary { border-color: transparent; background: #c1a9ff; color: #191522; font-weight: 700; }
+      .settings-actions .remove { margin-right: auto; color: #f0a7a7; }
       .context-card small { color: #777783; font-size: 9px; }
       .message { width: min(680px, 100%); margin: 12px auto; padding: 14px 16px; border: 1px solid #30313a; border-radius: 12px; color: #e8e7ec; font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
       .user-message { background: #20212a; }
@@ -77,14 +91,14 @@
         <div class="recent-list" id="recent-work" aria-label="Recent conversations"></div>
       </aside>
       <main>
-        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><div class="status">Local prototype · no model connected</div></header>
+        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><button class="status" id="provider-settings" type="button">OpenAI · GPT-5.5 not connected · Settings</button></header>
         <div class="content">
           <section class="welcome" id="conversation" aria-labelledby="welcome-title">
             <div class="eyebrow">A clear place to start</div>
             <h1 id="welcome-title">What are we working on?</h1>
-            <p class="subhead">Open a project to give Obavenus context, or sketch out a plan here. This prototype keeps your workspace on this Mac.</p>
+            <p class="subhead">Choose a project to view its file list. File previews stay on this Mac; chat messages go to OpenAI only after you configure a key and press Send.</p>
             <form class="composer" id="prompt-form">
-              <textarea aria-label="Message Orbit" placeholder="Ask a question or describe a task…"></textarea>
+              <textarea aria-label="Message Obavenus" placeholder="Ask a question or describe a task…"></textarea>
               <div class="composer-footer"><span>Return to send · Shift + Return for a new line</span><button class="send" type="submit">Send ↗</button></div>
             </form>
             <div class="suggestions" aria-label="Starter prompts">
@@ -97,6 +111,24 @@
         </div>
       </main>
     </div>
+    <dialog id="provider-dialog" aria-labelledby="provider-title">
+      <form class="settings" id="provider-form">
+        <h2 id="provider-title">Model settings</h2>
+        <p>Connect your OpenAI API key to enable assistant replies. The key is encrypted with macOS Keychain-backed storage and never returned to the UI.</p>
+        <label for="provider-model">Model ID</label>
+        <input id="provider-model" name="model" value="gpt-5.5" autocomplete="off" required />
+        <label for="provider-key">OpenAI API key</label>
+        <input id="provider-key" name="apiKey" type="password" autocomplete="off" placeholder="Paste an API key, or leave blank to keep the saved key" />
+        <small id="provider-key-state">No key saved.</small>
+        <p>When you press Send, this chat’s messages go to OpenAI. File previews are not attached. Requests set <code>store: false</code>; OpenAI’s standard abuse-monitoring policies may still apply.</p>
+        <small id="provider-form-status" role="status" aria-live="polite"></small>
+        <div class="settings-actions">
+          <button class="remove" id="remove-provider-key" type="button" hidden>Remove saved key</button>
+          <button type="button" id="cancel-provider-settings">Cancel</button>
+          <button class="primary" type="submit">Save settings</button>
+        </div>
+      </form>
+    </dialog>
     <script src="./app.js"></script>
   </body>
 </html>
