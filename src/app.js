@@ -4,6 +4,38 @@ const conversation = document.querySelector('#conversation');
 const workspace = document.querySelector('#workspace-label');
 const contextCard = document.querySelector('#context-card');
 let selectedProject = null;
+const CONVERSATIONS_KEY = 'obavenus.conversations.v1';
+let conversations = loadConversations();
+let activeConversationId = conversations.at(-1)?.id ?? null;
+
+function loadConversations() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CONVERSATIONS_KEY) || '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((conversation) =>
+      typeof conversation.id === 'string'
+      && typeof conversation.title === 'string'
+      && Array.isArray(conversation.messages),
+    ).map((conversation) => ({
+      id: conversation.id,
+      title: conversation.title,
+      createdAt: conversation.createdAt,
+      messages: conversation.messages.filter((message) =>
+        (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string',
+      ),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function saveConversations() {
+  try {
+    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations.slice(-50)));
+  } catch {
+    // Keep the current conversation usable when local storage is unavailable.
+  }
+}
 
 function renderEmptyWorkspace() {
   workspace.replaceChildren('No project open');
@@ -112,15 +144,77 @@ function addMessage(text, kind) {
   form.insertAdjacentElement('beforebegin', message);
 }
 
+function getActiveConversation() {
+  return conversations.find((item) => item.id === activeConversationId);
+}
+
+function renderMessages() {
+  conversation.querySelectorAll('.message').forEach((message) => message.remove());
+  const current = getActiveConversation();
+  const title = document.querySelector('#welcome-title');
+  title.textContent = current?.messages.length ? current.title : 'What are we working on?';
+  current?.messages.forEach((message) => {
+    addMessage(message.text, message.role === 'user' ? 'user-message' : 'assistant-message');
+  });
+  renderRecentWork();
+}
+
+function renderRecentWork() {
+  const list = document.querySelector('#recent-work');
+  list.replaceChildren();
+  [...conversations].reverse().slice(0, 20).forEach((item) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `recent-item${item.id === activeConversationId ? ' active' : ''}`;
+    button.textContent = item.title;
+    button.title = item.title;
+    button.addEventListener('click', () => {
+      activeConversationId = item.id;
+      renderMessages();
+    });
+    list.append(button);
+  });
+}
+
+function startConversation() {
+  const item = {
+    id: crypto.randomUUID(),
+    title: 'New conversation',
+    createdAt: new Date().toISOString(),
+    messages: [],
+  };
+  conversations.push(item);
+  activeConversationId = item.id;
+  saveConversations();
+  renderMessages();
+  promptInput.focus();
+}
+
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   const prompt = promptInput.value.trim();
   if (!prompt) return;
 
-  addMessage(prompt, 'user-message');
-  addMessage('This is the local UI prototype. Connect an AI provider in a later build step to get an assistant response.', 'assistant-message');
+  let current = getActiveConversation();
+  if (!current) {
+    current = {
+      id: crypto.randomUUID(),
+      title: 'New conversation',
+      createdAt: new Date().toISOString(),
+      messages: [],
+    };
+    conversations.push(current);
+    activeConversationId = current.id;
+  }
+  if (current.messages.length === 0) current.title = prompt.slice(0, 48);
+  current.messages.push({ role: 'user', text: prompt });
+  current.messages.push({
+    role: 'assistant',
+    text: 'This is the local UI prototype. Connect an AI provider in a later build step to get an assistant response.',
+  });
+  saveConversations();
+  renderMessages();
   promptInput.value = '';
-  conversation.scrollTop = conversation.scrollHeight;
 });
 
 promptInput.addEventListener('keydown', (event) => {
@@ -138,6 +232,10 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
 });
 
 document.querySelector('#open-project').addEventListener('click', chooseProject);
+document.querySelector('#projects-nav').addEventListener('click', chooseProject);
+document.querySelector('#new-chat').addEventListener('click', startConversation);
+
+renderMessages();
 
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);
