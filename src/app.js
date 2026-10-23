@@ -21,6 +21,13 @@ form.addEventListener('submit', (event) => {
   conversation.scrollTop = conversation.scrollHeight;
 });
 
+promptInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+
 document.querySelectorAll('.suggestions button').forEach((button) => {
   button.addEventListener('click', () => {
     promptInput.value = button.textContent;
