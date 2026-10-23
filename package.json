@@ -1,8 +1,8 @@
 {
-  "name": "orbit-desktop",
+  "name": "obavenus",
   "version": "0.1.0",
   "private": true,
-  "description": "An original Electron desktop assistant prototype.",
+  "description": "Obavenus, an original Electron desktop assistant prototype.",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
