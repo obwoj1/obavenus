@@ -1,22 +1,41 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
-const { readdir, realpath } = require('node:fs/promises');
+const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
+const { describeProject } = require('./project.cjs');
+
+const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
+
+async function saveWorkspace(projectPath) {
+  const file = workspaceFile();
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify({ projectPath }), { mode: 0o600 });
+}
 
 ipcMain.handle('project:choose', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   if (result.canceled || result.filePaths.length === 0) return null;
 
-  const projectPath = await realpath(result.filePaths[0]);
-  const dirents = await readdir(projectPath, { withFileTypes: true });
-  const entries = dirents
-    .map((entry) => ({
-      name: entry.name,
-      kind: entry.isDirectory() ? 'folder' : entry.isFile() ? 'file' : 'link or special item',
-    }))
-    .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'folder' ? -1 : 1))
-    .slice(0, 80);
+  const project = await describeProject(result.filePaths[0]);
+  await saveWorkspace(project.path);
+  return project.summary;
+});
 
-  return { name: path.basename(projectPath), entries, truncated: dirents.length > entries.length };
+ipcMain.handle('project:last', async () => {
+  try {
+    const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+    const project = await describeProject(saved.projectPath);
+    return project.summary;
+  } catch (error) {
+    if (error.code !== 'ENOENT') await unlink(workspaceFile()).catch(() => {});
+    return null;
+  }
+});
+
+ipcMain.handle('project:close', async () => {
+  await unlink(workspaceFile()).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  return true;
 });
 
 function createWindow() {

@@ -2,6 +2,68 @@ const form = document.querySelector('#prompt-form');
 const promptInput = form.querySelector('textarea');
 const conversation = document.querySelector('#conversation');
 const workspace = document.querySelector('#workspace-label');
+const contextCard = document.querySelector('#context-card');
+
+function renderEmptyWorkspace() {
+  workspace.replaceChildren('No project open');
+  const detail = document.createElement('small');
+  detail.textContent = 'Choose a folder to add project context';
+  const openButton = document.createElement('button');
+  openButton.id = 'open-project';
+  openButton.type = 'button';
+  openButton.textContent = 'Open project folder';
+  openButton.addEventListener('click', chooseProject);
+  workspace.append(detail, openButton);
+
+  contextCard.replaceChildren();
+  const contextTitle = document.createElement('strong');
+  contextTitle.textContent = 'Nothing connected yet';
+  contextCard.append(contextTitle, 'Choose a project folder to see its top-level file names. Obavenus does not read their contents yet.');
+}
+
+function renderProject(project) {
+  workspace.replaceChildren();
+  const title = document.createElement('span');
+  title.textContent = project.name;
+  const detail = document.createElement('small');
+  detail.textContent = 'Selected project folder · saved on this Mac';
+  const changeButton = document.createElement('button');
+  changeButton.type = 'button';
+  changeButton.textContent = 'Change folder';
+  changeButton.addEventListener('click', chooseProject);
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'close-workspace';
+  closeButton.textContent = 'Close';
+  closeButton.addEventListener('click', closeProject);
+  workspace.append(title, detail, changeButton, closeButton);
+
+  contextCard.replaceChildren();
+  const contextTitle = document.createElement('strong');
+  contextTitle.textContent = project.name;
+  const fileList = document.createElement('ul');
+  fileList.className = 'file-list';
+  project.entries.forEach((entry) => {
+    const item = document.createElement('li');
+    item.textContent = `${entry.kind === 'folder' ? '▸' : '·'} ${entry.name}`;
+    fileList.append(item);
+  });
+  const note = document.createElement('small');
+  note.textContent = project.truncated
+    ? 'Showing the first 80 entries. File contents are not read.'
+    : `${project.entries.length} top-level entries · contents are not read`;
+  contextCard.append(contextTitle, fileList, note);
+}
+
+async function chooseProject() {
+  const project = await window.obavenus.chooseProject();
+  if (project) renderProject(project);
+}
+
+async function closeProject() {
+  await window.obavenus.closeProject();
+  renderEmptyWorkspace();
+}
 
 function addMessage(text, kind) {
   const message = document.createElement('div');
@@ -35,30 +97,8 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
   });
 });
 
-document.querySelector('#open-project').addEventListener('click', async () => {
-  const project = await window.obavenus.chooseProject();
-  if (!project) return;
-  workspace.replaceChildren();
-  const title = document.createElement('span');
-  title.textContent = project.name;
-  const detail = document.createElement('small');
-  detail.textContent = 'Selected project folder';
-  workspace.append(title, detail);
+document.querySelector('#open-project').addEventListener('click', chooseProject);
 
-  const contextCard = document.querySelector('#context-card');
-  contextCard.replaceChildren();
-  const contextTitle = document.createElement('strong');
-  contextTitle.textContent = project.name;
-  const fileList = document.createElement('ul');
-  fileList.className = 'file-list';
-  project.entries.forEach((entry) => {
-    const item = document.createElement('li');
-    item.textContent = `${entry.kind === 'folder' ? '▸' : '·'} ${entry.name}`;
-    fileList.append(item);
-  });
-  const note = document.createElement('small');
-  note.textContent = project.truncated
-    ? 'Showing the first 80 entries. File contents are not read.'
-    : `${project.entries.length} top-level entries · contents are not read`;
-  contextCard.append(contextTitle, fileList, note);
+window.obavenus.getLastProject().then((project) => {
+  if (project) renderProject(project);
 });
