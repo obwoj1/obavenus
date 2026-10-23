@@ -18,8 +18,9 @@
 - Added local conversation history with a new-chat action and recent-conversation navigation. Conversation prompts and placeholder replies persist in the app's local browser storage; the history is not synced.
 - Added OpenAI Responses API support with GPT-5.5 as the default model, encrypted API-key storage through Electron safeStorage, a settings dialog, bounded conversation input, explicit send behavior, and `store: false` requests. The renderer never receives the saved key.
 - Added tests for encrypted provider settings, response parsing, stateless requests, and input validation.
+- Added opt-in project file attachments from the local preview panel. Users see attached-file chips before sending; the provider caps context size and instructs the model to treat file content as untrusted data.
 
 ## Next
 
 - Add selective context handoff so the user can choose which opened files to include in a future model request.
-- Add selective file-context handoff so users can choose which local previews to include in an API request.
+- Add streaming responses and cancellation for long-running model requests.
