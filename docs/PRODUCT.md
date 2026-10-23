@@ -1,10 +1,10 @@
-# Orbit Desktop
+# Obavenus
 
-Orbit is the working name for an original Electron desktop app inspired by the broad product category of Universe. The implementation will use its own code, visual language, copy, and assets.
+Obavenus is an original Electron desktop app inspired by the broad product category of Universe. The implementation will use its own code, visual language, copy, and assets.
 
 ## Product direction
 
-Start with a macOS desktop shell and one useful core workflow. Keep the first version small enough to run locally, then add capabilities in independently reviewable steps.
+Start with a macOS desktop assistant that combines AI chat with a project workspace. Keep the first version small enough to run locally, then add capabilities in independently reviewable steps.
 
 ## Design boundaries
 
@@ -13,6 +13,6 @@ Start with a macOS desktop shell and one useful core workflow. Keep the first ve
 - Build new UI and behavior from the product goal and user feedback.
 - Keep local file and process access explicit and narrow.
 
-## Open product decision
+## First version
 
-The first prototype's core workflow is awaiting the user's choice. Current options are AI chat with a project workspace, or a visual website builder.
+The first prototype is an AI chat and project workspace. The initial UI is local-only; model access and reading project files are not connected yet.
