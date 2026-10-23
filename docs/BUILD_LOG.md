@@ -16,8 +16,10 @@
 - Added explicit top-level text-file preview: only regular files under 64 KB can be opened, and the content remains local and is never sent to a service.
 - Added tests for safe file previews, traversal rejection, and the size limit.
 - Added local conversation history with a new-chat action and recent-conversation navigation. Conversation prompts and placeholder replies persist in the app's local browser storage; the history is not synced.
+- Added OpenAI Responses API support with GPT-5.5 as the default model, encrypted API-key storage through Electron safeStorage, a settings dialog, bounded conversation input, explicit send behavior, and `store: false` requests. The renderer never receives the saved key.
+- Added tests for encrypted provider settings, response parsing, stateless requests, and input validation.
 
 ## Next
 
 - Add selective context handoff so the user can choose which opened files to include in a future model request.
-- Connect a model provider through a main-process-only secret path after the user chooses a provider.
+- Add selective file-context handoff so users can choose which local previews to include in an API request.
