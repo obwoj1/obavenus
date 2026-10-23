@@ -9,6 +9,7 @@ const LOCAL_PLACEHOLDER = 'This is the local UI prototype. Connect an AI provide
 let conversations = loadConversations();
 let activeConversationId = conversations.at(-1)?.id ?? null;
 let sending = false;
+let pendingContext = [];
 
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
@@ -39,6 +40,9 @@ function loadConversations() {
         text: message.text,
         localOnly: message.localOnly === true || message.text === LOCAL_PLACEHOLDER,
         status: message.status === 'error' ? 'error' : 'complete',
+        context: Array.isArray(message.context) ? message.context.filter((file) =>
+          file && typeof file.name === 'string' && typeof file.content === 'string',
+        ).slice(0, 3) : [],
       })),
     }));
   } catch {
@@ -140,7 +144,50 @@ async function openProjectFile(fileName) {
   preview.textContent = result.content;
   const note = document.createElement('small');
   note.textContent = `${result.size.toLocaleString()} bytes · opened on request · not sent anywhere`;
-  contextCard.append(heading, preview, note);
+  const attachButton = document.createElement('button');
+  attachButton.type = 'button';
+  attachButton.className = 'context-action';
+  attachButton.textContent = '＋ Add to next message';
+  attachButton.addEventListener('click', () => attachProjectContext(fileName, result.content));
+  contextCard.append(heading, preview, attachButton, note);
+}
+
+function attachProjectContext(name, content) {
+  if (pendingContext.some((file) => file.name === name)) return;
+  if (pendingContext.length >= 3) {
+    document.querySelector('#context-card small').textContent = 'You can attach up to three files per message.';
+    return;
+  }
+  const total = pendingContext.reduce((sum, file) => sum + file.content.length, 0) + content.length;
+  if (total > 60_000) {
+    document.querySelector('#context-card small').textContent = 'Selected context is over the 60,000-character limit.';
+    return;
+  }
+  pendingContext.push({ name, content });
+  renderPendingContext();
+  const note = document.querySelector('#context-card small');
+  if (note) note.textContent = `${name} will be sent with your next message when you press Send.`;
+}
+
+function renderPendingContext() {
+  const container = document.querySelector('#composer-context');
+  container.replaceChildren();
+  container.hidden = pendingContext.length === 0;
+  pendingContext.forEach((file) => {
+    const chip = document.createElement('span');
+    chip.className = 'context-chip';
+    chip.textContent = `Attached: ${file.name}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', `Remove ${file.name} from next message`);
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      pendingContext = pendingContext.filter((selected) => selected.name !== file.name);
+      renderPendingContext();
+    });
+    chip.append(remove);
+    container.append(chip);
+  });
 }
 
 async function chooseProject() {
@@ -174,6 +221,12 @@ function renderMessages() {
   current?.messages.forEach((message) => {
     const rendered = addMessage(message.text, message.role === 'user' ? 'user-message' : 'assistant-message');
     if (message.status === 'pending') rendered.classList.add('pending');
+    if (message.context?.length) {
+      const attached = document.createElement('small');
+      attached.className = 'message-context';
+      attached.textContent = `Attached project files: ${message.context.map((file) => file.name).join(', ')}`;
+      rendered.append(attached);
+    }
   });
   renderRecentWork();
 }
@@ -226,7 +279,10 @@ form.addEventListener('submit', async (event) => {
     activeConversationId = current.id;
   }
   if (current.messages.length === 0) current.title = prompt.slice(0, 48);
-  current.messages.push({ role: 'user', text: prompt, status: 'complete' });
+  const submittedMessage = { role: 'user', text: prompt, status: 'complete', context: [...pendingContext] };
+  current.messages.push(submittedMessage);
+  pendingContext = [];
+  renderPendingContext();
   const pendingReply = {
     role: 'assistant',
     text: 'Thinking…',
@@ -244,17 +300,19 @@ form.addEventListener('submit', async (event) => {
   try {
     const settings = await window.obavenus.getProviderSettings();
     if (!settings.configured) {
+      submittedMessage.localOnly = true;
       pendingReply.text = 'Connect an OpenAI API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
       pendingReply.localOnly = true;
       pendingReply.status = 'error';
     } else {
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
-        .map(({ role, text }) => ({ role, text }));
+        .map(({ role, text, context }) => ({ role, text, context }));
       pendingReply.text = await window.obavenus.sendChat(messages);
       pendingReply.status = 'complete';
     }
   } catch (error) {
+    submittedMessage.localOnly = true;
     pendingReply.text = `Request failed: ${error.message || 'Unknown error.'}`;
     pendingReply.localOnly = true;
     pendingReply.status = 'error';
