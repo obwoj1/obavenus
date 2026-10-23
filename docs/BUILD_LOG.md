@@ -15,6 +15,7 @@
 - Added a focused test for directory sorting, the 80-entry cap, and keeping the absolute path out of the renderer summary.
 - Added explicit top-level text-file preview: only regular files under 64 KB can be opened, and the content remains local and is never sent to a service.
 - Added tests for safe file previews, traversal rejection, and the size limit.
+- Added local conversation history with a new-chat action and recent-conversation navigation. Conversation prompts and placeholder replies persist in the app's local browser storage; the history is not synced.
 
 ## Next
 
