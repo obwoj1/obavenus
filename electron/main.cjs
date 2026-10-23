@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
-const { describeProject } = require('./project.cjs');
+const { describeProject, readProjectFile } = require('./project.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 
@@ -36,6 +36,11 @@ ipcMain.handle('project:close', async () => {
     if (error.code !== 'ENOENT') throw error;
   });
   return true;
+});
+
+ipcMain.handle('project:read-file', async (_event, fileName) => {
+  const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+  return readProjectFile(saved.projectPath, fileName);
 });
 
 function createWindow() {

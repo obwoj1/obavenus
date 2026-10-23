@@ -1,5 +1,7 @@
-const { readdir, realpath, stat } = require('node:fs/promises');
+const { readFile, readdir, realpath, stat, lstat } = require('node:fs/promises');
 const path = require('node:path');
+
+const MAX_PROJECT_FILE_BYTES = 64 * 1024;
 
 async function describeProject(selectedPath) {
   const projectPath = await realpath(selectedPath);
@@ -21,4 +23,20 @@ async function describeProject(selectedPath) {
   };
 }
 
-module.exports = { describeProject };
+async function readProjectFile(projectPath, fileName) {
+  if (typeof fileName !== 'string' || fileName.length === 0 || path.basename(fileName) !== fileName || fileName === '.' || fileName === '..') {
+    throw new TypeError('Only a top-level file name can be opened');
+  }
+
+  const root = await realpath(projectPath);
+  const target = path.join(root, fileName);
+  const details = await lstat(target);
+  if (!details.isFile()) throw new TypeError('Only regular files can be opened');
+  if (details.size > MAX_PROJECT_FILE_BYTES) throw new RangeError('File is larger than 64 KB');
+
+  const bytes = await readFile(target);
+  if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
+  return { content: bytes.toString('utf8'), size: bytes.length, truncated: false };
+}
+
+module.exports = { describeProject, readProjectFile, MAX_PROJECT_FILE_BYTES };

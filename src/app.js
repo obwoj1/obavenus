@@ -3,6 +3,7 @@ const promptInput = form.querySelector('textarea');
 const conversation = document.querySelector('#conversation');
 const workspace = document.querySelector('#workspace-label');
 const contextCard = document.querySelector('#context-card');
+let selectedProject = null;
 
 function renderEmptyWorkspace() {
   workspace.replaceChildren('No project open');
@@ -22,6 +23,7 @@ function renderEmptyWorkspace() {
 }
 
 function renderProject(project) {
+  selectedProject = project;
   workspace.replaceChildren();
   const title = document.createElement('span');
   title.textContent = project.name;
@@ -45,7 +47,15 @@ function renderProject(project) {
   fileList.className = 'file-list';
   project.entries.forEach((entry) => {
     const item = document.createElement('li');
-    item.textContent = `${entry.kind === 'folder' ? '▸' : '·'} ${entry.name}`;
+    if (entry.kind === 'file') {
+      const openFile = document.createElement('button');
+      openFile.type = 'button';
+      openFile.textContent = `· ${entry.name}`;
+      openFile.addEventListener('click', () => openProjectFile(entry.name));
+      item.append(openFile);
+    } else {
+      item.textContent = `${entry.kind === 'folder' ? '▸' : '·'} ${entry.name}`;
+    }
     fileList.append(item);
   });
   const note = document.createElement('small');
@@ -55,6 +65,35 @@ function renderProject(project) {
   contextCard.append(contextTitle, fileList, note);
 }
 
+async function openProjectFile(fileName) {
+  contextCard.replaceChildren();
+  const backButton = document.createElement('button');
+  backButton.type = 'button';
+  backButton.className = 'context-action';
+  backButton.textContent = '← Back to files';
+  backButton.addEventListener('click', () => renderProject(selectedProject));
+  contextCard.append(backButton);
+
+  let result;
+  try {
+    result = await window.obavenus.readProjectFile(fileName);
+  } catch (error) {
+    const message = document.createElement('small');
+    message.textContent = error.message || 'This file could not be opened.';
+    contextCard.append(message);
+    return;
+  }
+
+  const heading = document.createElement('strong');
+  heading.textContent = fileName;
+  const preview = document.createElement('pre');
+  preview.className = 'file-preview';
+  preview.textContent = result.content;
+  const note = document.createElement('small');
+  note.textContent = `${result.size.toLocaleString()} bytes · opened on request · not sent anywhere`;
+  contextCard.append(heading, preview, note);
+}
+
 async function chooseProject() {
   const project = await window.obavenus.chooseProject();
   if (project) renderProject(project);
@@ -62,6 +101,7 @@ async function chooseProject() {
 
 async function closeProject() {
   await window.obavenus.closeProject();
+  selectedProject = null;
   renderEmptyWorkspace();
 }
 

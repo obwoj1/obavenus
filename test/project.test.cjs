@@ -3,7 +3,7 @@ const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { describeProject } = require('../electron/project.cjs');
+const { describeProject, readProjectFile } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -23,6 +23,23 @@ test('project summary sorts folders first and caps visible entries at 80', async
     assert.equal(project.summary.entries[0].kind, 'folder');
     assert.equal(project.summary.truncated, true);
     assert.equal('path' in project.summary, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('opening a project file returns small text and rejects paths and oversized files', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-read-'));
+
+  try {
+    await writeFile(path.join(root, 'notes.txt'), 'hello from the project');
+    await writeFile(path.join(root, 'large.txt'), Buffer.alloc(64 * 1024 + 1, 65));
+
+    const opened = await readProjectFile(root, 'notes.txt');
+    assert.equal(opened.content, 'hello from the project');
+    assert.equal(opened.size, Buffer.byteLength(opened.content));
+    await assert.rejects(readProjectFile(root, '../outside.txt'), /top-level file name/);
+    await assert.rejects(readProjectFile(root, 'large.txt'), /larger than 64 KB/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
