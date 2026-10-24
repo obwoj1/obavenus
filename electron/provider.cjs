@@ -5,7 +5,7 @@ const DEFAULT_MODEL = 'gpt-5.5';
 const PROVIDERS = {
   openai: { name: 'OpenAI', model: DEFAULT_MODEL },
   anthropic: { name: 'Claude', model: 'claude-sonnet-4-6' },
-  xai: { name: 'Grok', model: 'grok-4-1-fast-reasoning' },
+  xai: { name: 'Grok', model: 'grok-4.7' },
 };
 const MAX_MESSAGES = 40;
 const MAX_INPUT_CHARACTERS = 100_000;
@@ -142,4 +142,10 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
   }
 }
 
-module.exports = { DEFAULT_MODEL, PROVIDERS, createProviderStore, requestProviderResponse };
+module.exports = {
+  DEFAULT_MODEL,
+  PROVIDERS,
+  createProviderStore,
+  requestProviderResponse,
+  requestOpenAIResponse: (options) => requestProviderResponse({ ...options, provider: 'openai' }),
+};
