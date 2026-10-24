@@ -14,6 +14,7 @@ let pendingContext = [];
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
 const providerModelInput = document.querySelector('#provider-model');
+const providerSelect = document.querySelector('#provider-choice');
 const providerKeyInput = document.querySelector('#provider-key');
 const providerKeyState = document.querySelector('#provider-key-state');
 const providerFormStatus = document.querySelector('#provider-form-status');
@@ -301,7 +302,7 @@ form.addEventListener('submit', async (event) => {
     const settings = await window.obavenus.getProviderSettings();
     if (!settings.configured) {
       submittedMessage.localOnly = true;
-      pendingReply.text = 'Connect an OpenAI API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
+      pendingReply.text = 'Connect the selected provider API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
       pendingReply.localOnly = true;
       pendingReply.status = 'error';
     } else {
@@ -349,9 +350,10 @@ async function updateProviderBadge() {
   const badge = document.querySelector('#provider-settings');
   try {
     const settings = await window.obavenus.getProviderSettings();
+    const providerName = { openai: 'GPT', anthropic: 'Claude', xai: 'Grok' }[settings.provider] || 'AI';
     badge.textContent = settings.configured
-      ? `${settings.model} connected · Settings`
-      : `${settings.model} not connected · Settings`;
+      ? `${providerName} · ${settings.model} connected · Settings`
+      : `${providerName} not connected · Settings`;
     return settings;
   } catch {
     badge.textContent = 'Provider settings unavailable';
@@ -364,7 +366,10 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
   providerKeyInput.value = '';
   try {
     const settings = await window.obavenus.getProviderSettings();
+    providerSelect.value = settings.provider || 'openai';
+    providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
+    updateProviderFormLabels();
     providerKeyState.textContent = settings.configured
       ? 'A key is saved in encrypted device storage. Enter a new key to replace it.'
       : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
@@ -382,6 +387,7 @@ providerForm.addEventListener('submit', async (event) => {
   providerFormStatus.textContent = 'Saving settings…';
   try {
     const settings = await window.obavenus.saveProviderSettings({
+      provider: providerSelect.value,
       model: providerModelInput.value,
       apiKey: providerKeyInput.value,
     });
@@ -398,7 +404,7 @@ providerForm.addEventListener('submit', async (event) => {
 removeProviderKeyButton.addEventListener('click', async () => {
   providerFormStatus.textContent = 'Removing saved key…';
   try {
-    const settings = await window.obavenus.clearProviderKey();
+    const settings = await window.obavenus.clearProviderKey(providerSelect.value);
     providerKeyInput.value = '';
     providerKeyState.textContent = 'No key saved.';
     removeProviderKeyButton.hidden = true;
@@ -411,6 +417,24 @@ removeProviderKeyButton.addEventListener('click', async () => {
 
 renderMessages();
 updateProviderBadge();
+
+providerSelect.addEventListener('change', async () => {
+  updateProviderFormLabels();
+  const settings = await window.obavenus.getProviderSettings();
+  const connected = settings.connectedProviders?.includes(providerSelect.value);
+  providerKeyState.textContent = connected ? 'This provider has a key saved in encrypted device storage.' : 'No key saved for this provider.';
+  removeProviderKeyButton.hidden = !connected;
+});
+
+function updateProviderFormLabels() {
+  const names = { openai: 'OpenAI', anthropic: 'Anthropic (Claude)', xai: 'xAI (Grok)' };
+  const providerName = names[providerSelect.value] || 'Provider';
+  document.querySelector('#provider-key-label').textContent = `${providerName} API key`;
+  document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
+  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4-1-fast-reasoning' };
+  if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
+  providerModelInput.dataset.provider = providerSelect.value;
+}
 
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);

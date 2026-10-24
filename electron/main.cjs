@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron')
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
 const { describeProject, readProjectFile } = require('./project.cjs');
-const { createProviderStore, requestOpenAIResponse } = require('./provider.cjs');
+const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 let providerStore;
@@ -59,12 +59,13 @@ ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettin
 
 ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore().save(settings));
 
-ipcMain.handle('provider:clear-key', () => getProviderStore().clearKey());
+ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
 
 ipcMain.handle('provider:send', async (_event, messages) => {
   const store = getProviderStore();
-  const [apiKey, settings] = await Promise.all([store.getApiKey(), store.getPublicSettings()]);
-  return requestOpenAIResponse({ apiKey, model: settings.model, messages });
+  const settings = await store.getPublicSettings();
+  const apiKey = await store.getApiKey(settings.provider);
+  return requestProviderResponse({ provider: settings.provider, apiKey, model: settings.model, messages });
 });
 
 function createWindow() {

@@ -7,6 +7,6 @@ contextBridge.exposeInMainWorld('obavenus', {
   readProjectFile: (fileName) => ipcRenderer.invoke('project:read-file', fileName),
   getProviderSettings: () => ipcRenderer.invoke('provider:get-settings'),
   saveProviderSettings: (settings) => ipcRenderer.invoke('provider:save-settings', settings),
-  clearProviderKey: () => ipcRenderer.invoke('provider:clear-key'),
+  clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
 });

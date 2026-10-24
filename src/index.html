@@ -80,6 +80,32 @@
       .user-message { background: #20212a; }
       .assistant-message { color: #aaa9b3; }
       @media (max-width: 1100px) { .content { grid-template-columns: minmax(0, 1fr); } .context { display: none; } }
+      :root { color-scheme: light; background: #f5f7f2; color: #28352d; }
+      body, main { background: #f5f7f2; }
+      aside, .context { background: #e9eee6; border-color: #d9e1d6; }
+      .brand-mark { background: #718b74; color: white; }
+      .section-label, .workspace small, .context-card small, .subhead, .crumb, .context h2 { color: #758477; }
+      .workspace, .new-chat, .composer, .context-card, .status { background: #fff; border-color: #dce4d9; color: #344438; box-shadow: 0 6px 22px #4258420b; }
+      .nav-item { color: #58675b; }
+      .nav-item.active, .recent-item:hover, .recent-item.active { background: #dce7da; color: #314b36; }
+      .recent-item { color: #5d6c60; }
+      header { border-color: #dfe6dc; }
+      .eyebrow { color: #718b74; }
+      h1 { color: #28352d; }
+      .composer textarea { color: #28352d; }
+      .composer textarea::placeholder { color: #9aa69a; }
+      .send, .settings-actions .primary { background: #718b74; color: white; }
+      .suggestions button { border-color: #dce4d9; color: #607563; }
+      .file-list button { color: #526657; }
+      .context-action { color: #55775a; }
+      dialog { background: #fff; border-color: #dce4d9; color: #28352d; }
+      .settings p, .settings label { color: #59695c; }
+      .settings input, .settings select { background: #f7f9f5; border-color: #dce4d9; color: #28352d; }
+      .settings-actions button { background: #f0f3ed; border-color: #dce4d9; color: #405246; }
+      .user-message { background: #e8eee5; }
+      .assistant-message { color: #46564a; }
+      .message { border-color: #dce4d9; }
+      .file-preview { background: #f3f6f0; color: #344438; }
     </style>
   </head>
   <body>
@@ -96,7 +122,7 @@
         <div class="recent-list" id="recent-work" aria-label="Recent conversations"></div>
       </aside>
       <main>
-        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><button class="status" id="provider-settings" type="button">OpenAI · GPT-5.5 not connected · Settings</button></header>
+        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><button class="status" id="provider-settings" type="button">GPT not connected · Settings</button></header>
         <div class="content">
           <section class="welcome" id="conversation" aria-labelledby="welcome-title">
             <div class="eyebrow">A clear place to start</div>
@@ -120,10 +146,12 @@
     <dialog id="provider-dialog" aria-labelledby="provider-title">
       <form class="settings" id="provider-form">
         <h2 id="provider-title">Model settings</h2>
-        <p>Connect your OpenAI API key to enable assistant replies. The key is encrypted with macOS Keychain-backed storage and never returned to the UI.</p>
+        <p>Connect a provider with its API key. Keys are encrypted with macOS Keychain-backed storage and never returned to the UI.</p>
+        <label for="provider-choice">AI provider</label>
+        <select id="provider-choice"><option value="openai">OpenAI · GPT</option><option value="anthropic">Anthropic · Claude</option><option value="xai">xAI · Grok</option></select>
         <label for="provider-model">Model ID</label>
         <input id="provider-model" name="model" value="gpt-5.5" autocomplete="off" required />
-        <label for="provider-key">OpenAI API key</label>
+        <label for="provider-key" id="provider-key-label">OpenAI API key</label>
         <input id="provider-key" name="apiKey" type="password" autocomplete="off" placeholder="Paste an API key, or leave blank to keep the saved key" />
         <small id="provider-key-state">No key saved.</small>
         <p>When you press Send, this chat’s messages and any files you explicitly attached go to OpenAI. Requests set <code>store: false</code>; OpenAI’s standard abuse-monitoring policies may still apply.</p>
