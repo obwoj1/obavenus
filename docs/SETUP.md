@@ -12,3 +12,5 @@ Obavenus can choose and remember a project folder, list its top-level entries, a
 Use **Close** in the workspace panel to remove the saved folder selection. Keep secrets out of the renderer and Git history.
 
 The source repository is private at https://github.com/obwoj1/obavenus.
+
+To build a local Apple Silicon app bundle, run `npm run pack:mac`. To create a DMG installer, run `npm run dist:mac`; output goes under `release/`. These local builds are unsigned and not notarized, so macOS may require you to approve the app the first time you open it. Public distribution needs Apple signing and notarization.

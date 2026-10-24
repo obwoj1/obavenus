@@ -19,8 +19,8 @@
 - Added OpenAI Responses API support with GPT-5.5 as the default model, encrypted API-key storage through Electron safeStorage, a settings dialog, bounded conversation input, explicit send behavior, and `store: false` requests. The renderer never receives the saved key.
 - Added tests for encrypted provider settings, response parsing, stateless requests, and input validation.
 - Added opt-in project file attachments from the local preview panel. Users see attached-file chips before sending; the provider caps context size and instructs the model to treat file content as untrusted data.
+- Added reproducible Apple Silicon macOS packaging scripts for an app bundle and DMG. The app uses its own bundle ID and product name; signing is intentionally disabled for local builds.
 
 ## Next
 
-- Add selective context handoff so the user can choose which opened files to include in a future model request.
 - Add streaming responses and cancellation for long-running model requests.
