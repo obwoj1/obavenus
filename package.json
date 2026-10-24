@@ -1,14 +1,39 @@
 {
   "name": "obavenus",
+  "productName": "Obavenus",
   "version": "0.1.0",
   "private": true,
-  "description": "Obavenus, an original Electron desktop assistant prototype.",
+  "description": "Obavenus, a local-first Electron desktop assistant.",
+  "author": "Obavenus",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "pack:mac": "electron-builder --dir --mac --arm64",
+    "dist:mac": "electron-builder --mac dmg --arm64"
   },
   "devDependencies": {
-    "electron": "45.0.0"
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.obavenus.desktop",
+    "productName": "Obavenus",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "src/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "target": [
+        "dmg"
+      ]
+    }
   }
 }
