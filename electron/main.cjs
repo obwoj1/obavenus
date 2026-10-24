@@ -1,11 +1,13 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
 const { describeProject, readProjectFile } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
+const { createGmailConnector } = require('./gmail.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 let providerStore;
+let gmailConnector;
 
 function getProviderStore() {
   if (!providerStore) {
@@ -15,6 +17,11 @@ function getProviderStore() {
     });
   }
   return providerStore;
+}
+
+function getGmailConnector() {
+  if (!gmailConnector) gmailConnector = createGmailConnector({ filePath: path.join(app.getPath('userData'), 'gmail.json'), safeStorage });
+  return gmailConnector;
 }
 
 async function saveWorkspace(projectPath) {
@@ -67,6 +74,11 @@ ipcMain.handle('provider:send', async (_event, messages) => {
   const apiKey = await store.getApiKey(settings.provider);
   return requestProviderResponse({ provider: settings.provider, apiKey, model: settings.model, messages });
 });
+
+ipcMain.handle('gmail:status', () => getGmailConnector().status());
+ipcMain.handle('gmail:connect', (_event, credentials) => getGmailConnector().connect(credentials.clientId, credentials.clientSecret, (url) => shell.openExternal(url)));
+ipcMain.handle('gmail:disconnect', () => getGmailConnector().disconnect());
+ipcMain.handle('gmail:search', (_event, query) => getGmailConnector().search(query));
 
 function createWindow() {
   const window = new BrowserWindow({

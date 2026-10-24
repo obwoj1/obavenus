@@ -106,6 +106,11 @@
       .assistant-message { color: #46564a; }
       .message { border-color: #dce4d9; }
       .file-preview { background: #f3f6f0; color: #344438; }
+      .gmail-results { display: grid; gap: 8px; max-height: 35vh; margin-top: 12px; overflow: auto; }
+      .gmail-item { padding: 10px; border: 1px solid #dce4d9; border-radius: 9px; background: #f8faf6; }
+      .gmail-item strong, .gmail-item small { display: block; }
+      .gmail-item small { margin-top: 4px; color: #758477; }
+      .gmail-item p { margin: 7px 0; color: #59695c; font-size: 11px; }
     </style>
   </head>
   <body>
@@ -118,6 +123,7 @@
         <div class="section-label">Navigation</div>
         <div class="nav-item active"><span>✦</span> Assistant</div>
         <button class="nav-item" id="projects-nav" type="button"><span>▤</span> Projects</button>
+        <button class="nav-item" id="email-nav" type="button"><span>✉</span> Gmail</button>
         <div class="section-label">Recent work</div>
         <div class="recent-list" id="recent-work" aria-label="Recent conversations"></div>
       </aside>
@@ -162,6 +168,28 @@
           <button class="primary" type="submit">Save settings</button>
         </div>
       </form>
+    </dialog>
+    <dialog id="gmail-dialog" aria-labelledby="gmail-title">
+      <section class="settings">
+        <h2 id="gmail-title">Connect Gmail</h2>
+        <p>Obavenus requests read-only Gmail access. Email is only shared with the selected AI when you explicitly attach it to a message.</p>
+        <label for="gmail-client-id">Google OAuth desktop client ID</label>
+        <input id="gmail-client-id" autocomplete="off" placeholder="…apps.googleusercontent.com" />
+        <label for="gmail-client-secret">Google OAuth client secret</label>
+        <input id="gmail-client-secret" type="password" autocomplete="off" required />
+        <small id="gmail-status" role="status" aria-live="polite">Not connected. Create a Desktop app OAuth client and enable Gmail API in Google Cloud.</small>
+        <div class="settings-actions">
+          <button class="remove" id="gmail-disconnect" type="button" hidden>Disconnect Gmail</button>
+          <button type="button" id="gmail-close">Close</button>
+          <button class="primary" type="button" id="gmail-connect">Connect Gmail</button>
+        </div>
+        <div id="gmail-inbox" hidden>
+          <label for="gmail-search">Search your inbox</label>
+          <input id="gmail-search" placeholder="in:inbox from:…" />
+          <button class="context-action" id="gmail-search-button" type="button">Search email</button>
+          <div id="gmail-results" class="gmail-results"></div>
+        </div>
+      </section>
     </dialog>
     <script src="./app.js"></script>
   </body>

@@ -9,4 +9,8 @@ contextBridge.exposeInMainWorld('obavenus', {
   saveProviderSettings: (settings) => ipcRenderer.invoke('provider:save-settings', settings),
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
+  getGmailStatus: () => ipcRenderer.invoke('gmail:status'),
+  connectGmail: (credentials) => ipcRenderer.invoke('gmail:connect', credentials),
+  disconnectGmail: () => ipcRenderer.invoke('gmail:disconnect'),
+  searchGmail: (query) => ipcRenderer.invoke('gmail:search', query),
 });

@@ -103,7 +103,7 @@ test('Claude and Grok use their provider APIs and parse their response formats',
     ['xai', 'https://api.x.ai/v1/chat/completions', 'Grok answer'],
   ]) {
     const result = await requestProviderResponse({
-      provider, apiKey: 'provider-secret', model: provider === 'xai' ? 'grok-4-1-fast-reasoning' : 'claude-sonnet-4-6',
+      provider, apiKey: 'provider-secret', model: provider === 'xai' ? 'grok-4.7' : 'claude-sonnet-4-6',
       messages: [{ role: 'user', text: 'Hello' }],
       fetchImpl: async (url, options) => {
         requests.push({ provider, url, options });

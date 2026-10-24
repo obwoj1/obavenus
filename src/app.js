@@ -19,6 +19,7 @@ const providerKeyInput = document.querySelector('#provider-key');
 const providerKeyState = document.querySelector('#provider-key-state');
 const providerFormStatus = document.querySelector('#provider-form-status');
 const removeProviderKeyButton = document.querySelector('#remove-provider-key');
+const gmailDialog = document.querySelector('#gmail-dialog');
 
 function loadConversations() {
   try {
@@ -345,6 +346,74 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
 document.querySelector('#open-project').addEventListener('click', chooseProject);
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
+document.querySelector('#email-nav').addEventListener('click', async () => {
+  gmailDialog.showModal();
+  await updateGmailStatus();
+});
+document.querySelector('#gmail-close').addEventListener('click', () => gmailDialog.close());
+document.querySelector('#gmail-connect').addEventListener('click', async () => {
+  const status = document.querySelector('#gmail-status');
+  status.textContent = 'Opening Google sign-in…';
+  try {
+    await window.obavenus.connectGmail({
+      clientId: document.querySelector('#gmail-client-id').value.trim(),
+      clientSecret: document.querySelector('#gmail-client-secret').value.trim(),
+    });
+    status.textContent = 'Gmail connected with read-only access.';
+    await updateGmailStatus();
+    await searchGmail();
+  } catch (error) { status.textContent = error.message || 'Could not connect Gmail.'; }
+});
+document.querySelector('#gmail-disconnect').addEventListener('click', async () => {
+  await window.obavenus.disconnectGmail();
+  document.querySelector('#gmail-results').replaceChildren();
+  await updateGmailStatus();
+});
+document.querySelector('#gmail-search-button').addEventListener('click', searchGmail);
+document.querySelector('#gmail-search').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); searchGmail(); }
+});
+
+async function updateGmailStatus() {
+  const status = await window.obavenus.getGmailStatus();
+  document.querySelector('#gmail-status').textContent = status.connected
+    ? `Connected${status.email ? ` as ${status.email}` : ''} · Gmail read-only`
+    : 'Not connected. Create a Desktop app OAuth client and enable Gmail API in Google Cloud.';
+  document.querySelector('#gmail-disconnect').hidden = !status.connected;
+  document.querySelector('#gmail-inbox').hidden = !status.connected;
+  document.querySelector('#gmail-connect').textContent = status.connected ? 'Reconnect Gmail' : 'Connect Gmail';
+  if (status.connected) document.querySelector('#gmail-client-id').value = '';
+}
+
+async function searchGmail() {
+  const results = document.querySelector('#gmail-results');
+  results.replaceChildren('Loading mail…');
+  try {
+    const messages = await window.obavenus.searchGmail(document.querySelector('#gmail-search').value.trim());
+    results.replaceChildren();
+    if (!messages.length) { results.textContent = 'No matching email.'; return; }
+    messages.forEach((email) => {
+      const card = document.createElement('article');
+      card.className = 'gmail-item';
+      const subject = document.createElement('strong');
+      subject.textContent = email.subject;
+      const from = document.createElement('small');
+      from.textContent = `${email.from} · ${email.date}`;
+      const snippet = document.createElement('p');
+      snippet.textContent = email.snippet;
+      const attach = document.createElement('button');
+      attach.className = 'context-action';
+      attach.type = 'button';
+      attach.textContent = '＋ Attach snippet to next message';
+      attach.addEventListener('click', () => {
+        attachProjectContext(`email-${email.id}.txt`, `Subject: ${email.subject}\nFrom: ${email.from}\nDate: ${email.date}\n\n${email.snippet}`);
+        gmailDialog.close();
+      });
+      card.append(subject, from, snippet, attach);
+      results.append(card);
+    });
+  } catch (error) { results.textContent = error.message || 'Could not search Gmail.'; }
+}
 
 async function updateProviderBadge() {
   const badge = document.querySelector('#provider-settings');
@@ -431,7 +500,7 @@ function updateProviderFormLabels() {
   const providerName = names[providerSelect.value] || 'Provider';
   document.querySelector('#provider-key-label').textContent = `${providerName} API key`;
   document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
-  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4-1-fast-reasoning' };
+  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4.7' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
   providerModelInput.dataset.provider = providerSelect.value;
 }
