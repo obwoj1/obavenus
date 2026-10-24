@@ -20,6 +20,10 @@
 - Added tests for encrypted provider settings, response parsing, stateless requests, and input validation.
 - Added opt-in project file attachments from the local preview panel. Users see attached-file chips before sending; the provider caps context size and instructs the model to treat file content as untrusted data.
 - Added reproducible Apple Silicon macOS packaging scripts for an app bundle and DMG. The app uses its own bundle ID and product name; signing is intentionally disabled for local builds.
+- Added separate encrypted API-key slots and request adapters for OpenAI, Anthropic Claude, and xAI Grok, plus a provider selector in Settings.
+- Refreshed the interface with a sage-green and white color palette.
+- Added Gmail OAuth with PKCE, loopback callback, encrypted local tokens, read-only search, and explicit attach-to-chat for snippets.
+- Updated the Grok default model to the current xAI API model ID.
 
 ## Next
 
