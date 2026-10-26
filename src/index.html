@@ -64,6 +64,7 @@
       dialog { width: min(520px, calc(100vw - 32px)); padding: 0; border: 1px solid #393943; border-radius: 16px; background: #17181f; color: #f5f4f1; box-shadow: 0 24px 90px #0009; }
       dialog::backdrop { background: #08090dbb; backdrop-filter: blur(5px); }
       .settings { padding: 24px; }
+      dialog .settings { max-height: 85vh; overflow: auto; }
       .settings h2 { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
       .settings p { color: #aaa9b3; font-size: 11px; line-height: 1.6; }
       .settings label { display: block; margin: 17px 0 7px; color: #d7d6de; font-size: 11px; }
@@ -152,9 +153,9 @@
     <dialog id="provider-dialog" aria-labelledby="provider-title">
       <form class="settings" id="provider-form">
         <h2 id="provider-title">Model settings</h2>
-        <p>Sign in with your ChatGPT account or use an API key. API keys are encrypted with macOS Keychain-backed storage.</p>
+        <p>Connect an AI provider account where supported, or use its API key. Credentials are encrypted with macOS Keychain-backed storage.</p>
         <label for="provider-choice">AI provider</label>
-        <select id="provider-choice"><option value="openai">OpenAI · GPT</option><option value="anthropic">Anthropic · Claude</option><option value="xai">xAI · Grok</option></select>
+        <select id="provider-choice"><option value="openai">OpenAI · GPT</option><option value="anthropic">Anthropic · Claude</option><option value="gemini">Google · Gemini</option><option value="xai">xAI · Grok</option></select>
         <label for="openai-auth-method" id="openai-auth-label">OpenAI sign-in method</label>
         <select id="openai-auth-method"><option value="chatgpt">Sign in with ChatGPT account</option><option value="api-key">Use OpenAI API key</option></select>
         <div id="chatgpt-connection" hidden>
@@ -162,12 +163,27 @@
           <div class="settings-actions"><button type="button" id="chatgpt-sign-in" class="primary">Continue with ChatGPT</button><button type="button" id="chatgpt-disconnect" hidden>Disconnect ChatGPT</button></div>
           <small>Availability depends on your account and OpenAI’s approval of this app. ChatGPT plan access is separate from API billing.</small>
         </div>
+        <label for="gemini-auth-method" id="gemini-auth-label" hidden>Gemini sign-in method</label>
+        <select id="gemini-auth-method" hidden><option value="google-account">Sign in with Google account</option><option value="api-key">Use Gemini API key</option></select>
+        <div id="gemini-connection" hidden>
+          <small>Uses the Gemini API through your Google Cloud project. API usage and billing are separate from Google AI subscriptions. Google requests Cloud Platform access for this account; only connect an account you trust with this app.</small>
+          <label for="gemini-project-id">Google Cloud project ID</label>
+          <input id="gemini-project-id" autocomplete="off" placeholder="my-gemini-project" />
+          <label for="gemini-client-id">Google OAuth desktop client ID</label>
+          <input id="gemini-client-id" autocomplete="off" placeholder="…apps.googleusercontent.com" />
+          <label for="gemini-client-secret">Google OAuth desktop client secret</label>
+          <input id="gemini-client-secret" type="password" autocomplete="off" />
+          <small>You can leave these Google OAuth fields blank if you already connected Gmail with the same desktop client.</small>
+          <small id="gemini-session-state">Not connected.</small>
+          <div class="settings-actions"><button type="button" id="gemini-sign-in" class="primary">Continue with Google</button><button type="button" id="gemini-disconnect" hidden>Disconnect Google</button></div>
+        </div>
         <label for="provider-model">Model ID</label>
         <input id="provider-model" name="model" value="gpt-5.5" autocomplete="off" list="chatgpt-model-options" required />
         <datalist id="chatgpt-model-options"></datalist>
         <label for="provider-key" id="provider-key-label">OpenAI API key</label>
         <input id="provider-key" name="apiKey" type="password" autocomplete="off" placeholder="Paste an API key, or leave blank to keep the saved key" />
         <small id="provider-key-state">No key saved.</small>
+        <small id="provider-auth-note" hidden></small>
         <p id="provider-request-disclosure">When you press Send, this chat and any files you explicitly attached go to the selected provider. Obavenus requests stateless responses where supported; the provider’s data policies apply.</p>
         <small id="provider-form-status" role="status" aria-live="polite"></small>
         <div class="settings-actions">

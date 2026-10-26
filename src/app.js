@@ -20,10 +20,15 @@ const providerKeyState = document.querySelector('#provider-key-state');
 const providerFormStatus = document.querySelector('#provider-form-status');
 const removeProviderKeyButton = document.querySelector('#remove-provider-key');
 const authMethodSelect = document.querySelector('#openai-auth-method');
+const geminiAuthSelect = document.querySelector('#gemini-auth-method');
 const chatgptConnection = document.querySelector('#chatgpt-connection');
+const geminiConnection = document.querySelector('#gemini-connection');
 const chatgptState = document.querySelector('#chatgpt-session-state');
 const chatgptSignInButton = document.querySelector('#chatgpt-sign-in');
 const chatgptDisconnectButton = document.querySelector('#chatgpt-disconnect');
+const geminiState = document.querySelector('#gemini-session-state');
+const geminiSignInButton = document.querySelector('#gemini-sign-in');
+const geminiDisconnectButton = document.querySelector('#gemini-disconnect');
 const gmailDialog = document.querySelector('#gmail-dialog');
 
 function loadConversations() {
@@ -306,7 +311,9 @@ form.addEventListener('submit', async (event) => {
 
   try {
     const settings = await window.obavenus.getProviderSettings();
-    if (!settings.configured && !(settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt')) {
+    const accountConnectedMode = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
+      || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account';
+    if (!settings.configured && !accountConnectedMode) {
       submittedMessage.localOnly = true;
       pendingReply.text = 'Connect the selected provider in Settings to get a model response. Your prompt is saved locally and was not sent.';
       pendingReply.localOnly = true;
@@ -364,6 +371,8 @@ document.querySelector('#gmail-connect').addEventListener('click', async () => {
       clientId: document.querySelector('#gmail-client-id').value.trim(),
       clientSecret: document.querySelector('#gmail-client-secret').value.trim(),
     });
+    document.querySelector('#gmail-client-id').value = '';
+    document.querySelector('#gmail-client-secret').value = '';
     status.textContent = 'Gmail connected with read-only access.';
     await updateGmailStatus();
     await searchGmail();
@@ -428,9 +437,13 @@ async function updateProviderBadge() {
     const chatgptConnected = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
       ? await window.obavenus.getChatGPTSession().then((session) => session.sharing).catch(() => false)
       : false;
-    badge.textContent = (settings.configured || chatgptConnected)
-      ? `${providerName} · ${settings.model} connected · Settings`
-      : `${providerName} not connected · Settings`;
+    const geminiConnected = settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
+      ? await window.obavenus.getGeminiStatus().then((status) => status.connected).catch(() => false)
+      : false;
+    const displayName = settings.provider === 'gemini' ? 'Gemini' : providerName;
+    badge.textContent = (settings.configured || chatgptConnected || geminiConnected)
+      ? `${displayName} · ${settings.model} connected · Settings`
+      : `${displayName} not connected · Settings`;
     return settings;
   } catch {
     badge.textContent = 'Provider settings unavailable';
@@ -445,8 +458,10 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     const settings = await window.obavenus.getProviderSettings();
     providerSelect.value = settings.provider || 'openai';
     authMethodSelect.value = settings.openaiAuthMethod || 'api-key';
+    geminiAuthSelect.value = settings.geminiAuthMethod || 'api-key';
     providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
+    document.querySelector('#gemini-project-id').value = settings.geminiProjectId || '';
     updateProviderFormLabels();
     updateProviderDisclosure();
     providerKeyState.textContent = settings.configured
@@ -454,6 +469,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
       : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
     removeProviderKeyButton.hidden = !settings.configured;
     await updateChatGPTControls();
+    await updateGeminiControls();
   } catch (error) {
     providerFormStatus.textContent = error.message || 'Could not load settings.';
   }
@@ -469,6 +485,8 @@ providerForm.addEventListener('submit', async (event) => {
     const settings = await window.obavenus.saveProviderSettings({
       provider: providerSelect.value,
       openaiAuthMethod: authMethodSelect.value,
+      geminiAuthMethod: geminiAuthSelect.value,
+      geminiProjectId: document.querySelector('#gemini-project-id').value.trim(),
       model: providerModelInput.value,
       apiKey: providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt' ? '' : providerKeyInput.value,
     });
@@ -507,9 +525,50 @@ providerSelect.addEventListener('change', async () => {
   providerKeyState.textContent = connected ? 'This provider has a key saved in encrypted device storage.' : 'No key saved for this provider.';
   removeProviderKeyButton.hidden = !connected;
   await updateChatGPTControls();
+  await updateGeminiControls();
 });
 
 authMethodSelect.addEventListener('change', () => { updateChatGPTControls(); updateProviderDisclosure(); });
+geminiAuthSelect.addEventListener('change', () => { updateGeminiControls(); updateProviderDisclosure(); });
+
+geminiSignInButton.addEventListener('click', async () => {
+  geminiSignInButton.disabled = true;
+  geminiState.textContent = 'Opening secure Google sign-in…';
+  try {
+    const credentials = {
+      projectId: document.querySelector('#gemini-project-id').value.trim(),
+      clientId: document.querySelector('#gemini-client-id').value.trim(),
+      clientSecret: document.querySelector('#gemini-client-secret').value,
+    };
+    const status = await window.obavenus.connectGeminiAccount(credentials);
+    providerSelect.value = 'gemini';
+    geminiAuthSelect.value = 'google-account';
+    updateProviderFormLabels();
+    updateProviderDisclosure();
+    await window.obavenus.saveProviderSettings({
+      provider: 'gemini', geminiAuthMethod: 'google-account', geminiProjectId: credentials.projectId,
+      model: providerModelInput.value || 'gemini-3.8-flash', apiKey: '',
+    });
+    document.querySelector('#gemini-client-secret').value = '';
+    geminiState.textContent = `Connected${status.email ? ` as ${status.email}` : ''} · project ${status.projectId}.`;
+    await updateProviderBadge();
+  } catch (error) {
+    geminiState.textContent = error.message || 'Google sign-in did not complete.';
+  } finally {
+    geminiSignInButton.disabled = false;
+    await updateGeminiControls();
+  }
+});
+
+geminiDisconnectButton.addEventListener('click', async () => {
+  geminiDisconnectButton.disabled = true;
+  try {
+    await window.obavenus.disconnectGeminiAccount();
+    geminiState.textContent = 'Disconnected.';
+    await updateProviderBadge();
+  } catch (error) { geminiState.textContent = error.message || 'Could not disconnect Google.'; }
+  finally { geminiDisconnectButton.disabled = false; await updateGeminiControls(); }
+});
 
 chatgptSignInButton.addEventListener('click', async () => {
   chatgptSignInButton.disabled = true;
@@ -555,27 +614,40 @@ chatgptDisconnectButton.addEventListener('click', async () => {
 });
 
 function updateProviderFormLabels() {
-  const names = { openai: 'OpenAI', anthropic: 'Anthropic (Claude)', xai: 'xAI (Grok)' };
+  const names = { openai: 'OpenAI', anthropic: 'Anthropic (Claude)', gemini: 'Google Gemini', xai: 'xAI (Grok)' };
   const providerName = names[providerSelect.value] || 'Provider';
   document.querySelector('#provider-key-label').textContent = `${providerName} API key`;
   document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
   document.querySelector('#openai-auth-label').hidden = providerSelect.value !== 'openai';
   authMethodSelect.hidden = providerSelect.value !== 'openai';
-  document.querySelector('#provider-key-label').hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
-  providerKeyInput.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
-  providerKeyState.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
-  removeProviderKeyButton.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  document.querySelector('#gemini-auth-label').hidden = providerSelect.value !== 'gemini';
+  geminiAuthSelect.hidden = providerSelect.value !== 'gemini';
+  const accountMode = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt'
+    || providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
+  document.querySelector('#provider-key-label').hidden = accountMode;
+  providerKeyInput.hidden = accountMode;
+  providerKeyState.hidden = accountMode;
+  removeProviderKeyButton.hidden = accountMode;
   chatgptConnection.hidden = providerSelect.value !== 'openai' || authMethodSelect.value !== 'chatgpt';
-  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4.7' };
+  geminiConnection.hidden = providerSelect.value !== 'gemini' || geminiAuthSelect.value !== 'google-account';
+  const note = document.querySelector('#provider-auth-note');
+  note.hidden = !['anthropic', 'xai'].includes(providerSelect.value);
+  note.textContent = providerSelect.value === 'anthropic'
+    ? 'Claude Pro/Max sign-in is supported in Claude Code. Obavenus uses an Anthropic API key.'
+    : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.' : '';
+  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
   providerModelInput.dataset.provider = providerSelect.value;
 }
 
 function updateProviderDisclosure() {
-  const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', xai: 'xAI' }[providerSelect.value] || 'selected provider';
+  const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI' }[providerSelect.value] || 'selected provider';
   const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  const isGeminiOAuth = providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
   document.querySelector('#provider-request-disclosure').textContent = isChatGPT
     ? 'When you press Send, this chat and any files you explicitly attached go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.'
+    : isGeminiOAuth
+      ? 'When you press Send, this chat and any files you explicitly attached go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.'
     : `When you press Send, this chat and any files you explicitly attached go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.`;
 }
 
@@ -591,6 +663,19 @@ async function updateChatGPTControls() {
     chatgptDisconnectButton.hidden = session.status !== 'connected';
     if (session.sharing) await refreshChatGPTModels();
   } catch (error) { chatgptState.textContent = error.message || 'ChatGPT status unavailable.'; }
+}
+
+async function updateGeminiControls() {
+  updateProviderFormLabels();
+  if (providerSelect.value !== 'gemini') return;
+  try {
+    const status = await window.obavenus.getGeminiStatus();
+    geminiState.textContent = status.connected
+      ? `Connected${status.email ? ` as ${status.email}` : ''} · project ${status.projectId}.`
+      : 'Not connected.';
+    geminiSignInButton.textContent = status.connected ? 'Reconnect Google' : 'Continue with Google';
+    geminiDisconnectButton.hidden = !status.connected;
+  } catch (error) { geminiState.textContent = error.message || 'Google account status unavailable.'; }
 }
 
 async function refreshChatGPTModels() {
