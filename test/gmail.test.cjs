@@ -75,5 +75,6 @@ test('Gmail OAuth asks for read-only access and validates its loopback state', a
     assert.equal(tokenBody.get('code'), 'test-auth-code');
     assert.ok(tokenBody.get('code_verifier'));
     assert.equal((await connector.status()).email, 'test@example.com');
+    assert.deepEqual(await connector.getOAuthClientCredentials(), { clientId: 'test.apps.googleusercontent.com', clientSecret: 'client-secret' });
   } finally { await rm(root, { recursive: true, force: true }); }
 });

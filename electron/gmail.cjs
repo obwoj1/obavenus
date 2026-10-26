@@ -112,6 +112,11 @@ function createGmailConnector({ filePath, safeStorage, fetchImpl = globalThis.fe
 
   return {
     async status() { const saved = await readSaved(); return { connected: Boolean(saved.encryptedRefreshToken), email: saved.email || '' }; },
+    async getOAuthClientCredentials() {
+      const saved = await readSaved();
+      const clientSecret = await decrypt(saved.encryptedClientSecret);
+      return saved.clientId && clientSecret ? { clientId: saved.clientId, clientSecret } : null;
+    },
     connect,
     async disconnect() { await saveSaved({}); return true; },
     async search(query = '') {

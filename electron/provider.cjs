@@ -2,10 +2,12 @@ const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 
 const DEFAULT_MODEL = 'gpt-5.5';
+const DEFAULT_MODELS = { openai: DEFAULT_MODEL, anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7' };
 const PROVIDERS = {
-  openai: { name: 'OpenAI', model: DEFAULT_MODEL },
-  anthropic: { name: 'Claude', model: 'claude-sonnet-4-6' },
-  xai: { name: 'Grok', model: 'grok-4.7' },
+  openai: { name: 'OpenAI', model: DEFAULT_MODELS.openai },
+  anthropic: { name: 'Claude', model: DEFAULT_MODELS.anthropic },
+  gemini: { name: 'Gemini', model: DEFAULT_MODELS.gemini },
+  xai: { name: 'Grok', model: DEFAULT_MODELS.xai },
 };
 const MAX_MESSAGES = 40;
 const MAX_INPUT_CHARACTERS = 100_000;
@@ -26,13 +28,15 @@ function createProviderStore({ filePath, safeStorage }) {
       return {
         provider: PROVIDERS[saved.provider] ? saved.provider : 'openai',
         openaiAuthMethod: saved.openaiAuthMethod === 'chatgpt' ? 'chatgpt' : 'api-key',
+        geminiAuthMethod: saved.geminiAuthMethod === 'google-account' ? 'google-account' : 'api-key',
+        geminiProjectId: typeof saved.geminiProjectId === 'string' ? saved.geminiProjectId : '',
         model: typeof saved.model === 'string' ? saved.model : DEFAULT_MODEL,
         encryptedKeys: saved.encryptedKeys && typeof saved.encryptedKeys === 'object'
           ? saved.encryptedKeys
           : (typeof saved.encryptedApiKey === 'string' && saved.encryptedApiKey ? { openai: saved.encryptedApiKey } : {}),
       };
     } catch (error) {
-      if (error.code === 'ENOENT') return { provider: 'openai', openaiAuthMethod: 'api-key', model: DEFAULT_MODEL, encryptedKeys: {} };
+      if (error.code === 'ENOENT') return { provider: 'openai', openaiAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: DEFAULT_MODEL, encryptedKeys: {} };
       throw error;
     }
   }
@@ -48,14 +52,18 @@ function createProviderStore({ filePath, safeStorage }) {
       return {
         provider: settings.provider,
         openaiAuthMethod: settings.openaiAuthMethod,
+        geminiAuthMethod: settings.geminiAuthMethod,
+        geminiProjectId: settings.geminiProjectId,
         model: settings.model,
         configured: Boolean(settings.encryptedKeys[settings.provider]),
         connectedProviders: Object.keys(settings.encryptedKeys),
       };
     },
-    async save({ provider = 'openai', openaiAuthMethod = 'api-key', apiKey, model }) {
-      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, or Grok.');
+    async save({ provider = 'openai', openaiAuthMethod = 'api-key', geminiAuthMethod = 'api-key', geminiProjectId = '', apiKey, model }) {
+      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, or Grok.');
       if (!['api-key', 'chatgpt'].includes(openaiAuthMethod)) throw new TypeError('Choose a supported OpenAI sign-in method.');
+      if (!['api-key', 'google-account'].includes(geminiAuthMethod)) throw new TypeError('Choose a supported Gemini sign-in method.');
+      if (provider === 'gemini' && geminiAuthMethod === 'google-account' && (typeof geminiProjectId !== 'string' || !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(geminiProjectId.trim()))) throw new TypeError('Enter a valid Google Cloud project ID.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       const enteredKey = typeof apiKey === 'string' ? apiKey.trim() : '';
@@ -63,16 +71,16 @@ function createProviderStore({ filePath, safeStorage }) {
         if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('Secure key storage is unavailable on this device.');
         encryptedKeys[provider] = (await safeStorage.encryptStringAsync(enteredKey)).toString('base64');
       }
-      const next = { provider, openaiAuthMethod, model: normalizeModel(model), encryptedKeys };
+      const next = { provider, openaiAuthMethod, geminiAuthMethod, geminiProjectId: typeof geminiProjectId === 'string' ? geminiProjectId.trim() : '', model: normalizeModel(model), encryptedKeys };
       await writeSettings(next);
-      return { provider, openaiAuthMethod, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
+      return { provider, openaiAuthMethod, geminiAuthMethod, geminiProjectId: next.geminiProjectId, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
     },
     async clearKey(provider = 'openai') {
-      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, or Grok.');
+      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, or Grok.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       delete encryptedKeys[provider];
-      await writeSettings({ provider: current.provider, openaiAuthMethod: current.openaiAuthMethod, model: current.model, encryptedKeys });
+      await writeSettings({ provider: current.provider, openaiAuthMethod: current.openaiAuthMethod, geminiAuthMethod: current.geminiAuthMethod, geminiProjectId: current.geminiProjectId, model: current.model, encryptedKeys });
       return { provider, model: current.model, configured: false, connectedProviders: Object.keys(encryptedKeys) };
     },
     async getApiKey(provider = 'openai') {
@@ -87,7 +95,7 @@ function createProviderStore({ filePath, safeStorage }) {
 }
 
 async function requestProviderResponse({ provider = 'openai', apiKey, model, messages, fetchImpl = globalThis.fetch }) {
-  if (!PROVIDERS[provider]) throw new Error('Choose OpenAI, Claude, or Grok in Settings.');
+  if (!PROVIDERS[provider]) throw new Error('Choose OpenAI, Claude, Gemini, or Grok in Settings.');
   if (typeof apiKey !== 'string' || apiKey.length === 0) throw new Error(`Connect a ${PROVIDERS[provider].name} API key in Settings first.`);
   const inputMessages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES) : [];
   if (inputMessages.length === 0) throw new Error('Enter a message before sending.');
@@ -117,13 +125,18 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
   const timeout = setTimeout(() => controller.abort(), 90_000);
   try {
     const anthropic = provider === 'anthropic';
-    const endpoint = provider === 'openai' ? 'https://api.openai.com/v1/responses' : anthropic ? 'https://api.anthropic.com/v1/messages' : 'https://api.x.ai/v1/chat/completions';
-    const headers = anthropic
+    const gemini = provider === 'gemini';
+    const endpoint = provider === 'openai' ? 'https://api.openai.com/v1/responses' : anthropic ? 'https://api.anthropic.com/v1/messages' : gemini ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(normalizeModel(model))}:generateContent` : 'https://api.x.ai/v1/chat/completions';
+    const headers = gemini
+      ? { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' }
+      : anthropic
       ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
       : { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
     const body = provider === 'openai'
       ? { model: normalizeModel(model), instructions, input, store: false }
-      : anthropic
+      : gemini
+        ? { systemInstruction: { parts: [{ text: instructions }] }, contents: input.map((message) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })) }
+        : anthropic
         ? { model: normalizeModel(model), max_tokens: 4096, system: instructions, messages: input }
         : { model: normalizeModel(model), messages: [{ role: 'system', content: instructions }, ...input] };
     const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal });
@@ -132,6 +145,8 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
     if (!response.ok) throw new Error(result.error?.message || result.message || `${PROVIDERS[provider].name} request failed (HTTP ${response.status}).`);
     const text = provider === 'openai'
       ? (result.output || []).filter((item) => item.type === 'message').flatMap((item) => item.content || []).filter((part) => part.type === 'output_text' && typeof part.text === 'string').map((part) => part.text).join('\n')
+      : gemini
+        ? (result.candidates?.[0]?.content?.parts || []).filter((part) => typeof part.text === 'string').map((part) => part.text).join('\n')
       : anthropic
         ? (result.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n')
         : result.choices?.[0]?.message?.content;
@@ -147,6 +162,7 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
 
 module.exports = {
   DEFAULT_MODEL,
+  DEFAULT_MODELS,
   PROVIDERS,
   createProviderStore,
   requestProviderResponse,
