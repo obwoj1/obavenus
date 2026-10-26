@@ -26,9 +26,11 @@
 - Updated the Grok default model to the current xAI API model ID.
 - Added OpenAI Sign in with ChatGPT through the official local SDK, with OS-backed credential encryption, account-specific model discovery, connection controls, and API-key fallback.
 - Kept the ChatGPT provider eligibility and token-sharing limitations visible in setup and settings; Claude and Grok remain API-key based.
+- Added Google OAuth for Gemini API access, with PKCE, encrypted credential storage, Cloud project billing attribution, and an API-key option. Google AI subscriptions are not used for API requests.
 - Updated product documentation to describe the current app rather than the first prototype.
 
 ## Next
 
 - Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.
+- Verify the Gemini OAuth consent setup and a first request against a user-configured Google Cloud project.
 - Add streaming responses and cancellation for long-running model requests.

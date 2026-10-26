@@ -15,4 +15,4 @@ Start with a macOS desktop assistant that combines AI chat with a project worksp
 
 ## First version
 
-The current app combines AI chat, a local project workspace, and optional Gmail search. OpenAI can connect through Sign in with ChatGPT or an API key; Claude and Grok currently use API keys. Project files stay local until explicitly attached to a message. Gmail access is read-only, and snippets are shared only when the user attaches them and sends a message.
+The current app combines AI chat, a local project workspace, and optional Gmail search. OpenAI can connect through Sign in with ChatGPT or an API key; Gemini supports Google OAuth for the Gemini API using a user-selected Cloud project; Claude and Grok currently use API keys. Project files stay local until explicitly attached to a message. Gmail access is read-only, and snippets are shared only when the user attaches them and sends a message.
