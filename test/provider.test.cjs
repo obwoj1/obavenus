@@ -16,20 +16,38 @@ test('provider store encrypts the key and exposes only safe settings', async () 
   const store = createProviderStore({ filePath, safeStorage });
 
   try {
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', model: DEFAULT_MODEL, configured: false, connectedProviders: [] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', model: DEFAULT_MODEL, configured: false, connectedProviders: [] });
     await store.save({ provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-test-secret' });
     assert.equal(await store.getApiKey('openai'), 'sk-test-secret');
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', model: 'gpt-5.5', configured: true, connectedProviders: ['openai'] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', model: 'gpt-5.5', configured: true, connectedProviders: ['openai'] });
     assert.equal((await readFile(filePath, 'utf8')).includes('sk-test-secret'), false);
 
     await store.save({ provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'claude-secret' });
     assert.equal(await store.getApiKey('openai'), 'sk-test-secret');
     assert.equal(await store.getApiKey('anthropic'), 'claude-secret');
     await store.clearKey('openai');
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'anthropic', model: 'claude-sonnet-4-6', configured: true, connectedProviders: ['anthropic'] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'anthropic', openaiAuthMethod: 'api-key', model: 'claude-sonnet-4-6', configured: true, connectedProviders: ['anthropic'] });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('ChatGPT account mode persists without storing an API key', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-chatgpt-mode-'));
+  const filePath = path.join(root, 'provider.json');
+  let encryptCalls = 0;
+  const store = createProviderStore({ filePath, safeStorage: {
+    isAsyncEncryptionAvailable: async () => true,
+    encryptStringAsync: async (value) => { encryptCalls++; return Buffer.from(value); },
+    decryptStringAsync: async (value) => ({ result: value.toString() }),
+  } });
+  try {
+    const settings = await store.save({ provider: 'openai', openaiAuthMethod: 'chatgpt', model: 'gpt-5.5' });
+    assert.equal(settings.openaiAuthMethod, 'chatgpt');
+    assert.equal(settings.configured, false);
+    assert.equal(encryptCalls, 0);
+    assert.equal((await store.getPublicSettings()).openaiAuthMethod, 'chatgpt');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('OpenAI Responses request is stateless and extracts generated text', async () => {

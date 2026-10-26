@@ -25,13 +25,14 @@ function createProviderStore({ filePath, safeStorage }) {
       const saved = JSON.parse(await readFile(filePath, 'utf8'));
       return {
         provider: PROVIDERS[saved.provider] ? saved.provider : 'openai',
+        openaiAuthMethod: saved.openaiAuthMethod === 'chatgpt' ? 'chatgpt' : 'api-key',
         model: typeof saved.model === 'string' ? saved.model : DEFAULT_MODEL,
         encryptedKeys: saved.encryptedKeys && typeof saved.encryptedKeys === 'object'
           ? saved.encryptedKeys
           : (typeof saved.encryptedApiKey === 'string' && saved.encryptedApiKey ? { openai: saved.encryptedApiKey } : {}),
       };
     } catch (error) {
-      if (error.code === 'ENOENT') return { provider: 'openai', model: DEFAULT_MODEL, encryptedKeys: {} };
+      if (error.code === 'ENOENT') return { provider: 'openai', openaiAuthMethod: 'api-key', model: DEFAULT_MODEL, encryptedKeys: {} };
       throw error;
     }
   }
@@ -46,13 +47,15 @@ function createProviderStore({ filePath, safeStorage }) {
       const settings = await readSettings();
       return {
         provider: settings.provider,
+        openaiAuthMethod: settings.openaiAuthMethod,
         model: settings.model,
         configured: Boolean(settings.encryptedKeys[settings.provider]),
         connectedProviders: Object.keys(settings.encryptedKeys),
       };
     },
-    async save({ provider = 'openai', apiKey, model }) {
+    async save({ provider = 'openai', openaiAuthMethod = 'api-key', apiKey, model }) {
       if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, or Grok.');
+      if (!['api-key', 'chatgpt'].includes(openaiAuthMethod)) throw new TypeError('Choose a supported OpenAI sign-in method.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       const enteredKey = typeof apiKey === 'string' ? apiKey.trim() : '';
@@ -60,16 +63,16 @@ function createProviderStore({ filePath, safeStorage }) {
         if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('Secure key storage is unavailable on this device.');
         encryptedKeys[provider] = (await safeStorage.encryptStringAsync(enteredKey)).toString('base64');
       }
-      const next = { provider, model: normalizeModel(model), encryptedKeys };
+      const next = { provider, openaiAuthMethod, model: normalizeModel(model), encryptedKeys };
       await writeSettings(next);
-      return { provider, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
+      return { provider, openaiAuthMethod, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
     },
     async clearKey(provider = 'openai') {
       if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, or Grok.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       delete encryptedKeys[provider];
-      await writeSettings({ provider: current.provider, model: current.model, encryptedKeys });
+      await writeSettings({ provider: current.provider, openaiAuthMethod: current.openaiAuthMethod, model: current.model, encryptedKeys });
       return { provider, model: current.model, configured: false, connectedProviders: Object.keys(encryptedKeys) };
     },
     async getApiKey(provider = 'openai') {
