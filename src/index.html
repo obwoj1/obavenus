@@ -168,7 +168,7 @@
         <label for="provider-key" id="provider-key-label">OpenAI API key</label>
         <input id="provider-key" name="apiKey" type="password" autocomplete="off" placeholder="Paste an API key, or leave blank to keep the saved key" />
         <small id="provider-key-state">No key saved.</small>
-        <p>When you press Send, this chat’s messages and any files you explicitly attached go to OpenAI. Requests set <code>store: false</code>; OpenAI’s standard abuse-monitoring policies may still apply.</p>
+        <p id="provider-request-disclosure">When you press Send, this chat and any files you explicitly attached go to the selected provider. Obavenus requests stateless responses where supported; the provider’s data policies apply.</p>
         <small id="provider-form-status" role="status" aria-live="polite"></small>
         <div class="settings-actions">
           <button class="remove" id="remove-provider-key" type="button" hidden>Remove saved key</button>

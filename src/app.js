@@ -308,7 +308,7 @@ form.addEventListener('submit', async (event) => {
     const settings = await window.obavenus.getProviderSettings();
     if (!settings.configured && !(settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt')) {
       submittedMessage.localOnly = true;
-      pendingReply.text = 'Connect the selected provider API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
+      pendingReply.text = 'Connect the selected provider in Settings to get a model response. Your prompt is saved locally and was not sent.';
       pendingReply.localOnly = true;
       pendingReply.status = 'error';
     } else {
@@ -448,6 +448,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
     updateProviderFormLabels();
+    updateProviderDisclosure();
     providerKeyState.textContent = settings.configured
       ? 'A key is saved in encrypted device storage. Enter a new key to replace it.'
       : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
@@ -469,7 +470,7 @@ providerForm.addEventListener('submit', async (event) => {
       provider: providerSelect.value,
       openaiAuthMethod: authMethodSelect.value,
       model: providerModelInput.value,
-      apiKey: providerKeyInput.value,
+      apiKey: providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt' ? '' : providerKeyInput.value,
     });
     providerKeyInput.value = '';
     providerKeyState.textContent = settings.configured ? 'Key saved in encrypted device storage.' : 'No key saved.';
@@ -500,6 +501,7 @@ updateProviderBadge();
 
 providerSelect.addEventListener('change', async () => {
   updateProviderFormLabels();
+  updateProviderDisclosure();
   const settings = await window.obavenus.getProviderSettings();
   const connected = settings.connectedProviders?.includes(providerSelect.value);
   providerKeyState.textContent = connected ? 'This provider has a key saved in encrypted device storage.' : 'No key saved for this provider.';
@@ -507,17 +509,31 @@ providerSelect.addEventListener('change', async () => {
   await updateChatGPTControls();
 });
 
-authMethodSelect.addEventListener('change', updateChatGPTControls);
+authMethodSelect.addEventListener('change', () => { updateChatGPTControls(); updateProviderDisclosure(); });
 
 chatgptSignInButton.addEventListener('click', async () => {
   chatgptSignInButton.disabled = true;
   chatgptState.textContent = 'Opening secure ChatGPT sign-in…';
   try {
     const session = await window.obavenus.signInWithChatGPT();
+    providerSelect.value = 'openai';
+    authMethodSelect.value = 'chatgpt';
+    updateProviderFormLabels();
+    updateProviderDisclosure();
+    await window.obavenus.saveProviderSettings({
+      provider: 'openai', openaiAuthMethod: 'chatgpt', model: providerModelInput.value || 'gpt-5.5', apiKey: '',
+    });
     chatgptState.textContent = session.sharing
       ? `Connected${session.identity?.email ? ` as ${session.identity.email}` : ''}.`
       : 'Signed in, but token sharing is not enabled for this account.';
-    await refreshChatGPTModels();
+    if (session.sharing) {
+      try {
+        await refreshChatGPTModels();
+        await window.obavenus.saveProviderSettings({ provider: 'openai', openaiAuthMethod: 'chatgpt', model: providerModelInput.value, apiKey: '' });
+      } catch (error) {
+        chatgptState.textContent = `Connected, but the model list could not load: ${error.message || 'try again later.'}`;
+      }
+    }
     await updateProviderBadge();
   } catch (error) {
     chatgptState.textContent = error.message || 'ChatGPT sign-in did not complete.';
@@ -553,6 +569,14 @@ function updateProviderFormLabels() {
   const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4.7' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
   providerModelInput.dataset.provider = providerSelect.value;
+}
+
+function updateProviderDisclosure() {
+  const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', xai: 'xAI' }[providerSelect.value] || 'selected provider';
+  const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  document.querySelector('#provider-request-disclosure').textContent = isChatGPT
+    ? 'When you press Send, this chat and any files you explicitly attached go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.'
+    : `When you press Send, this chat and any files you explicitly attached go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.`;
 }
 
 async function updateChatGPTControls() {
