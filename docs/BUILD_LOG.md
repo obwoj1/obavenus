@@ -24,7 +24,11 @@
 - Refreshed the interface with a sage-green and white color palette.
 - Added Gmail OAuth with PKCE, loopback callback, encrypted local tokens, read-only search, and explicit attach-to-chat for snippets.
 - Updated the Grok default model to the current xAI API model ID.
+- Added OpenAI Sign in with ChatGPT through the official local SDK, with OS-backed credential encryption, account-specific model discovery, connection controls, and API-key fallback.
+- Kept the ChatGPT provider eligibility and token-sharing limitations visible in setup and settings; Claude and Grok remain API-key based.
+- Updated product documentation to describe the current app rather than the first prototype.
 
 ## Next
 
+- Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.
 - Add streaming responses and cancellation for long-running model requests.

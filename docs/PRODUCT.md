@@ -15,4 +15,4 @@ Start with a macOS desktop assistant that combines AI chat with a project worksp
 
 ## First version
 
-The first prototype is an AI chat and project workspace. The initial UI is local-only; model access and reading project files are not connected yet.
+The current app combines AI chat, a local project workspace, and optional Gmail search. OpenAI can connect through Sign in with ChatGPT or an API key; Claude and Grok currently use API keys. Project files stay local until explicitly attached to a message. Gmail access is read-only, and snippets are shared only when the user attaches them and sends a message.
