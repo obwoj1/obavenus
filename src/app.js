@@ -633,7 +633,7 @@ function updateProviderFormLabels() {
   const note = document.querySelector('#provider-auth-note');
   note.hidden = !['anthropic', 'xai'].includes(providerSelect.value);
   note.textContent = providerSelect.value === 'anthropic'
-    ? 'Claude Pro/Max sign-in is supported in Claude Code. Obavenus uses an Anthropic API key.'
+    ? 'Claude Pro/Max sign-in is for Anthropic apps such as Claude Code. For third-party apps, Anthropic directs developers to use a Console API key, billed separately from your subscription.'
     : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.' : '';
   const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
