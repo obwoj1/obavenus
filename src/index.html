@@ -152,11 +152,19 @@
     <dialog id="provider-dialog" aria-labelledby="provider-title">
       <form class="settings" id="provider-form">
         <h2 id="provider-title">Model settings</h2>
-        <p>Connect a provider with its API key. Keys are encrypted with macOS Keychain-backed storage and never returned to the UI.</p>
+        <p>Sign in with your ChatGPT account or use an API key. API keys are encrypted with macOS Keychain-backed storage.</p>
         <label for="provider-choice">AI provider</label>
         <select id="provider-choice"><option value="openai">OpenAI · GPT</option><option value="anthropic">Anthropic · Claude</option><option value="xai">xAI · Grok</option></select>
+        <label for="openai-auth-method" id="openai-auth-label">OpenAI sign-in method</label>
+        <select id="openai-auth-method"><option value="chatgpt">Sign in with ChatGPT account</option><option value="api-key">Use OpenAI API key</option></select>
+        <div id="chatgpt-connection" hidden>
+          <small id="chatgpt-session-state">Not connected.</small>
+          <div class="settings-actions"><button type="button" id="chatgpt-sign-in" class="primary">Continue with ChatGPT</button><button type="button" id="chatgpt-disconnect" hidden>Disconnect ChatGPT</button></div>
+          <small>Availability depends on your account and OpenAI’s approval of this app. ChatGPT plan access is separate from API billing.</small>
+        </div>
         <label for="provider-model">Model ID</label>
-        <input id="provider-model" name="model" value="gpt-5.5" autocomplete="off" required />
+        <input id="provider-model" name="model" value="gpt-5.5" autocomplete="off" list="chatgpt-model-options" required />
+        <datalist id="chatgpt-model-options"></datalist>
         <label for="provider-key" id="provider-key-label">OpenAI API key</label>
         <input id="provider-key" name="apiKey" type="password" autocomplete="off" placeholder="Paste an API key, or leave blank to keep the saved key" />
         <small id="provider-key-state">No key saved.</small>

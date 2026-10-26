@@ -19,6 +19,11 @@ const providerKeyInput = document.querySelector('#provider-key');
 const providerKeyState = document.querySelector('#provider-key-state');
 const providerFormStatus = document.querySelector('#provider-form-status');
 const removeProviderKeyButton = document.querySelector('#remove-provider-key');
+const authMethodSelect = document.querySelector('#openai-auth-method');
+const chatgptConnection = document.querySelector('#chatgpt-connection');
+const chatgptState = document.querySelector('#chatgpt-session-state');
+const chatgptSignInButton = document.querySelector('#chatgpt-sign-in');
+const chatgptDisconnectButton = document.querySelector('#chatgpt-disconnect');
 const gmailDialog = document.querySelector('#gmail-dialog');
 
 function loadConversations() {
@@ -301,7 +306,7 @@ form.addEventListener('submit', async (event) => {
 
   try {
     const settings = await window.obavenus.getProviderSettings();
-    if (!settings.configured) {
+    if (!settings.configured && !(settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt')) {
       submittedMessage.localOnly = true;
       pendingReply.text = 'Connect the selected provider API key in Settings to get a model response. Your prompt is saved locally and was not sent.';
       pendingReply.localOnly = true;
@@ -419,8 +424,11 @@ async function updateProviderBadge() {
   const badge = document.querySelector('#provider-settings');
   try {
     const settings = await window.obavenus.getProviderSettings();
-    const providerName = { openai: 'GPT', anthropic: 'Claude', xai: 'Grok' }[settings.provider] || 'AI';
-    badge.textContent = settings.configured
+    const providerName = { openai: settings.openaiAuthMethod === 'chatgpt' ? 'ChatGPT' : 'GPT', anthropic: 'Claude', xai: 'Grok' }[settings.provider] || 'AI';
+    const chatgptConnected = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
+      ? await window.obavenus.getChatGPTSession().then((session) => session.sharing).catch(() => false)
+      : false;
+    badge.textContent = (settings.configured || chatgptConnected)
       ? `${providerName} · ${settings.model} connected · Settings`
       : `${providerName} not connected · Settings`;
     return settings;
@@ -436,6 +444,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
   try {
     const settings = await window.obavenus.getProviderSettings();
     providerSelect.value = settings.provider || 'openai';
+    authMethodSelect.value = settings.openaiAuthMethod || 'api-key';
     providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
     updateProviderFormLabels();
@@ -443,6 +452,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
       ? 'A key is saved in encrypted device storage. Enter a new key to replace it.'
       : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
     removeProviderKeyButton.hidden = !settings.configured;
+    await updateChatGPTControls();
   } catch (error) {
     providerFormStatus.textContent = error.message || 'Could not load settings.';
   }
@@ -457,6 +467,7 @@ providerForm.addEventListener('submit', async (event) => {
   try {
     const settings = await window.obavenus.saveProviderSettings({
       provider: providerSelect.value,
+      openaiAuthMethod: authMethodSelect.value,
       model: providerModelInput.value,
       apiKey: providerKeyInput.value,
     });
@@ -493,6 +504,38 @@ providerSelect.addEventListener('change', async () => {
   const connected = settings.connectedProviders?.includes(providerSelect.value);
   providerKeyState.textContent = connected ? 'This provider has a key saved in encrypted device storage.' : 'No key saved for this provider.';
   removeProviderKeyButton.hidden = !connected;
+  await updateChatGPTControls();
+});
+
+authMethodSelect.addEventListener('change', updateChatGPTControls);
+
+chatgptSignInButton.addEventListener('click', async () => {
+  chatgptSignInButton.disabled = true;
+  chatgptState.textContent = 'Opening secure ChatGPT sign-in…';
+  try {
+    const session = await window.obavenus.signInWithChatGPT();
+    chatgptState.textContent = session.sharing
+      ? `Connected${session.identity?.email ? ` as ${session.identity.email}` : ''}.`
+      : 'Signed in, but token sharing is not enabled for this account.';
+    await refreshChatGPTModels();
+    await updateProviderBadge();
+  } catch (error) {
+    chatgptState.textContent = error.message || 'ChatGPT sign-in did not complete.';
+  } finally {
+    chatgptSignInButton.disabled = false;
+    chatgptDisconnectButton.hidden = !(await window.obavenus.getChatGPTSession().then((session) => session.status === 'connected').catch(() => false));
+  }
+});
+
+chatgptDisconnectButton.addEventListener('click', async () => {
+  chatgptDisconnectButton.disabled = true;
+  try {
+    await window.obavenus.disconnectChatGPT();
+    chatgptState.textContent = 'Disconnected.';
+    await updateProviderBadge();
+  } catch (error) {
+    chatgptState.textContent = error.message || 'Could not disconnect ChatGPT.';
+  } finally { chatgptDisconnectButton.disabled = false; await updateChatGPTControls(); }
 });
 
 function updateProviderFormLabels() {
@@ -500,9 +543,42 @@ function updateProviderFormLabels() {
   const providerName = names[providerSelect.value] || 'Provider';
   document.querySelector('#provider-key-label').textContent = `${providerName} API key`;
   document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
+  document.querySelector('#openai-auth-label').hidden = providerSelect.value !== 'openai';
+  authMethodSelect.hidden = providerSelect.value !== 'openai';
+  document.querySelector('#provider-key-label').hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  providerKeyInput.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  providerKeyState.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  removeProviderKeyButton.hidden = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  chatgptConnection.hidden = providerSelect.value !== 'openai' || authMethodSelect.value !== 'chatgpt';
   const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', xai: 'grok-4.7' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
   providerModelInput.dataset.provider = providerSelect.value;
+}
+
+async function updateChatGPTControls() {
+  updateProviderFormLabels();
+  if (providerSelect.value !== 'openai') return;
+  try {
+    const session = await window.obavenus.getChatGPTSession();
+    chatgptState.textContent = session.status === 'connected'
+      ? `${session.sharing ? 'Connected' : 'Connected · token sharing disabled'}${session.identity?.email ? ` as ${session.identity.email}` : ''}.`
+      : session.status === 'reauth_required' ? 'Reconnect your ChatGPT account.' : 'Not connected.';
+    chatgptSignInButton.textContent = session.status === 'connected' ? 'Reconnect ChatGPT' : 'Continue with ChatGPT';
+    chatgptDisconnectButton.hidden = session.status !== 'connected';
+    if (session.sharing) await refreshChatGPTModels();
+  } catch (error) { chatgptState.textContent = error.message || 'ChatGPT status unavailable.'; }
+}
+
+async function refreshChatGPTModels() {
+  const models = await window.obavenus.getChatGPTModels();
+  const options = document.querySelector('#chatgpt-model-options');
+  options.replaceChildren(...models.map((item) => {
+    const option = document.createElement('option');
+    option.value = item.slug;
+    option.label = item.displayName;
+    return option;
+  }));
+  if (!models.some((item) => item.slug === providerModelInput.value)) providerModelInput.value = models[0]?.slug || providerModelInput.value;
 }
 
 window.obavenus.getLastProject().then((project) => {
