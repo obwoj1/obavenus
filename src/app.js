@@ -1,5 +1,7 @@
 const form = document.querySelector('#prompt-form');
 const promptInput = form.querySelector('textarea');
+const runMode = document.querySelector('#run-mode');
+const runStatus = document.querySelector('#run-status');
 const conversation = document.querySelector('#conversation');
 const workspace = document.querySelector('#workspace-label');
 const contextCard = document.querySelector('#context-card');
@@ -55,6 +57,9 @@ function loadConversations() {
         context: Array.isArray(message.context) ? message.context.filter((file) =>
           file && typeof file.name === 'string' && typeof file.content === 'string',
         ).slice(0, 3) : [],
+        agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
+          agent && typeof agent.role === 'string' && typeof agent.text === 'string',
+        ).slice(0, 4) : [],
       })),
     }));
   } catch {
@@ -239,6 +244,22 @@ function renderMessages() {
       attached.textContent = `Attached project files: ${message.context.map((file) => file.name).join(', ')}`;
       rendered.append(attached);
     }
+    if (message.agents?.length) {
+      const trace = document.createElement('details');
+      trace.className = 'agent-trace';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Team activity · lead and 2 specialists';
+      const list = document.createElement('ol');
+      message.agents.forEach((agent) => {
+        const item = document.createElement('li');
+        const role = document.createElement('strong');
+        role.textContent = agent.role;
+        item.append(role, document.createTextNode(agent.text));
+        list.append(item);
+      });
+      trace.append(summary, list);
+      rendered.insertAdjacentElement('afterend', trace);
+    }
   });
   renderRecentWork();
 }
@@ -305,6 +326,11 @@ form.addEventListener('submit', async (event) => {
   promptInput.disabled = true;
   form.querySelector('.send').disabled = true;
   form.querySelector('.send').textContent = 'Sending…';
+  runMode.disabled = true;
+  runStatus.hidden = runMode.value !== 'team';
+  runStatus.textContent = runMode.value === 'team' ? 'Preparing the lead agent…' : '';
+  const teamRunId = crypto.randomUUID();
+  activeTeamRunId = runMode.value === 'team' ? teamRunId : null;
   saveConversations();
   renderMessages();
   promptInput.value = '';
@@ -315,14 +341,21 @@ form.addEventListener('submit', async (event) => {
       || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account';
     if (!settings.configured && !accountConnectedMode) {
       submittedMessage.localOnly = true;
-      pendingReply.text = 'Connect the selected provider in Settings to get a model response. Your prompt is saved locally and was not sent.';
+      const providerName = { openai: 'GPT', anthropic: 'Claude', gemini: 'Gemini', xai: 'Grok' }[settings.provider] || 'AI provider';
+      pendingReply.text = `Connect ${providerName} in Settings to get a model response. Your prompt stays on this Mac and was not sent.`;
       pendingReply.localOnly = true;
       pendingReply.status = 'error';
     } else {
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
-      pendingReply.text = await window.obavenus.sendChat(messages);
+      if (runMode.value === 'team') {
+        const result = await window.obavenus.runTeam(messages, teamRunId);
+        pendingReply.text = result.text;
+        pendingReply.agents = result.agents;
+      } else {
+        pendingReply.text = await window.obavenus.sendChat(messages);
+      }
       pendingReply.status = 'complete';
     }
   } catch (error) {
@@ -335,10 +368,20 @@ form.addEventListener('submit', async (event) => {
     promptInput.disabled = false;
     form.querySelector('.send').disabled = false;
     form.querySelector('.send').textContent = 'Send ↗';
+    runMode.disabled = false;
+    runStatus.hidden = true;
+    runStatus.textContent = '';
+    activeTeamRunId = null;
     saveConversations();
     renderRecentWork();
     if (activeConversationId === current.id) renderMessages();
   }
+});
+
+let activeTeamRunId = null;
+window.obavenus.onAgentProgress((progress) => {
+  if (progress.runId !== activeTeamRunId) return;
+  runStatus.textContent = `${progress.label}…`;
 });
 
 promptInput.addEventListener('keydown', (event) => {
@@ -350,7 +393,7 @@ promptInput.addEventListener('keydown', (event) => {
 
 document.querySelectorAll('.suggestions button').forEach((button) => {
   button.addEventListener('click', () => {
-    promptInput.value = button.textContent;
+    promptInput.value = button.dataset.prompt || button.textContent;
     promptInput.focus();
   });
 });

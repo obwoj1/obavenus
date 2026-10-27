@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld('obavenus', {
   saveProviderSettings: (settings) => ipcRenderer.invoke('provider:save-settings', settings),
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
+  runTeam: (messages, runId) => ipcRenderer.invoke('agents:run-team', { messages, runId }),
+  onAgentProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('agents:progress', listener);
+    return () => ipcRenderer.removeListener('agents:progress', listener);
+  },
   getChatGPTSession: () => ipcRenderer.invoke('chatgpt:session'),
   signInWithChatGPT: () => ipcRenderer.invoke('chatgpt:sign-in'),
   disconnectChatGPT: () => ipcRenderer.invoke('chatgpt:disconnect'),

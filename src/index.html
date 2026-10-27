@@ -112,6 +112,64 @@
       .gmail-item strong, .gmail-item small { display: block; }
       .gmail-item small { margin-top: 4px; color: #758477; }
       .gmail-item p { margin: 7px 0; color: #59695c; font-size: 11px; }
+      /* Obavenus workspace refresh: stronger contrast, tighter hierarchy, useful density. */
+      :root { background: #f7f8f4; color: #202d24; }
+      body, main { background: #f7f8f4; }
+      .app { grid-template-columns: 258px minmax(0, 1fr); }
+      aside { padding: 24px 16px; }
+      .brand { font-size: 17px; color: #26372b; }
+      .brand-mark { width: 34px; height: 34px; border-radius: 11px; background: #55765b; box-shadow: 0 5px 14px #355b3b2a; }
+      .section-label { margin: 28px 0 10px; color: #687a6b; font-size: 10px; }
+      .new-chat { margin-top: 20px; padding: 12px; background: #fff; color: #34483a; font-size: 12px; font-weight: 600; }
+      .workspace { padding: 14px; border-radius: 13px; background: #fff; color: #2e4033; font-size: 12px; }
+      .workspace small { color: #687a6b; font-size: 11px; line-height: 1.45; }
+      .workspace button { padding: 8px 10px; border: 0; background: #55765b; color: #fff; font-size: 11px; font-weight: 600; }
+      .nav-item, .recent-item { color: #435749; font-size: 13px; }
+      .nav-item { padding: 11px 10px; }
+      .nav-item.active, .recent-item:hover, .recent-item.active { background: #dce8dc; color: #294a31; }
+      .recent-item { padding: 9px 10px; }
+      header { height: 62px; padding: 0 34px; background: #fbfcf9; border-color: #e2e8df; }
+      .crumb { color: #66786a; font-size: 12px; }
+      .status { padding: 8px 12px; border-color: #d6e0d5; color: #405746; font-size: 11px; }
+      .content { grid-template-columns: minmax(0, 1fr) 276px; }
+      .welcome { align-items: stretch; justify-content: flex-start; width: min(100%, 1060px); margin: 0 auto; padding: clamp(42px, 7vh, 82px) clamp(30px, 5vw, 72px) 44px; }
+      .eyebrow { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding: 7px 11px; border: 1px solid #d7e2d4; border-radius: 99px; background: #eef4eb; color: #4f7155; font-size: 10px; letter-spacing: .09em; }
+      h1 { max-width: 760px; margin: 20px 0 10px; color: #24342a; font-size: clamp(42px, 5vw, 64px); font-weight: 620; letter-spacing: -.055em; line-height: 1.02; }
+      .subhead { max-width: 620px; color: #657669; font-size: 14px; line-height: 1.7; text-align: left; }
+      .composer { width: min(100%, 820px); margin-top: 30px; padding: 15px 16px 12px; border-color: #d7e1d5; border-radius: 18px; background: #fff; box-shadow: 0 14px 42px #304c3412, 0 2px 6px #304c3408; }
+      .composer:focus-within { border-color: #8ca88e; box-shadow: 0 0 0 3px #8ca88e24, 0 14px 42px #304c3412; }
+      .composer textarea { min-height: 82px; color: #26382b; font-size: 14px; line-height: 1.6; }
+      .composer textarea::placeholder { color: #758579; }
+      .composer-controls { display: flex; align-items: center; gap: 12px; }
+      .composer-controls select { padding: 7px 9px; border: 1px solid #dce5da; border-radius: 9px; background: #f7f9f5; color: #405746; font: inherit; font-size: 11px; }
+      .run-status { display: block; min-height: 16px; margin: 8px 2px 0; color: #507456; font-size: 11px; }
+      .agent-trace { width: min(680px, 100%); margin: 8px auto 16px; padding: 12px 15px; border: 1px solid #dce5da; border-radius: 13px; background: #f0f5ee; color: #344b39; font-size: 11px; }
+      .agent-trace summary { color: #426448; font-weight: 700; cursor: pointer; }
+      .agent-trace ol { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 20px; }
+      .agent-trace li { padding-left: 4px; color: #536858; line-height: 1.55; white-space: pre-wrap; }
+      .agent-trace li strong { display: block; margin-bottom: 3px; color: #304a36; }
+      .composer-footer { color: #68796d; font-size: 11px; }
+      .send, .settings-actions .primary { padding: 10px 16px; border-radius: 10px; background: #55765b; color: #fff; font-size: 12px; }
+      .send:hover, .settings-actions .primary:hover, .workspace button:hover { background: #3e6247; }
+      .suggestions { display: grid; width: min(100%, 820px); grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 10px; margin-top: 24px; }
+      .suggestions::before { grid-column: 1 / -1; margin-bottom: 2px; color: #526657; content: "START WITH A WORKFLOW"; font-size: 10px; font-weight: 750; letter-spacing: .12em; }
+      .suggestions button { min-height: 92px; padding: 14px; border: 1px solid #dce5da; border-radius: 14px; background: #fff; color: #2e4534; font-size: 12px; font-weight: 650; text-align: left; box-shadow: 0 5px 18px #334a3508; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
+      .suggestions button:hover { transform: translateY(-2px); border-color: #9eb69c; box-shadow: 0 10px 24px #334a3514; }
+      .context { padding: 30px 20px; border-color: #e0e7dd; background: #f0f4ed; }
+      .context h2 { color: #405846; font-size: 12px; }
+      .context-card { padding: 15px; border-color: #dce5da; border-radius: 13px; background: #fff; color: #526456; font-size: 11px; }
+      .context-card strong { color: #2b4031; font-size: 12px; }
+      .context-card small { color: #637568; font-size: 10px; }
+      .message { border-color: #dce5da; border-radius: 15px; font-size: 13px; }
+      .user-message { background: #e7efe4; color: #263b2d; }
+      .assistant-message { color: #3f5144; }
+      .message-context { color: #507456; }
+      dialog { border-radius: 18px; box-shadow: 0 28px 90px #18301e30; }
+      .settings input:focus { border-color: #799b7d; box-shadow: 0 0 0 3px #799b7d22; }
+      :focus-visible { outline: 3px solid #719778; outline-offset: 2px; }
+      @media (max-width: 1250px) { .content { grid-template-columns: minmax(0, 1fr) 240px; } .welcome { padding-right: 34px; padding-left: 34px; } }
+      @media (max-width: 1000px) { body { min-width: 760px; } .content { grid-template-columns: minmax(0, 1fr); } .context { display: none; } .welcome { width: min(100%, 900px); } }
+      @media (max-width: 820px) { .app { grid-template-columns: 210px minmax(0, 1fr); } .suggestions { grid-template-columns: 1fr; } .suggestions button { min-height: 64px; } }
     </style>
   </head>
   <body>
@@ -132,18 +190,19 @@
         <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><button class="status" id="provider-settings" type="button">GPT not connected · Settings</button></header>
         <div class="content">
           <section class="welcome" id="conversation" aria-labelledby="welcome-title">
-            <div class="eyebrow">A clear place to start</div>
+            <div class="eyebrow">YOUR PERSONAL AI WORKSPACE</div>
             <h1 id="welcome-title">What are we working on?</h1>
-            <p class="subhead">Choose a project to view its file list. Previews stay on this Mac unless you explicitly attach a file to a message and press Send.</p>
+            <p class="subhead">Bring a project, a question, or a rough idea. Choose the AI provider in Settings and start with a focused workflow.</p>
             <form class="composer" id="prompt-form">
               <div class="composer-context" id="composer-context" hidden></div>
               <textarea aria-label="Message Obavenus" placeholder="Ask a question or describe a task…"></textarea>
-              <div class="composer-footer"><span>Return to send · Shift + Return for a new line</span><button class="send" type="submit">Send ↗</button></div>
+              <small class="run-status" id="run-status" role="status" aria-live="polite" hidden></small>
+              <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="Four calls to the selected provider: a lead plan, two parallel specialists, and a final synthesis. Provider billing applies; this run does not modify files."><option value="solo">One response</option><option value="team">Team · 3 agents · 4 calls</option></select><span>Return to send · Shift + Return for a new line</span></div><button class="send" type="submit">Send ↗</button></div>
             </form>
             <div class="suggestions" aria-label="Starter prompts">
-              <button type="button">Plan a feature</button>
-              <button type="button">Explore a codebase</button>
-              <button type="button">Turn an idea into steps</button>
+              <button type="button" data-prompt="Help me plan a feature. Ask any important clarifying questions, then give me a practical plan with clear milestones.">Plan a feature<br><small>Shape an idea into clear milestones</small></button>
+              <button type="button" data-prompt="Help me explore this codebase. Start by mapping its structure and explain the key entry points, architecture, and risks.">Explore a codebase<br><small>Understand the project and its structure</small></button>
+              <button type="button" data-prompt="Turn my idea into a practical sequence of steps. Highlight dependencies and what I should do first.">Turn an idea into steps<br><small>Find the next useful actions</small></button>
             </div>
           </section>
           <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. Obavenus does not read their contents yet.</div></aside>

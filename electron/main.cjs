@@ -5,6 +5,7 @@ const { describeProject, readProjectFile } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
 const { createGeminiConnector } = require('./gemini.cjs');
+const { runTeamWorkflow } = require('./orchestrator.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 let providerStore;
@@ -106,7 +107,7 @@ ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore(
 
 ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
 
-ipcMain.handle('provider:send', async (_event, messages) => {
+async function dispatchProviderMessages(messages) {
   const store = getProviderStore();
   const settings = await store.getPublicSettings();
   if (settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt') {
@@ -141,6 +142,19 @@ ipcMain.handle('provider:send', async (_event, messages) => {
   }
   const apiKey = await store.getApiKey(settings.provider);
   return requestProviderResponse({ provider: settings.provider, apiKey, model: settings.model, messages });
+}
+
+ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
+
+ipcMain.handle('agents:run-team', async (event, { messages, runId }) => {
+  if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
+  return runTeamWorkflow({
+    messages,
+    dispatch: dispatchProviderMessages,
+    onProgress: (progress) => {
+      if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
+    },
+  });
 });
 
 ipcMain.handle('chatgpt:session', async () => (await getChatGPTClient()).getSession());
