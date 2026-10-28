@@ -32,6 +32,65 @@ const geminiState = document.querySelector('#gemini-session-state');
 const geminiSignInButton = document.querySelector('#gemini-sign-in');
 const geminiDisconnectButton = document.querySelector('#gemini-disconnect');
 const gmailDialog = document.querySelector('#gmail-dialog');
+const profileDialog = document.querySelector('#profile-dialog');
+const profileForm = document.querySelector('#profile-form');
+const themeChoice = document.querySelector('#theme-choice');
+const THEME_KEY = 'obavenus.theme.v1';
+
+function setTheme(theme) {
+  const supported = ['sage', 'dusk', 'mist'].includes(theme) ? theme : 'sage';
+  document.body.dataset.theme = supported;
+  themeChoice.value = supported;
+  try { localStorage.setItem(THEME_KEY, supported); } catch {}
+}
+
+try { setTheme(localStorage.getItem(THEME_KEY) || 'sage'); } catch { setTheme('sage'); }
+themeChoice.addEventListener('change', () => setTheme(themeChoice.value));
+
+async function editProfile(profile) {
+  const value = profile || await window.obavenus.getProfile();
+  document.querySelector('#profile-name').value = value.name || '';
+  document.querySelector('#profile-resume').value = value.resumeText || '';
+  document.querySelector('#profile-linkedin').value = value.linkedinUrl || '';
+  document.querySelector('#profile-linkedin-text').value = value.linkedinText || '';
+  document.querySelector('#profile-github').value = value.githubUrl || '';
+  document.querySelector('#profile-share').checked = value.shareWithAI === true;
+  document.querySelector('#profile-form-status').textContent = '';
+  profileDialog.showModal();
+}
+
+document.querySelector('#profile-open').addEventListener('click', () => editProfile().catch((error) => {
+  document.querySelector('#profile-form-status').textContent = error.message || 'Could not load your profile.';
+}));
+document.querySelector('#profile-resume-file').addEventListener('click', async () => {
+  try {
+    const file = await window.obavenus.chooseResume();
+    if (file) {
+      document.querySelector('#profile-resume').value = file.text;
+      document.querySelector('#profile-resume-state').textContent = `Loaded ${file.name} · ${file.text.length.toLocaleString()} characters.`;
+    }
+  } catch (error) { document.querySelector('#profile-resume-state').textContent = error.message || 'Could not read that file.'; }
+});
+profileForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#profile-form-status');
+  status.textContent = 'Encrypting and saving on this Mac…';
+  try {
+    await window.obavenus.saveProfile({
+      name: document.querySelector('#profile-name').value,
+      resumeText: document.querySelector('#profile-resume').value,
+      linkedinUrl: document.querySelector('#profile-linkedin').value.trim(),
+      linkedinText: document.querySelector('#profile-linkedin-text').value,
+      githubUrl: document.querySelector('#profile-github').value.trim(),
+      shareWithAI: document.querySelector('#profile-share').checked,
+    });
+    profileDialog.close();
+  } catch (error) { status.textContent = error.message || 'Could not save your profile.'; }
+});
+document.querySelector('#profile-skip').addEventListener('click', async () => {
+  try { await window.obavenus.saveProfile({}); profileDialog.close(); }
+  catch (error) { document.querySelector('#profile-form-status').textContent = error.message || 'Could not save this choice.'; }
+});
 
 function loadConversations() {
   try {
@@ -59,7 +118,7 @@ function loadConversations() {
         ).slice(0, 3) : [],
         agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
           agent && typeof agent.role === 'string' && typeof agent.text === 'string',
-        ).slice(0, 4) : [],
+        ).slice(0, 4).map((agent) => ({ ...agent, tools: Array.isArray(agent.tools) ? agent.tools.filter((tool) => typeof tool === 'string').slice(0, 12) : [] })) : [],
       })),
     }));
   } catch {
@@ -255,6 +314,12 @@ function renderMessages() {
         const role = document.createElement('strong');
         role.textContent = agent.role;
         item.append(role, document.createTextNode(agent.text));
+        if (agent.tools?.length) {
+          const used = document.createElement('small');
+          used.className = 'message-context';
+          used.textContent = `Tools used: ${agent.tools.join(', ')}`;
+          item.append(used);
+        }
         list.append(item);
       });
       trace.append(summary, list);
@@ -392,7 +457,16 @@ promptInput.addEventListener('keydown', (event) => {
 });
 
 document.querySelectorAll('.suggestions button').forEach((button) => {
-  button.addEventListener('click', () => {
+  button.addEventListener('click', async () => {
+    if (button.dataset.mode === 'team') {
+      const profile = await window.obavenus.getProfile();
+      if (!profile.shareWithAI) {
+        await editProfile(profile);
+        document.querySelector('#profile-form-status').textContent = 'To run the profile check, enable profile sharing, save, then choose Tech profile check again.';
+        return;
+      }
+      runMode.value = 'team';
+    }
     promptInput.value = button.dataset.prompt || button.textContent;
     promptInput.focus();
   });
@@ -683,15 +757,17 @@ function updateProviderFormLabels() {
   providerModelInput.dataset.provider = providerSelect.value;
 }
 
-function updateProviderDisclosure() {
+async function updateProviderDisclosure() {
   const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI' }[providerSelect.value] || 'selected provider';
   const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
   const isGeminiOAuth = providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
+  const profile = await window.obavenus.getProfile().catch(() => ({ shareWithAI: false }));
+  const profileNote = profile.shareWithAI ? ' Your saved career profile is also included in AI requests.' : '';
   document.querySelector('#provider-request-disclosure').textContent = isChatGPT
-    ? 'When you press Send, this chat and any files you explicitly attached go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.'
+    ? `When you press Send, this chat and attached files go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.${profileNote}`
     : isGeminiOAuth
-      ? 'When you press Send, this chat and any files you explicitly attached go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.'
-    : `When you press Send, this chat and any files you explicitly attached go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.`;
+      ? `When you press Send, this chat and attached files go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.${profileNote}`
+    : `When you press Send, this chat and attached files go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.${profileNote}`;
 }
 
 async function updateChatGPTControls() {
@@ -736,3 +812,6 @@ async function refreshChatGPTModels() {
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);
 });
+window.obavenus.getProfile().then((profile) => {
+  if (!profile.completed) editProfile(profile);
+}).catch(() => {});

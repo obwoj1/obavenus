@@ -151,7 +151,7 @@
       .composer-footer { color: #68796d; font-size: 11px; }
       .send, .settings-actions .primary { padding: 10px 16px; border-radius: 10px; background: #55765b; color: #fff; font-size: 12px; }
       .send:hover, .settings-actions .primary:hover, .workspace button:hover { background: #3e6247; }
-      .suggestions { display: grid; width: min(100%, 820px); grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 10px; margin-top: 24px; }
+      .suggestions { display: grid; width: min(100%, 920px); grid-template-columns: repeat(4, minmax(0, 1fr)); justify-content: stretch; gap: 10px; margin-top: 24px; }
       .suggestions::before { grid-column: 1 / -1; margin-bottom: 2px; color: #526657; content: "START WITH A WORKFLOW"; font-size: 10px; font-weight: 750; letter-spacing: .12em; }
       .suggestions button { min-height: 92px; padding: 14px; border: 1px solid #dce5da; border-radius: 14px; background: #fff; color: #2e4534; font-size: 12px; font-weight: 650; text-align: left; box-shadow: 0 5px 18px #334a3508; transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
       .suggestions button:hover { transform: translateY(-2px); border-color: #9eb69c; box-shadow: 0 10px 24px #334a3514; }
@@ -169,7 +169,47 @@
       :focus-visible { outline: 3px solid #719778; outline-offset: 2px; }
       @media (max-width: 1250px) { .content { grid-template-columns: minmax(0, 1fr) 240px; } .welcome { padding-right: 34px; padding-left: 34px; } }
       @media (max-width: 1000px) { body { min-width: 760px; } .content { grid-template-columns: minmax(0, 1fr); } .context { display: none; } .welcome { width: min(100%, 900px); } }
-      @media (max-width: 820px) { .app { grid-template-columns: 210px minmax(0, 1fr); } .suggestions { grid-template-columns: 1fr; } .suggestions button { min-height: 64px; } }
+      @media (max-width: 820px) { .app { grid-template-columns: 210px minmax(0, 1fr); } .suggestions { grid-template-columns: repeat(2, minmax(0, 1fr)); } .suggestions button { min-height: 64px; } }
+      :root { --sage-bg: #edf2eb; --sage-panel: #f9fbf7; --sage-rail: #e5ece3; --sage-ink: #203329; --sage-muted: #607366; --sage-line: #cbd9cb; --sage-accent: #72a480; --sage-glow: #70c98a; }
+      body { background: radial-gradient(ellipse at 72% 16%, #dcebdd 0, transparent 38%), radial-gradient(ellipse at 26% 92%, #e2ede5 0, transparent 36%), var(--sage-bg); color: var(--sage-ink); transition: background-color .35s ease, color .35s ease; }
+      aside, .context { background: color-mix(in srgb, var(--sage-rail) 88%, transparent); border-color: var(--sage-line); backdrop-filter: blur(18px); }
+      header { background: color-mix(in srgb, var(--sage-panel) 76%, transparent); border-color: var(--sage-line); backdrop-filter: blur(18px); }
+      .brand-mark { position: relative; background: linear-gradient(145deg, #a6d4ad, #517c60); box-shadow: 0 0 22px #68bd7a45; }
+      .brand-mark::after { position: absolute; inset: -4px; border: 1px solid #7bc28a70; border-radius: 14px; content: ''; animation: mark-pulse 4s ease-in-out infinite; }
+      .workspace, .new-chat, .composer, .context-card, .status, .suggestions button, .message, dialog { border-color: var(--sage-line); }
+      .composer { background: color-mix(in srgb, var(--sage-panel) 90%, transparent); box-shadow: 0 20px 70px #27483216, 0 0 0 1px #ffffffa8 inset; backdrop-filter: blur(22px); }
+      .composer:focus-within { border-color: var(--sage-accent); box-shadow: 0 0 0 3px #72a4802d, 0 20px 70px #2748321a; }
+      .send, .settings-actions .primary { background: linear-gradient(135deg, #82b58b, #4f8060); box-shadow: 0 6px 18px #4f80602c; }
+      .send:hover, .settings-actions .primary:hover, .workspace button:hover { background: linear-gradient(135deg, #8fc698, #477958); transform: translateY(-1px); }
+      .suggestions button { transition: transform .22s cubic-bezier(.2,.8,.2,1), border-color .22s ease, box-shadow .22s ease, background-color .3s ease; }
+      .suggestions button:hover { transform: translateY(-3px); border-color: var(--sage-accent); box-shadow: 0 14px 34px #2d61441c, 0 0 0 1px #9ac6a033 inset; }
+      .nav-item, .recent-item, .workspace, .context-card, .composer, .status, .message { transition: background-color .3s ease, color .3s ease, border-color .3s ease, box-shadow .3s ease; }
+      .welcome { animation: rise-in .65s cubic-bezier(.2,.8,.2,1) both; }
+      .theme-choice { padding: 7px 9px; border: 1px solid var(--sage-line); border-radius: 9px; background: var(--sage-panel); color: var(--sage-ink); font: inherit; font-size: 11px; }
+      .profile-open { margin-left: 8px; padding: 8px 11px; border: 1px solid var(--sage-line); border-radius: 99px; background: var(--sage-panel); color: var(--sage-ink); cursor: pointer; }
+      .profile-form { padding: 24px; }
+      .profile-form h2 { margin: 0 0 7px; font-size: 21px; }
+      .profile-form p, .profile-form small { color: #607366; font-size: 11px; line-height: 1.6; }
+      .profile-form label { display: block; margin: 14px 0 6px; color: var(--sage-ink); font-size: 11px; font-weight: 650; }
+      .profile-form input, .profile-form textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--sage-line); border-radius: 9px; background: var(--sage-panel); color: var(--sage-ink); font: inherit; font-size: 12px; }
+      .profile-form textarea { min-height: 130px; resize: vertical; line-height: 1.5; }
+      .profile-consent { display: flex !important; align-items: flex-start; gap: 8px; padding: 11px; border: 1px solid var(--sage-line); border-radius: 10px; background: color-mix(in srgb, var(--sage-accent) 10%, var(--sage-panel)); line-height: 1.5; }
+      .profile-consent input { width: auto; margin-top: 2px; }
+      body[data-theme="dusk"] { --sage-bg: #101915; --sage-panel: #1a2620; --sage-rail: #141e19; --sage-ink: #e3f0e5; --sage-muted: #a6bbaa; --sage-line: #31473a; --sage-accent: #91d6a1; --sage-glow: #8cffad; background: radial-gradient(ellipse at 78% 10%, #244832 0, transparent 35%), radial-gradient(ellipse at 12% 92%, #203729 0, transparent 38%), var(--sage-bg); }
+      body[data-theme="dusk"] .workspace, body[data-theme="dusk"] .new-chat, body[data-theme="dusk"] .composer, body[data-theme="dusk"] .context-card, body[data-theme="dusk"] .status, body[data-theme="dusk"] .suggestions button, body[data-theme="dusk"] .profile-open { background: color-mix(in srgb, var(--sage-panel) 84%, transparent); color: var(--sage-ink); border-color: var(--sage-line); }
+      body[data-theme="dusk"] h1, body[data-theme="dusk"] .brand, body[data-theme="dusk"] .context-card strong, body[data-theme="dusk"] .context h2 { color: var(--sage-ink); }
+      body[data-theme="dusk"] .subhead, body[data-theme="dusk"] .crumb, body[data-theme="dusk"] .nav-item, body[data-theme="dusk"] .recent-item, body[data-theme="dusk"] .context-card, body[data-theme="dusk"] .settings p, body[data-theme="dusk"] .settings label { color: var(--sage-muted); }
+      body[data-theme="dusk"] .composer textarea, body[data-theme="dusk"] .settings input, body[data-theme="dusk"] .settings select, body[data-theme="dusk"] .profile-form input, body[data-theme="dusk"] .profile-form textarea { background: #111b15; color: var(--sage-ink); }
+      body[data-theme="dusk"] .send, body[data-theme="dusk"] .settings-actions .primary { background: linear-gradient(135deg, #9be4aa, #58a66d); color: #102117; }
+      body[data-theme="dusk"] .user-message { background: #26392d; color: #e3f0e5; }
+      body[data-theme="dusk"] .assistant-message { color: #c0d2c3; }
+      body[data-theme="dusk"] .agent-trace, body[data-theme="dusk"] .file-preview { background: #15221a; color: #d2e3d5; border-color: var(--sage-line); }
+      body[data-theme="dusk"] dialog { background: #17231b; color: var(--sage-ink); border-color: var(--sage-line); }
+      body[data-theme="dusk"] .profile-form p, body[data-theme="dusk"] .profile-form small { color: var(--sage-muted); }
+      body[data-theme="mist"] { --sage-bg: #f5f7f2; --sage-panel: #fff; --sage-rail: #eff3eb; --sage-ink: #34443a; --sage-muted: #78877b; --sage-line: #e1e8de; --sage-accent: #8cab91; --sage-glow: #9dc5a1; background: radial-gradient(ellipse at 70% 4%, #e6f0e4 0, transparent 36%), var(--sage-bg); }
+      @keyframes rise-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes mark-pulse { 0%, 100% { opacity: .35; transform: scale(.95); } 50% { opacity: .9; transform: scale(1.08); } }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
     </style>
   </head>
   <body>
@@ -187,7 +227,7 @@
         <div class="recent-list" id="recent-work" aria-label="Recent conversations"></div>
       </aside>
       <main>
-        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><button class="status" id="provider-settings" type="button">GPT not connected · Settings</button></header>
+        <header><div class="crumb">Obavenus <span aria-hidden="true">/</span> Assistant</div><div><select id="theme-choice" class="theme-choice" aria-label="Color theme"><option value="sage">Sage glow</option><option value="dusk">Forest dusk</option><option value="mist">Soft mist</option></select><button class="profile-open" id="profile-open" type="button">My profile</button><button class="status" id="provider-settings" type="button">GPT not connected · Settings</button></div></header>
         <div class="content">
           <section class="welcome" id="conversation" aria-labelledby="welcome-title">
             <div class="eyebrow">YOUR PERSONAL AI WORKSPACE</div>
@@ -197,12 +237,13 @@
               <div class="composer-context" id="composer-context" hidden></div>
               <textarea aria-label="Message Obavenus" placeholder="Ask a question or describe a task…"></textarea>
               <small class="run-status" id="run-status" role="status" aria-live="polite" hidden></small>
-              <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="Four calls to the selected provider: a lead plan, two parallel specialists, and a final synthesis. With a project open, relevant text files may be read and sent as context. This run does not modify files; provider billing applies."><option value="solo">One response</option><option value="team">Team · 3 agents · 4 calls</option></select><span>Return to send · Shift + Return for a new line</span></div><button class="send" type="submit">Send ↗</button></div>
+              <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="A lead and two parallel specialists can call read-only project and Gmail tools. Each tool call makes another request to your selected provider. This run does not modify files; provider billing applies."><option value="solo">One response</option><option value="team">Team · lead + 2 specialists</option></select><span>Return to send · Shift + Return for a new line</span></div><button class="send" type="submit">Send ↗</button></div>
             </form>
             <div class="suggestions" aria-label="Starter prompts">
               <button type="button" data-prompt="Help me plan a feature. Ask any important clarifying questions, then give me a practical plan with clear milestones.">Plan a feature<br><small>Shape an idea into clear milestones</small></button>
               <button type="button" data-prompt="Help me explore this codebase. Start by mapping its structure and explain the key entry points, architecture, and risks.">Explore a codebase<br><small>Understand the project and its structure</small></button>
               <button type="button" data-prompt="Turn my idea into a practical sequence of steps. Highlight dependencies and what I should do first.">Turn an idea into steps<br><small>Find the next useful actions</small></button>
+              <button type="button" data-mode="team" data-prompt="Run my technical profile check. Use my user-provided resume and inspect my public GitHub profile and repositories if available. Assess skills only from evidence, identify strengths and gaps, and suggest a focused next-step plan. Never invent experience or credentials.">Tech profile check<br><small>Review resume and public GitHub signals</small></button>
             </div>
           </section>
           <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. In Team mode, relevant text files are read and sent to your selected provider as context; files are never changed.</div></aside>
@@ -250,6 +291,21 @@
           <button type="button" id="cancel-provider-settings">Cancel</button>
           <button class="primary" type="submit">Save settings</button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="profile-dialog" aria-labelledby="profile-title">
+      <form class="profile-form" id="profile-form">
+        <h2 id="profile-title">Your Obavenus profile</h2>
+        <p>Add a resume and public profile links so Obavenus can tailor career and technical help to you. Profile data is encrypted on this Mac.</p>
+        <label for="profile-name">Name</label><input id="profile-name" autocomplete="name" maxlength="100" />
+        <label for="profile-resume">Resume text</label><textarea id="profile-resume" maxlength="50000" placeholder="Paste resume text here, or choose a .txt/.md file…"></textarea>
+        <button type="button" id="profile-resume-file" class="profile-open">Choose resume text file</button><small id="profile-resume-state">Text files only. You can paste content from a PDF or document.</small>
+        <label for="profile-linkedin">LinkedIn profile URL</label><input id="profile-linkedin" type="url" placeholder="https://www.linkedin.com/in/…" autocomplete="url" />
+        <label for="profile-linkedin-text">LinkedIn About and experience (optional)</label><textarea id="profile-linkedin-text" maxlength="25000" placeholder="Paste profile sections you want the tech check to use. Obavenus does not scrape LinkedIn."></textarea>
+        <label for="profile-github">GitHub profile URL</label><input id="profile-github" type="url" placeholder="https://github.com/username" autocomplete="url" />
+        <label class="profile-consent"><input id="profile-share" type="checkbox" /><span>Include this profile as context in AI requests. This can send your resume and profile links to the provider you selected.</span></label>
+        <small id="profile-form-status" role="status" aria-live="polite"></small>
+        <div class="settings-actions"><button type="button" id="profile-skip">Not now</button><button class="primary" type="submit">Save profile</button></div>
       </form>
     </dialog>
     <dialog id="gmail-dialog" aria-labelledby="gmail-title">
