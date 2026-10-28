@@ -3,7 +3,7 @@ const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { describeProject, readProjectFile, collectProjectContext } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -65,6 +65,23 @@ test('team context deterministically selects relevant nested text files and skip
     assert.equal(first[0].name, path.join('src', 'checkout.ts'));
     assert.match(first[0].content, /checkoutCart/);
     assert.doesNotMatch(JSON.stringify(first), /checkout secret|node_modules/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('project agent tools read nested text only and reject traversal and symlinks', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-agent-tools-'));
+  await mkdir(path.join(root, 'src'));
+  try {
+    await writeFile(path.join(root, 'src', 'app.js'), 'local-only preview');
+    await writeFile(path.join(root, 'outside.js'), 'outside');
+    const { symlink } = require('node:fs/promises');
+    await symlink(path.join(root, 'outside.js'), path.join(root, 'src', 'linked.js'));
+    assert.deepEqual((await listProjectFiles(root)).files, ['outside.js', path.join('src', 'app.js')]);
+    assert.equal((await readProjectRelativeFile(root, 'src/app.js')).content, 'local-only preview');
+    await assert.rejects(readProjectRelativeFile(root, '../outside.js'), /relative project file path/);
+    await assert.rejects(readProjectRelativeFile(root, 'src/linked.js'), /Symbolic links/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

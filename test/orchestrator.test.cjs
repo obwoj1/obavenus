@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { runTeamWorkflow } = require('../electron/orchestrator.cjs');
+const { runToolAgent } = require('../electron/agent-tools.cjs');
 
 test('team workflow plans, runs independent specialists in parallel, then synthesizes', async () => {
   const calls = [];
@@ -45,4 +46,28 @@ test('team workflow plans, runs independent specialists in parallel, then synthe
 
 test('team workflow rejects a conversation without a user message', async () => {
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
+});
+
+test('tool agent executes structured model tool calls and returns the follow-up answer', async () => {
+  const transcript = [];
+  let round = 0;
+  const answer = await runToolAgent({
+    messages: [{ role: 'user', text: 'Inspect src/app.js.' }],
+    dispatch: async (messages, options) => {
+      transcript.push(messages);
+      if (round++ === 0) {
+        assert.equal(options.tools[0].name, 'list_project_files');
+        return { text: '', toolCalls: [{ name: 'read_project_file', arguments: { path: 'src/app.js' } }] };
+      }
+      assert.match(messages.at(-1).text, /local-only preview/);
+      return { text: 'The file renders a local-only preview.', toolCalls: [] };
+    },
+    executeTool: async (name, args) => {
+      assert.equal(name, 'read_project_file');
+      assert.equal(args.path, 'src/app.js');
+      return { content: 'local-only preview' };
+    },
+  });
+  assert.equal(answer, 'The file renders a local-only preview.');
+  assert.equal(transcript.length, 2);
 });

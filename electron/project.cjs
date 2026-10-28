@@ -3,7 +3,7 @@ const path = require('node:path');
 
 const MAX_PROJECT_FILE_BYTES = 64 * 1024;
 const MAX_CONTEXT_FILES = 3;
-const MAX_CONTEXT_BYTES = 60 * 1024;
+const MAX_CONTEXT_BYTES = 24 * 1024;
 const MAX_INDEXED_FILES = 1200;
 const MAX_SCANNED_BYTES = 5 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'release', '.next', '.turbo']);
@@ -105,4 +105,48 @@ async function collectProjectContext(projectPath, query) {
   return selected;
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES };
+async function readProjectRelativeFile(projectPath, relativeName) {
+  if (typeof relativeName !== 'string' || !relativeName || path.isAbsolute(relativeName)
+    || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
+    throw new TypeError('Use a relative project file path without traversal segments.');
+  }
+  const root = await realpath(projectPath);
+  const parts = relativeName.split(/[\\/]/);
+  let target = root;
+  for (const [index, part] of parts.entries()) {
+    target = path.join(target, part);
+    const details = await lstat(target);
+    if (details.isSymbolicLink()) throw new TypeError('Symbolic links are not available to project tools.');
+    if (index < parts.length - 1 && !details.isDirectory()) throw new TypeError('A project path segment is not a folder.');
+    if (index === parts.length - 1 && !details.isFile()) throw new TypeError('Only regular project files can be read.');
+  }
+  const details = await lstat(target);
+  if (details.size > MAX_PROJECT_FILE_BYTES) throw new RangeError('File is larger than 64 KB');
+  const bytes = await readFile(target);
+  if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
+  return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length };
+}
+
+async function listProjectFiles(projectPath, limit = 500) {
+  const root = await realpath(projectPath);
+  const files = [];
+  const walk = async (relative = '') => {
+    if (files.length >= limit) return;
+    const entries = await readdir(path.join(root, relative), { withFileTypes: true }).catch(() => []);
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (files.length >= limit) break;
+      if (entry.isSymbolicLink()) continue;
+      const name = path.join(relative, entry.name);
+      if (entry.isDirectory()) {
+        if (!entry.name.startsWith('.') && !IGNORED_DIRECTORIES.has(entry.name)) await walk(name);
+      } else if (entry.isFile() && TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        files.push(name);
+      }
+    }
+  };
+  await walk();
+  return { files, truncated: files.length === limit };
+}
+
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES };
