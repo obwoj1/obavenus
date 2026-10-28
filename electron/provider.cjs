@@ -99,7 +99,7 @@ function createProviderStore({ filePath, safeStorage }) {
   };
 }
 
-async function requestProviderResponse({ provider = 'openai', apiKey, model, messages, fetchImpl = globalThis.fetch }) {
+async function requestProviderResponse({ provider = 'openai', apiKey, model, messages, tools, fetchImpl = globalThis.fetch }) {
   if (!PROVIDERS[provider]) throw new Error('Choose OpenAI, Claude, Gemini, or Grok in Settings.');
   if (typeof apiKey !== 'string' || apiKey.length === 0) throw new Error(`Connect a ${PROVIDERS[provider].name} API key in Settings first.`);
   const inputMessages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES) : [];
@@ -137,13 +137,17 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
       : anthropic
       ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
       : { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+    const openAITools = tools?.map(({ name, description, parameters }) => ({ type: 'function', name, description, parameters }));
+    const chatCompletionTools = tools?.map(({ name, description, parameters }) => ({ type: 'function', function: { name, description, parameters } }));
+    const anthropicTools = tools?.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters }));
+    const geminiTools = tools?.map(({ name, description, parameters }) => ({ name, description, parameters }));
     const body = provider === 'openai'
-      ? { model: normalizeModel(model), instructions, input, store: false }
+      ? { model: normalizeModel(model), instructions, input, store: false, ...(openAITools ? { tools: openAITools, tool_choice: 'auto' } : {}) }
       : gemini
-        ? { systemInstruction: { parts: [{ text: instructions }] }, contents: input.map((message) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })) }
+        ? { systemInstruction: { parts: [{ text: instructions }] }, contents: input.map((message) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] })), ...(geminiTools ? { tools: [{ functionDeclarations: geminiTools }] } : {}) }
         : anthropic
-        ? { model: normalizeModel(model), max_tokens: 4096, system: instructions, messages: input }
-        : { model: normalizeModel(model), messages: [{ role: 'system', content: instructions }, ...input] };
+        ? { model: normalizeModel(model), max_tokens: 4096, system: instructions, messages: input, ...(anthropicTools ? { tools: anthropicTools } : {}) }
+        : { model: normalizeModel(model), messages: [{ role: 'system', content: instructions }, ...input], ...(chatCompletionTools ? { tools: chatCompletionTools, tool_choice: 'auto' } : {}) };
     const response = await fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal });
     let result;
     try { result = await response.json(); } catch { result = {}; }
@@ -155,7 +159,15 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
       : anthropic
         ? (result.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n')
         : result.choices?.[0]?.message?.content;
-    if (!text) throw new Error('The model returned no text. Try again or choose another model.');
+    const toolCalls = provider === 'openai'
+      ? (result.output || []).filter((item) => item.type === 'function_call').map((item) => ({ id: item.call_id, name: item.name, arguments: item.arguments }))
+      : gemini
+        ? (result.candidates?.[0]?.content?.parts || []).filter((part) => part.functionCall).map((part, index) => ({ id: `${Date.now()}-${index}`, name: part.functionCall.name, arguments: part.functionCall.args || {} }))
+      : anthropic
+        ? (result.content || []).filter((part) => part.type === 'tool_use').map((part) => ({ id: part.id, name: part.name, arguments: part.input || {} }))
+        : (result.choices?.[0]?.message?.tool_calls || []).map((call) => ({ id: call.id, name: call.function?.name, arguments: call.function?.arguments }));
+    if (!text && !toolCalls.length) throw new Error('The model returned no text or tool calls. Try again or choose another model.');
+    if (tools) return { text, toolCalls };
     return text;
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('The request timed out after 90 seconds.');

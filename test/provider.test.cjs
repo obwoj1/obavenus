@@ -171,3 +171,24 @@ test('Gemini API-key mode calls the Generative Language API and parses candidate
   assert.match(request.systemInstruction.parts[0].text, /untrusted reference data/);
   assert.deepEqual(request.contents.map(({ role }) => role), ['user', 'model', 'user']);
 });
+
+test('native function calls are exposed for OpenAI, Claude, Gemini, and Grok', async () => {
+  const tools = [{ name: 'list_project_files', description: 'List files', parameters: { type: 'object', properties: {}, required: [] } }];
+  const cases = [
+    ['openai', { output: [{ type: 'function_call', call_id: 'c1', name: 'list_project_files', arguments: '{}' }] }, (body) => assert.equal(body.tools[0].name, 'list_project_files')],
+    ['anthropic', { content: [{ type: 'tool_use', id: 'c2', name: 'list_project_files', input: {} }] }, (body) => assert.equal(body.tools[0].input_schema.type, 'object')],
+    ['gemini', { candidates: [{ content: { parts: [{ functionCall: { name: 'list_project_files', args: {} } }] } }] }, (body) => assert.equal(body.tools[0].functionDeclarations[0].name, 'list_project_files')],
+    ['xai', { choices: [{ message: { tool_calls: [{ id: 'c4', function: { name: 'list_project_files', arguments: '{}' } }] } }] }, (body) => assert.equal(body.tools[0].function.name, 'list_project_files')],
+  ];
+  for (const [provider, payload, checkBody] of cases) {
+    let sent;
+    const result = await requestProviderResponse({
+      provider, apiKey: 'key', model: provider === 'openai' ? 'gpt-5.5' : provider === 'anthropic' ? 'claude-sonnet-4-6' : provider === 'gemini' ? 'gemini-3.8-flash' : 'grok-4.7',
+      messages: [{ role: 'user', text: 'Inspect this project.' }], tools,
+      fetchImpl: async (_url, options) => { sent = JSON.parse(options.body); return { ok: true, status: 200, json: async () => payload }; },
+    });
+    checkBody(sent);
+    assert.equal(result.toolCalls[0].name, 'list_project_files');
+    assert.ok(result.toolCalls[0].arguments);
+  }
+});

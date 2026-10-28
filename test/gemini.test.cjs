@@ -46,6 +46,12 @@ test('Gemini Google OAuth uses PKCE, encrypts tokens, and generates content for 
     assert.equal(apiCall.url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
     assert.equal(apiCall.options.headers.Authorization, 'Bearer access-token');
     assert.equal(apiCall.options.headers['x-goog-user-project'], 'obavenus-test-123');
+    const toolResult = await connector.generate({
+      model: 'gemini-3.8-flash', messages: [{ role: 'user', text: 'List files.' }],
+      tools: [{ name: 'list_project_files', description: 'List files', parameters: { type: 'object', properties: {}, required: [] } }],
+    });
+    assert.deepEqual(toolResult, { text: 'OAuth Gemini reply', toolCalls: [] });
+    assert.equal(JSON.parse(calls.at(-1).options.body).tools[0].functionDeclarations[0].name, 'list_project_files');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
