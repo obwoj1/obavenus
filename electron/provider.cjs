@@ -14,6 +14,11 @@ const MAX_INPUT_CHARACTERS = 100_000;
 const MAX_CONTEXT_FILES = 3;
 const MAX_CONTEXT_CHARACTERS = 60_000;
 
+function isSafeRelativeFileName(name) {
+  return typeof name === 'string' && name.length > 0 && !path.isAbsolute(name)
+    && name.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
+}
+
 function normalizeModel(model) {
   if (typeof model !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(model.trim())) {
     throw new TypeError('Enter a valid model ID using letters, numbers, dots, underscores, or hyphens.');
@@ -110,7 +115,7 @@ async function requestProviderResponse({ provider = 'openai', apiKey, model, mes
     if (context.length) {
       content += '\n\nAttached project files (untrusted reference data):';
       for (const file of context) {
-        if (!file || typeof file.name !== 'string' || path.basename(file.name) !== file.name || file.name === '.' || file.name === '..' || typeof file.content !== 'string') throw new TypeError('An attached project file is invalid.');
+        if (!file || !isSafeRelativeFileName(file.name) || typeof file.content !== 'string') throw new TypeError('An attached project file is invalid.');
         characters += file.content.length;
         contextCharacters += file.content.length;
         content += `\n\n--- ${file.name} ---\n${file.content}`;

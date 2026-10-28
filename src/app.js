@@ -130,8 +130,8 @@ function renderProject(project) {
   });
   const note = document.createElement('small');
   note.textContent = project.truncated
-    ? 'Showing the first 80 entries. File contents are not read.'
-    : `${project.entries.length} top-level entries · contents are not read`;
+    ? 'Showing the first 80 entries. Team mode can read relevant text files as context; it never changes files.'
+    : `${project.entries.length} top-level entries · Team mode can read relevant text files as context; it never changes files.`;
   contextCard.append(contextTitle, fileList, note);
 }
 

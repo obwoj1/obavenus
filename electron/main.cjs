@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
-const { describeProject, readProjectFile } = require('./project.cjs');
+const { describeProject, readProjectFile, collectProjectContext } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
 const { createGeminiConnector } = require('./gemini.cjs');
@@ -127,7 +127,7 @@ async function dispatchProviderMessages(messages) {
       const context = Array.isArray(message.context) ? message.context : [];
       if (context.length > 3) throw new RangeError('Attach no more than three files to one message.');
       for (const file of context) {
-        if (!file || typeof file.name !== 'string' || typeof file.content !== 'string') throw new TypeError('An attached project file is invalid.');
+        if (!file || typeof file.name !== 'string' || path.isAbsolute(file.name) || file.name.split(/[\\/]/).some((part) => !part || part === '.' || part === '..') || typeof file.content !== 'string') throw new TypeError('An attached project file is invalid.');
         content += `\\n\\n--- ${path.basename(file.name)} ---\\n${file.content}`;
         characters += file.content.length;
         contextCharacters += file.content.length;
@@ -148,8 +148,20 @@ ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(m
 
 ipcMain.handle('agents:run-team', async (event, { messages, runId }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
+  const preparedMessages = messages.map((message) => ({ ...message }));
+  const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
+  if (task) {
+    try {
+      const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+      const attached = Array.isArray(task.context) ? task.context : [];
+      const discovered = await collectProjectContext(saved.projectPath, task.text);
+      task.context = [...attached, ...discovered].slice(0, 3);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
   return runTeamWorkflow({
-    messages,
+    messages: preparedMessages,
     dispatch: dispatchProviderMessages,
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });

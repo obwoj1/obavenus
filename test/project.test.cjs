@@ -3,7 +3,7 @@ const { mkdtemp, mkdir, writeFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { describeProject, readProjectFile } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -40,6 +40,31 @@ test('opening a project file returns small text and rejects paths and oversized 
     assert.equal(opened.size, Buffer.byteLength(opened.content));
     await assert.rejects(readProjectFile(root, '../outside.txt'), /top-level file name/);
     await assert.rejects(readProjectFile(root, 'large.txt'), /larger than 64 KB/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('team context deterministically selects relevant nested text files and skips dependencies and symlinks', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-context-'));
+  const projectPath = path.join(root, 'project');
+  await mkdir(path.join(projectPath, 'src'), { recursive: true });
+  await mkdir(path.join(projectPath, 'node_modules', 'package'), { recursive: true });
+  try {
+    await writeFile(path.join(projectPath, 'src', 'checkout.ts'), 'function checkoutCart() { return true; }');
+    await writeFile(path.join(projectPath, 'src', 'unrelated.ts'), 'export const greeting = "hello";');
+    await writeFile(path.join(projectPath, 'node_modules', 'package', 'checkout.ts'), 'checkout checkout checkout');
+    await writeFile(path.join(root, 'outside.ts'), 'checkout secret');
+    const { symlink } = require('node:fs/promises');
+    await symlink(path.join(root, 'outside.ts'), path.join(projectPath, 'src', 'linked.ts'));
+
+    const first = await collectProjectContext(projectPath, 'fix checkout cart');
+    const second = await collectProjectContext(projectPath, 'fix checkout cart');
+    assert.deepEqual(first, second);
+    assert.equal(first.length, 1);
+    assert.equal(first[0].name, path.join('src', 'checkout.ts'));
+    assert.match(first[0].content, /checkoutCart/);
+    assert.doesNotMatch(JSON.stringify(first), /checkout secret|node_modules/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
