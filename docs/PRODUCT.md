@@ -16,3 +16,5 @@ Start with a macOS desktop assistant that combines AI chat with a project worksp
 ## First version
 
 The current app combines AI chat, a local project workspace, and optional Gmail search. OpenAI can connect through Sign in with ChatGPT or an API key; Gemini supports Google OAuth for the Gemini API using a user-selected Cloud project; Claude and Grok currently use API keys. Project files stay local until explicitly attached to a message. Gmail access is read-only, and snippets are shared only when the user attaches them and sends a message.
+
+The Federal Role Finder parses pasted job and offer blocks into titles, agencies, and locations, then creates official USAJOBS search links and step-by-step application guidance. The first version opens live USAJOBS results in a browser; it does not yet aggregate announcement records inside Obavenus. Inline aggregation requires a USAJOBS developer API key and should keep each announcement linked to its official application page.

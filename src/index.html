@@ -112,6 +112,15 @@
       .gmail-item strong, .gmail-item small { display: block; }
       .gmail-item small { margin-top: 4px; color: #758477; }
       .gmail-item p { margin: 7px 0; color: #59695c; font-size: 11px; }
+      .job-search-dialog { width: min(760px, calc(100vw - 32px)); }
+      .job-search-body { padding: 24px; }
+      .job-search-body h2 { margin: 0 0 7px; color: #26372b; }
+      .job-search-body p, .job-search-body small { color: #637568; font-size: 11px; line-height: 1.6; }
+      .job-search-body textarea { width: 100%; min-height: 190px; padding: 12px; border: 1px solid #cbd9cb; border-radius: 10px; background: #f7f9f5; color: #26372b; font: 12px/1.5 ui-monospace, monospace; }
+      .job-results { display: grid; gap: 8px; max-height: 32vh; overflow: auto; }
+      .job-result { padding: 12px; border: 1px solid #dce5da; border-radius: 11px; background: #f8faf6; }
+      .job-result strong, .job-result small { display: block; }
+      .job-result a { display: inline-block; margin-top: 7px; color: #3e704b; font-size: 11px; font-weight: 700; }
       /* Obavenus workspace refresh: stronger contrast, tighter hierarchy, useful density. */
       :root { background: #f7f8f4; color: #202d24; }
       body, main { background: #f7f8f4; }
@@ -245,12 +254,23 @@
               <button type="button" data-prompt="Help me explore this codebase. Start by mapping its structure and explain the key entry points, architecture, and risks.">Explore a codebase<br><small>Understand the project and its structure</small></button>
               <button type="button" data-prompt="Turn my idea into a practical sequence of steps. Highlight dependencies and what I should do first.">Turn an idea into steps<br><small>Find the next useful actions</small></button>
               <button type="button" data-mode="team" data-prompt="Run my technical profile check. Use my user-provided resume and inspect my public GitHub profile and repositories if available. Assess skills only from evidence, identify strengths and gaps, and suggest a focused next-step plan. Never invent experience or credentials.">Tech profile check<br><small>Review resume and public GitHub signals</small></button>
+              <button type="button" id="federal-jobs-open">Find federal jobs<br><small>Turn offer examples into current search links</small></button>
             </div>
           </section>
           <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. In Team mode, relevant text files are read and sent to your selected provider as context; files are never changed.</div></aside>
         </div>
       </main>
     </div>
+    <dialog id="federal-jobs-dialog" class="job-search-dialog" aria-labelledby="federal-jobs-title">
+      <section class="job-search-body">
+        <h2 id="federal-jobs-title">Federal role finder</h2>
+        <p>Paste job descriptions or offer examples. Obavenus extracts titles, agencies, and locations, then builds live searches on USAJOBS. Use the official announcement for eligibility, salary, closing date, and application instructions.</p>
+        <textarea id="federal-jobs-input" aria-label="Job or offer text" placeholder="Paste role, agency, location, and any other details…"></textarea>
+        <div class="settings-actions"><button type="button" id="federal-jobs-close">Close</button><button type="button" class="primary" id="federal-jobs-search">Build my job searches</button></div>
+        <small>Source: USAJOBS · Links open official live search results. These searches are not an application or an endorsement.</small>
+        <div id="federal-jobs-results" class="job-results" aria-live="polite"></div>
+      </section>
+    </dialog>
     <dialog id="provider-dialog" aria-labelledby="provider-title">
       <form class="settings" id="provider-form">
         <h2 id="provider-title">Model settings</h2>

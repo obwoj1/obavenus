@@ -8,6 +8,7 @@ const { createGeminiConnector } = require('./gemini.cjs');
 const { runTeamWorkflow } = require('./orchestrator.cjs');
 const { createAgentToolExecutor } = require('./agent-tools.cjs');
 const { createProfileStore } = require('./profile.cjs');
+const { createSearchPlan } = require('./job-search.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 let providerStore;
@@ -122,6 +123,8 @@ ipcMain.handle('profile:choose-resume', async () => {
   if (bytes.includes(0)) throw new TypeError('Resume must be a plain-text file.');
   return { name: path.basename(filePath), text: bytes.toString('utf8').slice(0, 50_000) };
 });
+
+ipcMain.handle('jobs:search-plan', (_event, text) => createSearchPlan(text));
 
 ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettings());
 

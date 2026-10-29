@@ -472,6 +472,36 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
   });
 });
 
+const federalJobsDialog = document.querySelector('#federal-jobs-dialog');
+document.querySelector('#federal-jobs-open').addEventListener('click', () => federalJobsDialog.showModal());
+document.querySelector('#federal-jobs-close').addEventListener('click', () => federalJobsDialog.close());
+document.querySelector('#federal-jobs-search').addEventListener('click', async () => {
+  const results = document.querySelector('#federal-jobs-results');
+  results.replaceChildren('Preparing official search links…');
+  try {
+    const plan = await window.obavenus.findFederalJobs(document.querySelector('#federal-jobs-input').value);
+    results.replaceChildren();
+    plan.searches.forEach((search) => {
+      const card = document.createElement('article');
+      card.className = 'job-result';
+      const title = document.createElement('strong');
+      title.textContent = search.label;
+      const detail = document.createElement('small');
+      detail.textContent = `Search: ${search.keyword} · ${search.location}`;
+      const link = document.createElement('a');
+      link.href = search.url;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = 'Open live USAJOBS results ↗';
+      card.append(title, detail, link);
+      results.append(card);
+    });
+    const steps = document.createElement('p');
+    steps.textContent = 'Next: open each search, filter to Full-time, check each announcement’s hiring path and closing date, then follow its “How to Apply” section. Save suitable announcements to a USAJOBS account and tailor your federal resume to the specialized experience listed.';
+    results.append(steps);
+  } catch (error) { results.textContent = error.message || 'Could not build job searches.'; }
+});
+
 document.querySelector('#open-project').addEventListener('click', chooseProject);
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
