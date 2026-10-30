@@ -54,7 +54,8 @@ async function runScheduledTasks() {
   const store = getTaskStore();
   const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
   for (const task of due) {
-    await store.update(task.id, { status: 'running' });
+    const attempt = (task.attempts || 0) + 1;
+    await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
     broadcastTask({ id: task.id, status: 'running' });
     try {
       const result = await localAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
@@ -62,11 +63,32 @@ async function runScheduledTasks() {
       broadcastTask({ id: task.id, status: completed.status, result: completed.result });
       if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
     } catch (error) {
-      const failed = await store.update(task.id, { status: 'error', error: (error.message || 'Local task failed.').slice(0, 2000), completedAt: Date.now() });
-      broadcastTask({ id: task.id, status: failed.status, error: failed.error });
+      const message = (error.message || 'Local task failed.').slice(0, 2000);
+      if (attempt < 3) {
+        const retryAt = Date.now() + (attempt === 1 ? 60_000 : 5 * 60_000);
+        const retry = await store.update(task.id, { status: 'queued', executeAt: retryAt, error: message, retryAt });
+        broadcastTask({ id: task.id, status: retry.status, error: retry.error, executeAt: retry.executeAt, attempts: attempt });
+      } else {
+        const failed = await store.update(task.id, { status: 'error', error: message, completedAt: Date.now() });
+        broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
+      }
     }
   }
   await scheduleNextTask();
+}
+
+async function recoverInterruptedTasks() {
+  const store = getTaskStore();
+  const tasks = await store.list();
+  for (const task of tasks.filter((item) => item.status === 'running')) {
+    if ((task.attempts || 0) < 3) {
+      const recovered = await store.update(task.id, { status: 'queued', executeAt: Date.now() + 60_000, error: 'Obavenus restarted during this run; it will retry shortly.' });
+      broadcastTask({ id: recovered.id, status: recovered.status, error: recovered.error, executeAt: recovered.executeAt });
+    } else {
+      const interrupted = await store.update(task.id, { status: 'error', error: 'Obavenus restarted during the final allowed attempt.', completedAt: Date.now() });
+      broadcastTask({ id: interrupted.id, status: interrupted.status, error: interrupted.error, attempts: interrupted.attempts });
+    }
+  }
 }
 
 async function scheduleNextTask() {
@@ -411,7 +433,8 @@ function createWindow() {
   window.loadFile(entryFile);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await recoverInterruptedTasks();
   scheduleNextTask().catch(() => {});
   createWindow();
   app.on('activate', () => {

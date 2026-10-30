@@ -29,7 +29,7 @@ function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
       if (!Number.isFinite(at) || at < now() + 60_000 || at > now() + 365 * 24 * 60 * 60 * 1000) throw new RangeError('Choose a time at least one minute from now and within the next year.');
       if (typeof projectPath !== 'string' || projectPath.length > 2000) throw new TypeError('Invalid project folder.');
       const tasks = await read();
-      const task = { id: require('node:crypto').randomUUID(), prompt: prompt.trim(), provider, executeAt: at, projectPath, status: 'queued', createdAt: now(), result: '', error: '' };
+      const task = { id: require('node:crypto').randomUUID(), prompt: prompt.trim(), provider, executeAt: at, projectPath, status: 'queued', attempts: 0, createdAt: now(), result: '', error: '' };
       tasks.push(task);
       await write(tasks);
       return { ...task };

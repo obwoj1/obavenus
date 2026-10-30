@@ -883,7 +883,7 @@ async function renderScheduledTasks() {
     const title = document.createElement('strong');
     title.textContent = task.prompt.slice(0, 140);
     const meta = document.createElement('small');
-    meta.textContent = `${task.provider} · ${task.status} · ${new Date(task.executeAt).toLocaleString()}`;
+    meta.textContent = `${task.provider} · ${task.status}${task.attempts ? ` · attempt ${task.attempts}/3` : ''} · ${new Date(task.executeAt).toLocaleString()}`;
     card.append(title, meta);
     if (task.result || task.error) {
       const details = document.createElement('p');
