@@ -671,6 +671,22 @@ document.querySelector('#federal-jobs-live').addEventListener('click', async () 
 document.querySelector('#open-project').addEventListener('click', chooseProject);
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
+document.querySelector('#research-open').addEventListener('click', async () => {
+  const status = document.querySelector('#research-status');
+  try {
+    await window.obavenus.openResearchPage(document.querySelector('#research-url').value.trim());
+    status.textContent = 'Opened in a separate browser window. Review the page, then import its text explicitly.';
+  } catch (error) { status.textContent = error.message || 'Could not open that page.'; }
+});
+document.querySelector('#research-import').addEventListener('click', async () => {
+  const status = document.querySelector('#research-status');
+  try {
+    const page = await window.obavenus.importResearchPage();
+    if (!page.text.trim()) throw new Error('The current page has no readable text.');
+    attachProjectContext(`Web: ${new URL(page.url).hostname} · ${page.title}`.slice(0, 240), `Source: ${page.url}\nTitle: ${page.title}\n\n${page.text}`);
+    status.textContent = 'Page text is attached locally; it will be sent only when you submit your next prompt.';
+  } catch (error) { status.textContent = error.message || 'Could not import page text.'; }
+});
 const tasksDialog = document.querySelector('#tasks-dialog');
 const taskList = document.querySelector('#scheduled-task-list');
 document.querySelector('#tasks-nav').addEventListener('click', async () => {

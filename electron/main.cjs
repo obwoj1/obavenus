@@ -23,6 +23,7 @@ let taskStore;
 let taskTimer;
 let skillStore;
 let agentStore;
+let researchWindow;
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -217,6 +218,23 @@ ipcMain.handle('skills:delete', (_event, id) => getSkillStore().remove(id));
 ipcMain.handle('agents:list-custom', () => getAgentStore().list());
 ipcMain.handle('agents:save-custom', (_event, agent) => getAgentStore().save(agent));
 ipcMain.handle('agents:delete-custom', (_event, id) => getAgentStore().remove(id));
+ipcMain.handle('browser:open', async (_event, rawUrl) => {
+  let url;
+  try { url = new URL(rawUrl); } catch { throw new TypeError('Enter a valid http or https URL.'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new TypeError('Research Browser only opens http and https pages without embedded credentials.');
+  if (researchWindow && !researchWindow.isDestroyed()) researchWindow.close();
+  researchWindow = new BrowserWindow({ width: 1160, height: 820, title: 'Obavenus Research Browser', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  researchWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  researchWindow.webContents.on('will-navigate', (event, target) => {
+    try { if (!['http:', 'https:'].includes(new URL(target).protocol)) event.preventDefault(); } catch { event.preventDefault(); }
+  });
+  await researchWindow.loadURL(url.toString());
+  return true;
+});
+ipcMain.handle('browser:import-page', async () => {
+  if (!researchWindow || researchWindow.isDestroyed() || researchWindow.webContents.isLoading()) throw new Error('Open a page and wait for it to finish loading first.');
+  return researchWindow.webContents.executeJavaScript(`(() => ({ title: document.title.slice(0, 300), url: location.href, text: (document.body?.innerText || '').slice(0, 20000) }))()`);
+});
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   let projectPath = '';
