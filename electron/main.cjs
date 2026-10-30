@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell, session } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -59,6 +59,7 @@ function getAgentStore() {
 function getResearchBrowser() {
   if (!researchBrowser) researchBrowser = createResearchBrowser({
     BrowserWindow,
+    session: session.fromPartition('persist:obavenus-research'),
     confirmAction: async (control) => {
       const source = new URL(control.url);
       const result = await dialog.showMessageBox({
@@ -281,6 +282,16 @@ ipcMain.handle('agents:save-custom', (_event, agent) => getAgentStore().save(age
 ipcMain.handle('agents:delete-custom', (_event, id) => getAgentStore().remove(id));
 ipcMain.handle('browser:open', (_event, rawUrl) => getResearchBrowser().open(rawUrl));
 ipcMain.handle('browser:import-page', () => getResearchBrowser().readPage());
+ipcMain.handle('browser:clear-session', async () => {
+  const result = await dialog.showMessageBox({
+    type: 'warning', title: 'Clear Research Browser sign-ins?',
+    message: 'This removes saved site sign-ins and browser storage from Obavenus Research Browser.',
+    detail: 'It will sign you out of websites opened in that browser. Your main Chrome browser is unchanged.',
+    buttons: ['Cancel', 'Clear sign-ins'], defaultId: 0, cancelId: 0,
+  });
+  if (result.response !== 1) return { cleared: false };
+  return getResearchBrowser().clearSession();
+});
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   if (task?.provider === 'configured-ai') {

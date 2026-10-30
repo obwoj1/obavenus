@@ -37,3 +37,22 @@ test('browser control is only activated after the native approval callback appro
   assert.deepEqual(await browser.clickControl('Send'), { approved: true, label: 'Send message', url: 'https://mail.example.com' });
   assert.equal(pageScripts, 3);
 });
+
+test('research browser preserves its isolated login session and can explicitly clear it', async () => {
+  let options;
+  const cleared = [];
+  class FakeBrowserWindow {
+    constructor(value) { options = value; this.destroyed = false; this.webContents = { isLoading: () => false, setWindowOpenHandler: () => {}, on: () => {} }; }
+    isDestroyed() { return this.destroyed; }
+    close() { this.destroyed = true; }
+    async loadURL() {}
+  }
+  const browser = createResearchBrowser({
+    BrowserWindow: FakeBrowserWindow,
+    session: { clearStorageData: async (settings) => cleared.push(settings), clearCache: async () => cleared.push('cache') },
+  });
+  await browser.open('https://example.com');
+  assert.equal(options.webPreferences.partition, 'persist:obavenus-research');
+  assert.deepEqual(await browser.clearSession(), { cleared: true });
+  assert.deepEqual(cleared, [{ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] }, 'cache']);
+});

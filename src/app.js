@@ -690,6 +690,13 @@ document.querySelector('#research-import').addEventListener('click', async () =>
     status.textContent = 'Page text is attached locally; it will be sent only when you submit your next prompt.';
   } catch (error) { status.textContent = error.message || 'Could not import page text.'; }
 });
+document.querySelector('#research-clear-session').addEventListener('click', async () => {
+  const status = document.querySelector('#research-status');
+  try {
+    const result = await window.obavenus.clearResearchBrowserSession();
+    status.textContent = result.cleared ? 'Research Browser sign-ins cleared.' : 'Sign-ins were kept.';
+  } catch (error) { status.textContent = error.message || 'Could not clear browser sign-ins.'; }
+});
 const tasksDialog = document.querySelector('#tasks-dialog');
 const taskList = document.querySelector('#scheduled-task-list');
 document.querySelector('#tasks-nav').addEventListener('click', async () => {

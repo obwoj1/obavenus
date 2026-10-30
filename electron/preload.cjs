@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   deleteCustomAgent: (id) => ipcRenderer.invoke('agents:delete-custom', id),
   openResearchPage: (url) => ipcRenderer.invoke('browser:open', url),
   importResearchPage: () => ipcRenderer.invoke('browser:import-page'),
+  clearResearchBrowserSession: () => ipcRenderer.invoke('browser:clear-session'),
   listScheduledTasks: () => ipcRenderer.invoke('tasks:list'),
   scheduleLocalTask: (task) => ipcRenderer.invoke('tasks:schedule', task),
   cancelScheduledTask: (id) => ipcRenderer.invoke('tasks:cancel', id),

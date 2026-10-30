@@ -5,7 +5,7 @@ function validateHttpUrl(value) {
   return url;
 }
 
-function createResearchBrowser({ BrowserWindow, confirmAction = async () => false }) {
+function createResearchBrowser({ BrowserWindow, session = null, confirmAction = async () => false }) {
   let window;
   function current() {
     if (!window || window.isDestroyed()) throw new Error('Research Browser is not open. Open a page first.');
@@ -15,7 +15,7 @@ function createResearchBrowser({ BrowserWindow, confirmAction = async () => fals
   async function open(rawUrl) {
     const url = validateHttpUrl(rawUrl);
     if (window && !window.isDestroyed()) window.close();
-    window = new BrowserWindow({ width: 1160, height: 820, title: 'Obavenus Research Browser', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    window = new BrowserWindow({ width: 1160, height: 820, title: 'Obavenus Research Browser', webPreferences: { partition: 'persist:obavenus-research', contextIsolation: true, nodeIntegration: false, sandbox: true } });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, target) => {
       try { validateHttpUrl(target); } catch { event.preventDefault(); }
@@ -48,7 +48,14 @@ function createResearchBrowser({ BrowserWindow, confirmAction = async () => fals
     if (!clicked) throw new Error('The page changed before the approved control could be activated.');
     return { approved: true, label: candidate.label, url: candidate.url };
   }
-  return { open, readPage, followLink, clickControl };
+  async function clearSession() {
+    if (!session) throw new Error('Research Browser session storage is unavailable.');
+    if (window && !window.isDestroyed()) { window.close(); window = null; }
+    await session.clearStorageData({ storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage'] });
+    await session.clearCache();
+    return { cleared: true };
+  }
+  return { open, readPage, followLink, clickControl, clearSession };
 }
 
 module.exports = { createResearchBrowser, validateHttpUrl };
