@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   clearProfile: () => ipcRenderer.invoke('profile:clear'),
   chooseResume: () => ipcRenderer.invoke('profile:choose-resume'),
   getProviderSettings: () => ipcRenderer.invoke('provider:get-settings'),
+  getOllamaStatus: () => ipcRenderer.invoke('ollama:status'),
   saveProviderSettings: (settings) => ipcRenderer.invoke('provider:save-settings', settings),
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),

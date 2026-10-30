@@ -2,12 +2,13 @@ const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 
 const DEFAULT_MODEL = 'gpt-5.5';
-const DEFAULT_MODELS = { openai: DEFAULT_MODEL, anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7' };
+const DEFAULT_MODELS = { openai: DEFAULT_MODEL, anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7', ollama: 'qwen3' };
 const PROVIDERS = {
   openai: { name: 'OpenAI', model: DEFAULT_MODELS.openai },
   anthropic: { name: 'Claude', model: DEFAULT_MODELS.anthropic },
   gemini: { name: 'Gemini', model: DEFAULT_MODELS.gemini },
   xai: { name: 'Grok', model: DEFAULT_MODELS.xai },
+  ollama: { name: 'Ollama (local)', model: DEFAULT_MODELS.ollama },
 };
 const MAX_MESSAGES = 40;
 const MAX_INPUT_CHARACTERS = 100_000;
@@ -19,8 +20,9 @@ function isSafeRelativeFileName(name) {
     && name.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
 }
 
-function normalizeModel(model) {
-  if (typeof model !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(model.trim())) {
+function normalizeModel(model, provider) {
+  const pattern = provider === 'ollama' ? /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,149}$/ : /^[a-zA-Z0-9._-]{1,100}$/;
+  if (typeof model !== 'string' || (provider === 'ollama' && /^https?:\/\//i.test(model.trim())) || !pattern.test(model.trim())) {
     throw new TypeError('Enter a valid model ID using letters, numbers, dots, underscores, or hyphens.');
   }
   return model.trim();
@@ -65,7 +67,7 @@ function createProviderStore({ filePath, safeStorage }) {
       };
     },
     async save({ provider = 'openai', openaiAuthMethod = 'api-key', geminiAuthMethod = 'api-key', geminiProjectId = '', apiKey, model }) {
-      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, or Grok.');
+      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, Grok, or local Ollama.');
       if (!['api-key', 'chatgpt'].includes(openaiAuthMethod)) throw new TypeError('Choose a supported OpenAI sign-in method.');
       if (!['api-key', 'google-account'].includes(geminiAuthMethod)) throw new TypeError('Choose a supported Gemini sign-in method.');
       if (provider === 'gemini' && geminiAuthMethod === 'google-account' && (typeof geminiProjectId !== 'string' || !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(geminiProjectId.trim()))) throw new TypeError('Enter a valid Google Cloud project ID.');
@@ -76,12 +78,12 @@ function createProviderStore({ filePath, safeStorage }) {
         if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('Secure key storage is unavailable on this device.');
         encryptedKeys[provider] = (await safeStorage.encryptStringAsync(enteredKey)).toString('base64');
       }
-      const next = { provider, openaiAuthMethod, geminiAuthMethod, geminiProjectId: typeof geminiProjectId === 'string' ? geminiProjectId.trim() : '', model: normalizeModel(model), encryptedKeys };
+      const next = { provider, openaiAuthMethod, geminiAuthMethod, geminiProjectId: typeof geminiProjectId === 'string' ? geminiProjectId.trim() : '', model: normalizeModel(model, provider), encryptedKeys };
       await writeSettings(next);
       return { provider, openaiAuthMethod, geminiAuthMethod, geminiProjectId: next.geminiProjectId, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
     },
     async clearKey(provider = 'openai') {
-      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, or Grok.');
+      if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, Grok, or local Ollama.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       delete encryptedKeys[provider];
@@ -100,7 +102,7 @@ function createProviderStore({ filePath, safeStorage }) {
 }
 
 async function requestProviderResponse({ provider = 'openai', apiKey, model, messages, tools, fetchImpl = globalThis.fetch }) {
-  if (!PROVIDERS[provider]) throw new Error('Choose OpenAI, Claude, Gemini, or Grok in Settings.');
+  if (!PROVIDERS[provider]) throw new Error('Choose OpenAI, Claude, Gemini, Grok, or local Ollama in Settings.');
   if (typeof apiKey !== 'string' || apiKey.length === 0) throw new Error(`Connect a ${PROVIDERS[provider].name} API key in Settings first.`);
   const inputMessages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES) : [];
   if (inputMessages.length === 0) throw new Error('Enter a message before sending.');

@@ -17,6 +17,7 @@ const { createTaskStore } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
 const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
+const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -258,6 +259,7 @@ ipcMain.handle('jobs:search-live', async (_event, { text, filters = {} }) => {
 });
 
 ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettings());
+ipcMain.handle('ollama:status', () => listOllamaModels());
 
 ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore().save(settings));
 
@@ -340,6 +342,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
   if (settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account') {
     return getGeminiConnector().generate({ model: settings.model, messages, tools });
   }
+  if (settings.provider === 'ollama') return requestOllamaResponse({ model: settings.model, messages, tools });
   const apiKey = await store.getApiKey(settings.provider);
   return requestProviderResponse({ provider: settings.provider, apiKey, model: settings.model, messages, tools });
 }

@@ -69,6 +69,20 @@ test('Gemini Google account mode persists its project ID without storing an API 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('Ollama settings persist a local model tag without requiring or storing an API key', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-ollama-mode-'));
+  const filePath = path.join(root, 'provider.json');
+  const store = createProviderStore({ filePath, safeStorage: { isAsyncEncryptionAvailable: async () => { throw new Error('Must not encrypt a local provider key.'); } } });
+  try {
+    const settings = await store.save({ provider: 'ollama', model: 'qwen3:8b' });
+    assert.equal(settings.model, 'qwen3:8b');
+    assert.equal(settings.configured, false);
+    assert.equal(await store.getApiKey('ollama'), null);
+    assert.equal((await readFile(filePath, 'utf8')).includes('qwen3:8b'), true);
+    await assert.rejects(store.save({ provider: 'ollama', model: 'https://remote.example/model' }), /valid model ID/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('OpenAI Responses request is stateless and extracts generated text', async () => {
   let requestUrl;
   let requestOptions;

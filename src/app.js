@@ -437,8 +437,10 @@ form.addEventListener('submit', async (event) => {
       return;
     }
     const settings = await window.obavenus.getProviderSettings();
+    const ollamaStatus = settings.provider === 'ollama' ? await window.obavenus.getOllamaStatus() : null;
     const accountConnectedMode = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
-      || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account';
+      || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
+      || settings.provider === 'ollama' && ollamaStatus?.connected;
     if (!settings.configured && !accountConnectedMode) {
       submittedMessage.localOnly = true;
       const providerName = { openai: 'GPT', anthropic: 'Claude', gemini: 'Gemini', xai: 'Grok' }[settings.provider] || 'AI provider';
@@ -999,15 +1001,18 @@ async function updateProviderBadge() {
   const badge = document.querySelector('#provider-settings');
   try {
     const settings = await window.obavenus.getProviderSettings();
-    const providerName = { openai: settings.openaiAuthMethod === 'chatgpt' ? 'ChatGPT' : 'GPT', anthropic: 'Claude', xai: 'Grok' }[settings.provider] || 'AI';
+    const providerName = { openai: settings.openaiAuthMethod === 'chatgpt' ? 'ChatGPT' : 'GPT', anthropic: 'Claude', xai: 'Grok', ollama: 'Ollama' }[settings.provider] || 'AI';
     const chatgptConnected = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
       ? await window.obavenus.getChatGPTSession().then((session) => session.sharing).catch(() => false)
       : false;
     const geminiConnected = settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
       ? await window.obavenus.getGeminiStatus().then((status) => status.connected).catch(() => false)
       : false;
+    const ollamaConnected = settings.provider === 'ollama'
+      ? await window.obavenus.getOllamaStatus().then((status) => status.connected).catch(() => false)
+      : false;
     const displayName = settings.provider === 'gemini' ? 'Gemini' : providerName;
-    badge.textContent = (settings.configured || chatgptConnected || geminiConnected)
+    badge.textContent = (settings.configured || chatgptConnected || geminiConnected || ollamaConnected)
       ? `${displayName} · ${settings.model} connected · Settings`
       : `${displayName} not connected · Settings`;
     return settings;
@@ -1036,6 +1041,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     removeProviderKeyButton.hidden = !settings.configured;
     await updateChatGPTControls();
     await updateGeminiControls();
+    if (providerSelect.value === 'ollama') await updateOllamaStatus();
   } catch (error) {
     providerFormStatus.textContent = error.message || 'Could not load settings.';
   }
@@ -1092,7 +1098,23 @@ providerSelect.addEventListener('change', async () => {
   removeProviderKeyButton.hidden = !connected;
   await updateChatGPTControls();
   await updateGeminiControls();
+  if (providerSelect.value === 'ollama') await updateOllamaStatus();
 });
+
+document.querySelector('#ollama-refresh').addEventListener('click', () => updateOllamaStatus());
+async function updateOllamaStatus() {
+  const statusElement = document.querySelector('#ollama-status');
+  const list = document.querySelector('#chatgpt-model-options');
+  try {
+    const status = await window.obavenus.getOllamaStatus();
+    statusElement.textContent = status.connected
+      ? status.models.length ? `Connected · ${status.models.length} local model${status.models.length === 1 ? '' : 's'} found.` : 'Ollama is running, but no models are installed. Run ollama pull qwen3 in Terminal.'
+      : status.error;
+    list.replaceChildren(...status.models.map((model) => new Option(model, model)));
+    if (!providerModelInput.value && status.models.length) providerModelInput.value = status.models[0];
+    await updateProviderBadge();
+  } catch (error) { statusElement.textContent = error.message || 'Could not check Ollama.'; }
+}
 
 authMethodSelect.addEventListener('change', () => { updateChatGPTControls(); updateProviderDisclosure(); });
 geminiAuthSelect.addEventListener('change', () => { updateGeminiControls(); updateProviderDisclosure(); });
@@ -1180,7 +1202,7 @@ chatgptDisconnectButton.addEventListener('click', async () => {
 });
 
 function updateProviderFormLabels() {
-  const names = { openai: 'OpenAI', anthropic: 'Anthropic (Claude)', gemini: 'Google Gemini', xai: 'xAI (Grok)' };
+  const names = { openai: 'OpenAI', anthropic: 'Anthropic (Claude)', gemini: 'Google Gemini', xai: 'xAI (Grok)', ollama: 'Ollama local models' };
   const providerName = names[providerSelect.value] || 'Provider';
   document.querySelector('#provider-key-label').textContent = `${providerName} API key`;
   document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
@@ -1189,7 +1211,9 @@ function updateProviderFormLabels() {
   document.querySelector('#gemini-auth-label').hidden = providerSelect.value !== 'gemini';
   geminiAuthSelect.hidden = providerSelect.value !== 'gemini';
   const accountMode = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt'
-    || providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
+    || providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account'
+    || providerSelect.value === 'ollama';
+  document.querySelector('#ollama-settings').hidden = providerSelect.value !== 'ollama';
   document.querySelector('#provider-key-label').hidden = accountMode;
   providerKeyInput.hidden = accountMode;
   providerKeyState.hidden = accountMode;
@@ -1197,22 +1221,26 @@ function updateProviderFormLabels() {
   chatgptConnection.hidden = providerSelect.value !== 'openai' || authMethodSelect.value !== 'chatgpt';
   geminiConnection.hidden = providerSelect.value !== 'gemini' || geminiAuthSelect.value !== 'google-account';
   const note = document.querySelector('#provider-auth-note');
-  note.hidden = !['anthropic', 'xai'].includes(providerSelect.value);
+  note.hidden = !['anthropic', 'xai', 'ollama'].includes(providerSelect.value);
   note.textContent = providerSelect.value === 'anthropic'
     ? 'Claude Pro/Max sign-in is for Anthropic apps such as Claude Code. For third-party apps, Anthropic directs developers to use a Console API key, billed separately from your subscription.'
-    : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.' : '';
-  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7' };
+    : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.'
+      : providerSelect.value === 'ollama' ? 'Ollama runs models locally. It must be running on this Mac, and the selected model must already be installed.' : '';
+  const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7', ollama: 'qwen3' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
   providerModelInput.dataset.provider = providerSelect.value;
 }
 
 async function updateProviderDisclosure() {
-  const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI' }[providerSelect.value] || 'selected provider';
+  const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI', ollama: 'local Ollama' }[providerSelect.value] || 'selected provider';
   const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
   const isGeminiOAuth = providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
+  const isOllama = providerSelect.value === 'ollama';
   const profile = await window.obavenus.getProfile().catch(() => ({ shareWithAI: false }));
   const profileNote = profile.shareWithAI ? ' Your saved career profile is also included in AI requests.' : '';
-  document.querySelector('#provider-request-disclosure').textContent = isChatGPT
+  document.querySelector('#provider-request-disclosure').textContent = isOllama
+    ? `When you press Send, chat text and attached files go only to your local Ollama service on this Mac. Obavenus does not send that request to a hosted AI provider.${profileNote}`
+    : isChatGPT
     ? `When you press Send, this chat and attached files go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.${profileNote}`
     : isGeminiOAuth
       ? `When you press Send, this chat and attached files go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.${profileNote}`
