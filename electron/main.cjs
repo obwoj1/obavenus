@@ -91,7 +91,9 @@ async function runScheduledTasks() {
       await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
       broadcastTask({ id: task.id, status: 'running' });
       try {
-        const result = await scheduledLocalAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
+        const result = task.provider === 'configured-ai'
+          ? await dispatchProviderMessages([{ role: 'user', text: task.prompt }])
+          : await scheduledLocalAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
         const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
         broadcastTask({ id: task.id, status: completed.status, result: completed.result });
         if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
@@ -281,6 +283,15 @@ ipcMain.handle('browser:open', (_event, rawUrl) => getResearchBrowser().open(raw
 ipcMain.handle('browser:import-page', () => getResearchBrowser().readPage());
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
+  if (task?.provider === 'configured-ai') {
+    const settings = await getProviderStore().getPublicSettings();
+    const chatGPTConnected = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
+      && (await (await getChatGPTClient()).getSession()).sharing;
+    const geminiConnected = settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
+      && (await getGeminiConnector().status()).connected;
+    const ollamaConnected = settings.provider === 'ollama' && (await listOllamaModels()).connected;
+    if (!settings.configured && !chatGPTConnected && !geminiConnected && !ollamaConnected) throw new Error('Connect the selected AI provider before scheduling this task.');
+  }
   let projectPath = '';
   try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
   catch (error) { if (error.code !== 'ENOENT') throw error; }

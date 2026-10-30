@@ -871,6 +871,8 @@ document.querySelector('#schedule-toggle').addEventListener('click', () => {
   const panel = document.querySelector('#schedule-panel');
   panel.hidden = !panel.hidden;
   if (!panel.hidden) {
+    const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
+    document.querySelector('#schedule-provider').value = localMode?.[1] || 'configured-ai';
     const earliest = new Date(Date.now() + 60_000);
     earliest.setSeconds(0, 0);
     const local = new Date(earliest.getTime() - earliest.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -879,11 +881,9 @@ document.querySelector('#schedule-toggle').addEventListener('click', () => {
   }
 });
 document.querySelector('#schedule-submit').addEventListener('click', async () => {
-  const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
-  const provider = localMode?.[1] || '';
+  const provider = document.querySelector('#schedule-provider').value;
   const prompt = promptInput.value.trim();
   const executeAt = new Date(document.querySelector('#schedule-at').value).getTime();
-  if (!provider) { runStatus.hidden = false; runStatus.textContent = 'Choose a local CLI mode before scheduling.'; return; }
   if (!prompt) { runStatus.hidden = false; runStatus.textContent = 'Enter the task in the composer first.'; return; }
   try {
     await window.obavenus.scheduleLocalTask({ provider, prompt, executeAt });

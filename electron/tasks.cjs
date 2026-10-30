@@ -1,6 +1,6 @@
 const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
-const PROVIDERS = new Set(['claude', 'codex', 'gemini']);
+const PROVIDERS = new Set(['claude', 'codex', 'gemini', 'configured-ai']);
 
 function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
   async function read() {
@@ -24,7 +24,7 @@ function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
     async list() { return (await read()).sort((a, b) => a.executeAt - b.executeAt); },
     async schedule({ prompt, provider, executeAt, projectPath = '' }) {
       if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 20_000) throw new TypeError('Task prompt must contain 1–20,000 characters.');
-      if (!PROVIDERS.has(provider)) throw new TypeError('Scheduled tasks require a local CLI provider.');
+      if (!PROVIDERS.has(provider)) throw new TypeError('Choose a local CLI or the configured AI provider.');
       const at = new Date(executeAt).getTime();
       if (!Number.isFinite(at) || at < now() + 60_000 || at > now() + 365 * 24 * 60 * 60 * 1000) throw new RangeError('Choose a time at least one minute from now and within the next year.');
       if (typeof projectPath !== 'string' || projectPath.length > 2000) throw new TypeError('Invalid project folder.');
