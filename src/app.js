@@ -416,10 +416,17 @@ form.addEventListener('submit', async (event) => {
   promptInput.value = '';
 
   try {
+    const selectedSkillId = document.querySelector('#skill-choice').value;
+    const skillCatalog = selectedSkillId ? await window.obavenus.getSkills() : [];
+    const selectedSkill = skillCatalog.find((skill) => skill.id === selectedSkillId);
     if (localProvider) {
       const messages = current.messages
         .filter((message) => message.status !== 'pending' && message.status !== 'error')
         .map(({ role, text, context }) => ({ role, text, context }));
+      if (selectedSkill) {
+        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
+      }
       const status = await window.obavenus.getLocalAgentStatus();
       if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
       pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages);
@@ -439,6 +446,10 @@ form.addEventListener('submit', async (event) => {
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
+      if (selectedSkill) {
+        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
+      }
       if (teamMode) {
         const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess);
         pendingReply.text = result.text;
@@ -991,6 +1002,16 @@ async function refreshChatGPTModels() {
   }));
   if (!models.some((item) => item.slug === providerModelInput.value)) providerModelInput.value = models[0]?.slug || providerModelInput.value;
 }
+
+window.obavenus.getSkills().then((skills) => {
+  const select = document.querySelector('#skill-choice');
+  skills.forEach((skill) => {
+    const option = document.createElement('option');
+    option.value = skill.id;
+    option.textContent = skill.name;
+    select.append(option);
+  });
+}).catch(() => {});
 
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);

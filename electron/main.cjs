@@ -12,6 +12,7 @@ const { createProfileStore } = require('./profile.cjs');
 const { createSearchPlan } = require('./job-search.cjs');
 const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 const { createLocalAgent } = require('./local-agent.cjs');
+const { SKILLS } = require('./skills.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -158,6 +159,7 @@ ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettin
 ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore().save(settings));
 
 ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
+ipcMain.handle('skills:list', () => SKILLS);
 ipcMain.handle('local-agent:status', () => localAgent.status());
 ipcMain.handle('local-agent:run', async (_event, { provider, messages }) => {
   let projectPath;
