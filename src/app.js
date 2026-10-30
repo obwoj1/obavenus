@@ -308,7 +308,7 @@ function renderMessages() {
       const trace = document.createElement('details');
       trace.className = 'agent-trace';
       const summary = document.createElement('summary');
-      summary.textContent = 'Team activity · lead and 2 specialists';
+      summary.textContent = `Team activity · ${message.agents.length} agents`;
       const list = document.createElement('ol');
       message.agents.forEach((agent) => {
         const item = document.createElement('li');

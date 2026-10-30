@@ -91,7 +91,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
         outputBytes += chunk.length;
         if (outputBytes > maxOutputBytes) {
           child.kill('SIGKILL');
-          finish(new Error('Local agent output exceeded the 2 MB safety limit.'));
+          finish(new Error(`Local agent output exceeded the ${Math.ceil(maxOutputBytes / (1024 * 1024))} MB safety limit.`));
           return;
         }
         if (target === 'stdout') stdout += chunk.toString('utf8');
@@ -106,7 +106,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
       });
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
-        finish(new Error('Local agent timed out after three minutes.'));
+        finish(new Error(`Local agent timed out after ${Math.ceil(timeoutMs / 60_000)} minutes.`));
       }, timeoutMs);
       if (config.stdin) child.stdin.end(prompt);
       else child.stdin.end();

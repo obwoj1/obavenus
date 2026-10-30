@@ -20,8 +20,10 @@ const { createResearchBrowser } = require('./research-browser.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
+const scheduledLocalAgent = createLocalAgent({ timeoutMs: 2 * 60 * 60 * 1000, maxOutputBytes: 8 * 1024 * 1024 });
 let taskStore;
 let taskTimer;
+let taskRunInFlight = false;
 let skillStore;
 let agentStore;
 let researchBrowser;
@@ -56,30 +58,36 @@ function broadcastTask(task) {
 }
 
 async function runScheduledTasks() {
-  const store = getTaskStore();
-  const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
-  for (const task of due) {
-    const attempt = (task.attempts || 0) + 1;
-    await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
-    broadcastTask({ id: task.id, status: 'running' });
-    try {
-      const result = await localAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
-      const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
-      broadcastTask({ id: task.id, status: completed.status, result: completed.result });
-      if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
-    } catch (error) {
-      const message = (error.message || 'Local task failed.').slice(0, 2000);
-      if (attempt < 3) {
-        const retryAt = Date.now() + (attempt === 1 ? 60_000 : 5 * 60_000);
-        const retry = await store.update(task.id, { status: 'queued', executeAt: retryAt, error: message, retryAt });
-        broadcastTask({ id: task.id, status: retry.status, error: retry.error, executeAt: retry.executeAt, attempts: attempt });
-      } else {
-        const failed = await store.update(task.id, { status: 'error', error: message, completedAt: Date.now() });
-        broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
+  if (taskRunInFlight) return;
+  taskRunInFlight = true;
+  try {
+    const store = getTaskStore();
+    const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
+    for (const task of due) {
+      const attempt = (task.attempts || 0) + 1;
+      await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
+      broadcastTask({ id: task.id, status: 'running' });
+      try {
+        const result = await scheduledLocalAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
+        const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
+        broadcastTask({ id: task.id, status: completed.status, result: completed.result });
+        if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
+      } catch (error) {
+        const message = (error.message || 'Local task failed.').slice(0, 2000);
+        if (attempt < 3) {
+          const retryAt = Date.now() + (attempt === 1 ? 60_000 : 5 * 60_000);
+          const retry = await store.update(task.id, { status: 'queued', executeAt: retryAt, error: message, retryAt });
+          broadcastTask({ id: task.id, status: retry.status, error: retry.error, executeAt: retry.executeAt, attempts: attempt });
+        } else {
+          const failed = await store.update(task.id, { status: 'error', error: message, completedAt: Date.now() });
+          broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
+        }
       }
     }
+  } finally {
+    taskRunInFlight = false;
+    await scheduleNextTask().catch(() => {});
   }
-  await scheduleNextTask();
 }
 
 async function recoverInterruptedTasks() {
