@@ -255,7 +255,7 @@
               <div class="composer-context" id="composer-context" hidden></div>
               <textarea aria-label="Message Obavenus" placeholder="Ask a question or describe a task…"></textarea>
               <small class="run-status" id="run-status" role="status" aria-live="polite" hidden></small>
-              <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="A lead and two parallel specialists can call read-only project and Gmail tools. Each tool call makes another request to your selected provider. This run does not modify files; provider billing applies."><option value="solo">One response</option><option value="team">Team · lead + 2 specialists</option></select><span>Return to send · Shift + Return for a new line</span></div><button class="send" type="submit">Send ↗</button></div>
+              <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="Team runs use multiple model requests. Project-write mode lets the analyst create or replace text files only inside the project folder you selected; provider usage may be billed."><option value="solo">One response</option><option value="team">Team · read-only</option><option value="team-write">Team · write project files</option></select><span>Return to send · Shift + Return for a new line</span></div><button class="send" type="submit">Send ↗</button></div>
             </form>
             <div class="suggestions" aria-label="Starter prompts">
               <button type="button" data-prompt="Help me plan a feature. Ask any important clarifying questions, then give me a practical plan with clear milestones.">Plan a feature<br><small>Shape an idea into clear milestones</small></button>
@@ -265,7 +265,7 @@
               <button type="button" id="federal-jobs-open">Find federal jobs<br><small>Turn offer examples into current search links</small></button>
             </div>
           </section>
-          <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. In Team mode, relevant text files are read and sent to your selected provider as context; files are never changed.</div></aside>
+          <aside class="context"><h2>Workspace context</h2><div class="context-card" id="context-card"><strong>Nothing connected yet</strong>Choose a project folder to see its top-level file names. Team runs can read relevant files; changing files requires selecting the project-write mode for that run.</div></aside>
         </div>
       </main>
     </div>

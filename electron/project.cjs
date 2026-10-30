@@ -1,4 +1,4 @@
-const { readFile, readdir, realpath, stat, lstat } = require('node:fs/promises');
+const { readFile, readdir, realpath, stat, lstat, mkdir, open } = require('node:fs/promises');
 const path = require('node:path');
 
 const MAX_PROJECT_FILE_BYTES = 64 * 1024;
@@ -7,6 +7,7 @@ const MAX_CONTEXT_BYTES = 24 * 1024;
 const MAX_INDEXED_FILES = 1200;
 const MAX_SCANNED_BYTES = 5 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'release', '.next', '.turbo']);
+const MAX_AGENT_WRITE_BYTES = 256 * 1024;
 const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.yaml', '.yml']);
 
 async function describeProject(selectedPath) {
@@ -127,6 +128,42 @@ async function readProjectRelativeFile(projectPath, relativeName) {
   return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length };
 }
 
+async function writeProjectFile(projectPath, relativeName, content) {
+  if (typeof relativeName !== 'string' || !relativeName || path.isAbsolute(relativeName)
+    || relativeName.length > 500 || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..' || part.startsWith('.') || IGNORED_DIRECTORIES.has(part.toLowerCase()))) {
+    throw new TypeError('Use a non-hidden relative path inside the project, without traversal or protected directories.');
+  }
+  if (typeof content !== 'string' || content.includes('\0')) throw new TypeError('File content must be plain text.');
+  const bytes = Buffer.from(content, 'utf8');
+  if (bytes.length > MAX_AGENT_WRITE_BYTES) throw new RangeError('Generated files must be 256 KB or smaller.');
+  const parts = relativeName.split(/[\\/]/);
+  const extension = path.extname(parts.at(-1)).toLowerCase();
+  if (!TEXT_EXTENSIONS.has(extension)) throw new TypeError('Only supported plain-text project files can be written.');
+  const root = await realpath(projectPath);
+  let directory = root;
+  for (const part of parts.slice(0, -1)) {
+    directory = path.join(directory, part);
+    try {
+      const details = await lstat(directory);
+      if (details.isSymbolicLink() || !details.isDirectory()) throw new TypeError('Project folders must be regular directories, not symlinks.');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      await mkdir(directory, { mode: 0o700 });
+      const created = await lstat(directory);
+      if (created.isSymbolicLink() || !created.isDirectory()) throw new TypeError('Could not safely create a project folder.');
+    }
+    if (!path.resolve(directory).startsWith(`${root}${path.sep}`)) throw new TypeError('Project path escaped the selected folder.');
+  }
+  const target = path.join(directory, parts.at(-1));
+  const before = await lstat(target).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+  if (before && (!before.isFile() || before.isSymbolicLink())) throw new TypeError('Only regular files can be replaced; symlinks and special files are blocked.');
+  if (before && before.size > MAX_AGENT_WRITE_BYTES) throw new RangeError('Existing file is larger than the 256 KB write limit.');
+  const { constants } = require('node:fs');
+  const handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW || 0), 0o600);
+  try { await handle.writeFile(bytes); } finally { await handle.close(); }
+  return { path: parts.join(path.sep), bytes: bytes.length, created: !before };
+}
+
 async function listProjectFiles(projectPath, limit = 500) {
   const root = await realpath(projectPath);
   const files = [];
@@ -149,4 +186,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES };
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };

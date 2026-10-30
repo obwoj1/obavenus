@@ -119,6 +119,7 @@ function loadConversations() {
         agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
           agent && typeof agent.role === 'string' && typeof agent.text === 'string',
         ).slice(0, 4).map((agent) => ({ ...agent, tools: Array.isArray(agent.tools) ? agent.tools.filter((tool) => typeof tool === 'string').slice(0, 12) : [] })) : [],
+        changes: Array.isArray(message.changes) ? message.changes.filter((change) => change && typeof change.path === 'string').slice(0, 50).map((change) => ({ path: change.path, bytes: Number(change.bytes) || 0, created: change.created === true })) : [],
       })),
     }));
   } catch {
@@ -189,8 +190,8 @@ function renderProject(project) {
   });
   const note = document.createElement('small');
   note.textContent = project.truncated
-    ? 'Showing the first 80 entries. Team mode can read relevant text files as context; it never changes files.'
-    : `${project.entries.length} top-level entries · Team mode can read relevant text files as context; it never changes files.`;
+    ? 'Showing the first 80 entries. Team mode reads relevant text files; project writes require selecting “Team · write project files” for that run.'
+    : `${project.entries.length} top-level entries · Project writes require selecting “Team · write project files” for that run.`;
   contextCard.append(contextTitle, fileList, note);
 }
 
@@ -325,6 +326,12 @@ function renderMessages() {
       trace.append(summary, list);
       rendered.insertAdjacentElement('afterend', trace);
     }
+    if (message.changes?.length) {
+      const changed = document.createElement('small');
+      changed.className = 'message-context';
+      changed.textContent = `Files written in the selected project: ${message.changes.map((change) => `${change.path}${change.created ? ' (created)' : ' (updated)'}`).join(', ')}`;
+      rendered.append(changed);
+    }
   });
   renderRecentWork();
 }
@@ -364,6 +371,11 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const prompt = promptInput.value.trim();
   if (!prompt || sending) return;
+  if (runMode.value === 'team-write' && !selectedProject) {
+    runStatus.hidden = false;
+    runStatus.textContent = 'Choose a project folder before enabling project writes.';
+    return;
+  }
 
   let current = getActiveConversation();
   if (!current) {
@@ -392,10 +404,12 @@ form.addEventListener('submit', async (event) => {
   form.querySelector('.send').disabled = true;
   form.querySelector('.send').textContent = 'Sending…';
   runMode.disabled = true;
-  runStatus.hidden = runMode.value !== 'team';
-  runStatus.textContent = runMode.value === 'team' ? 'Preparing the lead agent…' : '';
+  const teamMode = runMode.value.startsWith('team');
+  const writeAccess = runMode.value === 'team-write';
+  runStatus.hidden = !teamMode;
+  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : '';
   const teamRunId = crypto.randomUUID();
-  activeTeamRunId = runMode.value === 'team' ? teamRunId : null;
+  activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
   renderMessages();
   promptInput.value = '';
@@ -414,10 +428,11 @@ form.addEventListener('submit', async (event) => {
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
-      if (runMode.value === 'team') {
-        const result = await window.obavenus.runTeam(messages, teamRunId);
+      if (teamMode) {
+        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
+        pendingReply.changes = result.changes || [];
       } else {
         pendingReply.text = await window.obavenus.sendChat(messages);
       }

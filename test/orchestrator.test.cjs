@@ -48,6 +48,30 @@ test('team workflow rejects a conversation without a user message', async () => 
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });
 
+test('write mode exposes the write tool only to the implementation specialist and reports file changes', async () => {
+  const toolAvailability = [];
+  const executeTool = async () => ({ saved: true });
+  executeTool.getChanges = () => [{ path: 'notes.md', bytes: 5, created: true }];
+  const result = await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Write a note.' }],
+    writeAccess: true,
+    executeTool,
+    dispatch: async (messages, { tools }) => {
+      const role = messages[0].text;
+      toolAvailability.push({ role, canWrite: tools.some((tool) => tool.name === 'write_project_file') });
+      if (role.includes('You are the lead agent.')) return 'Plan.';
+      if (role.includes('You are an independent specialist agent.')) return 'Analysis.';
+      if (role.includes('You are an independent reviewer.')) return 'Review.';
+      return 'Done.';
+    },
+  });
+  assert.equal(toolAvailability.find((item) => item.role.includes('You are an independent specialist agent.')).canWrite, true);
+  assert.equal(toolAvailability.find((item) => item.role.includes('You are the lead agent.')).canWrite, false);
+  assert.equal(toolAvailability.find((item) => item.role.includes('You are an independent reviewer.')).canWrite, false);
+  assert.equal(toolAvailability.find((item) => item.role.includes('You are the lead agent finishing')).canWrite, false);
+  assert.deepEqual(result.changes, [{ path: 'notes.md', bytes: 5, created: true }]);
+});
+
 test('tool agent executes structured model tool calls and returns the follow-up answer', async () => {
   const transcript = [];
   let round = 0;

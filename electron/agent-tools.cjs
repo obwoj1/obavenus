@@ -1,4 +1,10 @@
-const { collectProjectContext, listProjectFiles, readProjectRelativeFile } = require('./project.cjs');
+const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile } = require('./project.cjs');
+
+const WRITE_PROJECT_FILE = {
+  name: 'write_project_file',
+  description: 'Create or replace a plain-text file inside the selected project folder. Only available when the user explicitly enables project writes for this run. Never write outside the selected folder or into hidden, dependency, build, or release paths.',
+  parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative path inside the project, for example reports/plan.md.' }, content: { type: 'string', description: 'Complete new file contents.' } }, required: ['path', 'content'], additionalProperties: false },
+};
 
 const TOOL_DEFINITIONS = [
   {
@@ -33,8 +39,9 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, fetchImpl = globalThis.fetch }) {
-  return async function executeAgentTool(name, args = {}) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, writeAccess = false, fetchImpl = globalThis.fetch }) {
+  const changes = [];
+  const executeAgentTool = async function executeAgentTool(name, args = {}) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new TypeError('Tool arguments must be an object.');
     if (name === 'list_project_files') {
       if (!projectPath) return { error: 'No project folder is open.' };
@@ -49,6 +56,13 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, fetchIm
       if (!projectPath) return { error: 'No project folder is open.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Project file path must be 500 characters or fewer.');
       return readProjectRelativeFile(projectPath, args.path);
+    }
+    if (name === 'write_project_file') {
+      if (!projectPath || !writeAccess) return { error: 'Project writes are disabled for this run. Select the project-write mode to authorize file changes.' };
+      if (typeof args.path !== 'string' || args.path.length > 500 || typeof args.content !== 'string') throw new TypeError('Provide a relative path and plain-text file content.');
+      const result = await writeProjectFile(projectPath, args.path, args.content);
+      changes.push(result);
+      return { ...result, saved: true };
     }
     if (name === 'search_gmail') {
       if (typeof args.query !== 'string' || args.query.length > 300) throw new TypeError('Gmail query must be 300 characters or fewer.');
@@ -78,13 +92,16 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, fetchIm
     }
     throw new Error(`Unknown agent tool: ${name}`);
   };
+  executeAgentTool.getChanges = () => changes.map((change) => ({ ...change }));
+  return executeAgentTool;
 }
 
-async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4 }) {
+async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false }) {
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
-    const response = await dispatch(transcript, { tools: TOOL_DEFINITIONS });
+    const tools = writeAccess ? [...TOOL_DEFINITIONS, WRITE_PROJECT_FILE] : TOOL_DEFINITIONS;
+    const response = await dispatch(transcript, { tools });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';
     const current = response.toolCalls.slice(0, maxCalls - calls);
@@ -109,4 +126,4 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   return typeof final === 'string' ? final : final?.text || 'I reached the tool-use limit before producing a final answer.';
 }
 
-module.exports = { TOOL_DEFINITIONS, createAgentToolExecutor, runToolAgent };
+module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, createAgentToolExecutor, runToolAgent };

@@ -209,7 +209,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
 
 ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
 
-ipcMain.handle('agents:run-team', async (event, { messages, runId }) => {
+ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
   const preparedMessages = messages.map((message) => ({ ...message }));
   const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
@@ -227,6 +227,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId }) => {
   }
   const executeTool = createAgentToolExecutor({
     projectPath,
+    writeAccess: writeAccess === true && Boolean(projectPath),
     getProfile: () => getProfileStore().get(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
@@ -234,6 +235,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId }) => {
     messages: preparedMessages,
     dispatch: dispatchProviderMessages,
     executeTool,
+    writeAccess: writeAccess === true && Boolean(projectPath),
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
     },
