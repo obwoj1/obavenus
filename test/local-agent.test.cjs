@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
-const { createLocalAgent } = require('../electron/local-agent.cjs');
+const { COMMANDS, createLocalAgent } = require('../electron/local-agent.cjs');
 
 function fakeSpawn(calls, { output = 'answer', code = 0 } = {}) {
   return (command, args, options) => {
@@ -40,6 +40,15 @@ test('Codex uses read-only sandbox and feeds the prompt over stdin', async () =>
   await agent.run({ provider: 'codex', messages: [{ role: 'user', text: 'Inspect' }] });
   assert.deepEqual(calls[0].args.slice(0, 5), ['exec', '--sandbox', 'read-only', '--ask-for-approval', 'never']);
   assert.equal(calls[0].args.at(-1), '-');
+});
+
+test('project-edit mode uses provider-specific edit controls and requires a selected folder', async () => {
+  assert.ok(COMMANDS.claude.args('prompt', true).includes('acceptEdits'));
+  assert.ok(COMMANDS.claude.args('prompt', true).includes('Bash'));
+  assert.ok(COMMANDS.codex.args('prompt', true).includes('workspace-write'));
+  assert.ok(COMMANDS.gemini.args('prompt', true).includes('auto_edit'));
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn([]) });
+  assert.throws(() => agent.run({ provider: 'codex', messages: [{ role: 'user', text: 'Edit' }], writeAccess: true }), /Choose a project folder/);
 });
 
 test('local CLI errors are useful and attachment paths are validated', async () => {

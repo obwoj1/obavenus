@@ -37,6 +37,8 @@
 
 ## Next
 
+- Added explicit local project-edit modes for the provider CLIs with provider-specific sandbox and permission flags; edits require a selected folder and scheduled work remains read-only.
+
 - Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.
 - Verify the Gemini OAuth consent setup and a first request against a user-configured Google Cloud project.
 - Add streaming responses and cancellation for long-running model requests.

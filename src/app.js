@@ -371,9 +371,11 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const prompt = promptInput.value.trim();
   if (!prompt || sending) return;
-  if (runMode.value === 'team-write' && !selectedProject) {
+  const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
+  const localWriteAccess = Boolean(localMode?.[2]);
+  if ((runMode.value === 'team-write' || localWriteAccess) && !selectedProject) {
     runStatus.hidden = false;
-    runStatus.textContent = 'Choose a project folder before enabling project writes.';
+    runStatus.textContent = 'Choose a project folder before enabling project edits.';
     return;
   }
 
@@ -405,10 +407,10 @@ form.addEventListener('submit', async (event) => {
   form.querySelector('.send').textContent = 'Sending…';
   runMode.disabled = true;
   const teamMode = runMode.value.startsWith('team');
-  const localProvider = runMode.value.startsWith('local-') ? runMode.value.slice('local-'.length) : null;
-  const writeAccess = runMode.value === 'team-write';
+  const localProvider = localMode?.[1] || null;
+  const writeAccess = runMode.value === 'team-write' || localWriteAccess;
   runStatus.hidden = !teamMode && !localProvider;
-  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? `Checking local ${localProvider} CLI…` : '';
+  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
   const teamRunId = crypto.randomUUID();
   activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
@@ -429,7 +431,7 @@ form.addEventListener('submit', async (event) => {
       }
       const status = await window.obavenus.getLocalAgentStatus();
       if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
-      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages);
+      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess);
       pendingReply.status = 'complete';
       return;
     }
@@ -688,7 +690,8 @@ document.querySelector('#schedule-toggle').addEventListener('click', () => {
   }
 });
 document.querySelector('#schedule-submit').addEventListener('click', async () => {
-  const provider = runMode.value.startsWith('local-') ? runMode.value.slice('local-'.length) : '';
+  const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
+  const provider = localMode?.[1] || '';
   const prompt = promptInput.value.trim();
   const executeAt = new Date(document.querySelector('#schedule-at').value).getTime();
   if (!provider) { runStatus.hidden = false; runStatus.textContent = 'Choose a local CLI mode before scheduling.'; return; }
