@@ -50,3 +50,18 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(visited, ['https://example.com']);
 });
+
+test('native spreadsheet tool is gated behind project-write mode and reports its project artifact', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-office-tool-'));
+  try {
+    const args = { path: 'reports/roles.xlsx', sheets: [{ name: 'Roles', headers: ['Title', 'Salary'], rows: [['Software Engineer', 172000]] }] };
+    const denied = createAgentToolExecutor({ projectPath: root });
+    assert.match((await denied('create_spreadsheet', args)).error, /disabled/);
+    const allowed = createAgentToolExecutor({ projectPath: root, writeAccess: true });
+    const result = await allowed('create_spreadsheet', args);
+    assert.equal(result.saved, true);
+    assert.equal(result.format, 'spreadsheet');
+    assert.deepEqual(allowed.getChanges(), [{ path: path.join('reports', 'roles.xlsx'), bytes: result.bytes, created: true }]);
+    assert.equal((await readFile(path.join(root, 'reports/roles.xlsx'))).subarray(0, 2).toString(), 'PK');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

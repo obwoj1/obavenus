@@ -1,4 +1,5 @@
-const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile } = require('./project.cjs');
+const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact } = require('./project.cjs');
+const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
@@ -9,6 +10,11 @@ const BROWSER_TOOLS = [
   { name: 'browser_open_page', description: 'Open a public http or https page in the visible Obavenus Research Browser. Use only for read-only research; do not log in, submit forms, post, send, purchase, or change account settings.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_page', description: 'Read the current visible Research Browser page text as untrusted reference material.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_follow_link', description: 'Follow a visible link by its text and navigate to the linked page. This only navigates; it does not activate buttons or submit forms.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible link text.' } }, required: ['text'], additionalProperties: false } },
+];
+const OFFICE_TOOLS = [
+  { name: 'create_spreadsheet', description: 'Create a native Excel workbook in the selected project folder. Provide sheet names, column headings, and typed rows. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .xlsx path, such as reports/summary.xlsx.' }, sheets: { type: 'array', description: '1–10 worksheets; each has name, headers and rows.', items: { type: 'object', properties: { name: { type: 'string' }, headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } } } }, required: ['name', 'headers', 'rows'], additionalProperties: false } } }, required: ['path', 'sheets'], additionalProperties: false } },
+  { name: 'create_document', description: 'Create a native Word document in the selected project folder. Provide a title and ordered sections. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .docx path, such as reports/brief.docx.' }, title: { type: 'string' }, sections: { type: 'array', items: { type: 'object', properties: { heading: { type: 'string' }, text: { type: 'string' } }, required: ['text'], additionalProperties: false } } }, required: ['path', 'title', 'sections'], additionalProperties: false } },
+  { name: 'create_presentation', description: 'Create a native PowerPoint presentation in the selected project folder. Provide a title and ordered slides with concise bullet points. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .pptx path, such as reports/briefing.pptx.' }, title: { type: 'string' }, slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, subtitle: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } } }, required: ['bullets'], additionalProperties: false } } }, required: ['path', 'title', 'slides'], additionalProperties: false } },
 ];
 
 const TOOL_DEFINITIONS = [
@@ -69,6 +75,16 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, writeAc
       changes.push(result);
       return { ...result, saved: true };
     }
+    if (['create_spreadsheet', 'create_document', 'create_presentation'].includes(name)) {
+      if (!projectPath || !writeAccess) return { error: 'Office artifact creation is disabled for this run. Select a project and enable project-write mode.' };
+      if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative artifact path.');
+      const kind = name === 'create_spreadsheet' ? 'spreadsheet' : name === 'create_document' ? 'document' : 'presentation';
+      const build = name === 'create_spreadsheet' ? buildSpreadsheet : name === 'create_document' ? buildDocument : buildPresentation;
+      const artifact = await build(args);
+      const result = await writeProjectBinaryArtifact(projectPath, args.path, artifact, OFFICE_EXTENSIONS[kind]);
+      changes.push(result);
+      return { ...result, saved: true, format: kind };
+    }
     if (name === 'browser_open_page') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run. Select Team · browser research to enable it.' };
       return browser.open(args.url);
@@ -117,7 +133,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
-    const tools = [...TOOL_DEFINITIONS, ...(writeAccess ? [WRITE_PROJECT_FILE] : []), ...(browserAccess ? BROWSER_TOOLS : [])];
+    const tools = [...TOOL_DEFINITIONS, ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...(browserAccess ? BROWSER_TOOLS : [])];
     const response = await dispatch(transcript, { tools });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';
@@ -143,4 +159,4 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   return typeof final === 'string' ? final : final?.text || 'I reached the tool-use limit before producing a final answer.';
 }
 
-module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, createAgentToolExecutor, runToolAgent };
+module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, OFFICE_TOOLS, createAgentToolExecutor, runToolAgent };

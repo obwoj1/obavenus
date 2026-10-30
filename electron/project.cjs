@@ -128,17 +128,18 @@ async function readProjectRelativeFile(projectPath, relativeName) {
   return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length };
 }
 
-async function writeProjectFile(projectPath, relativeName, content) {
+async function writeProjectArtifact(projectPath, relativeName, content, { extensions = TEXT_EXTENSIONS, maxBytes = MAX_AGENT_WRITE_BYTES, binary = false } = {}) {
   if (typeof relativeName !== 'string' || !relativeName || path.isAbsolute(relativeName)
     || relativeName.length > 500 || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..' || part.startsWith('.') || IGNORED_DIRECTORIES.has(part.toLowerCase()))) {
     throw new TypeError('Use a non-hidden relative path inside the project, without traversal or protected directories.');
   }
-  if (typeof content !== 'string' || content.includes('\0')) throw new TypeError('File content must be plain text.');
-  const bytes = Buffer.from(content, 'utf8');
-  if (bytes.length > MAX_AGENT_WRITE_BYTES) throw new RangeError('Generated files must be 256 KB or smaller.');
+  if (binary ? !Buffer.isBuffer(content) : typeof content !== 'string' || content.includes('\0')) throw new TypeError(binary ? 'Generated artifact data must be a buffer.' : 'File content must be plain text.');
+  const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
+  const limitLabel = maxBytes === MAX_AGENT_WRITE_BYTES ? '256 KB' : `${Math.round(maxBytes / (1024 * 1024))} MB`;
+  if (bytes.length > maxBytes) throw new RangeError(`Generated files must be ${limitLabel} or smaller.`);
   const parts = relativeName.split(/[\\/]/);
   const extension = path.extname(parts.at(-1)).toLowerCase();
-  if (!TEXT_EXTENSIONS.has(extension)) throw new TypeError('Only supported plain-text project files can be written, including Markdown, CSV, TSV, and HTML.');
+  if (!extensions.has(extension)) throw new TypeError('That project artifact format is not supported.');
   const root = await realpath(projectPath);
   let directory = root;
   for (const part of parts.slice(0, -1)) {
@@ -157,11 +158,19 @@ async function writeProjectFile(projectPath, relativeName, content) {
   const target = path.join(directory, parts.at(-1));
   const before = await lstat(target).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
   if (before && (!before.isFile() || before.isSymbolicLink())) throw new TypeError('Only regular files can be replaced; symlinks and special files are blocked.');
-  if (before && before.size > MAX_AGENT_WRITE_BYTES) throw new RangeError('Existing file is larger than the 256 KB write limit.');
+  if (before && before.size > maxBytes) throw new RangeError(`Existing file is larger than the ${limitLabel} write limit.`);
   const { constants } = require('node:fs');
   const handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW || 0), 0o600);
   try { await handle.writeFile(bytes); } finally { await handle.close(); }
   return { path: parts.join(path.sep), bytes: bytes.length, created: !before };
+}
+
+async function writeProjectFile(projectPath, relativeName, content) {
+  return writeProjectArtifact(projectPath, relativeName, content);
+}
+
+async function writeProjectBinaryArtifact(projectPath, relativeName, content, extensions, maxBytes = 8 * 1024 * 1024) {
+  return writeProjectArtifact(projectPath, relativeName, content, { extensions: new Set(extensions), maxBytes, binary: true });
 }
 
 async function listProjectFiles(projectPath, limit = 500) {
@@ -186,4 +195,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };

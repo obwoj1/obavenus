@@ -20,7 +20,10 @@
     "typescript": "^7.0.0"
   },
   "dependencies": {
-    "@siwc/local": "0.1.0"
+    "@siwc/local": "0.1.0",
+    "docx": "^9.15.0",
+    "exceljs": "^4.4.0",
+    "pptxgenjs": "^4.0.1"
   },
   "workspaces": [
     "vendor/sign-in-with-chatgpt-devkit/packages/local"
@@ -45,5 +48,9 @@
         "dmg"
       ]
     }
+  },
+  "overrides": {
+    "image-size": "2.0.4",
+    "uuid": "11.1.1"
   }
 }

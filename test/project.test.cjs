@@ -3,7 +3,7 @@ const { mkdtemp, mkdir, writeFile, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -105,7 +105,7 @@ test('project writes stay inside the selected folder and only create bounded pla
     await assert.rejects(writeProjectFile(project, '../outside.md', 'no'), /relative path/);
     await assert.rejects(writeProjectFile(project, '.git/config', 'no'), /relative path/);
     await assert.rejects(writeProjectFile(project, 'node_modules/file.js', 'no'), /relative path/);
-    await assert.rejects(writeProjectFile(project, 'reports/data.bin', 'no'), /plain-text/);
+    await assert.rejects(writeProjectFile(project, 'reports/data.bin', 'no'), /supported/);
     await assert.rejects(writeProjectFile(project, 'reports/large.txt', 'x'.repeat(256 * 1024 + 1)), /256 KB/);
     await assert.rejects(writeProjectFile(project, 'reports/binary.txt', 'bad\0data'), /plain text/);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -123,5 +123,16 @@ test('project writes reject symlink targets and parent folders', async () => {
     await assert.rejects(writeProjectFile(project, 'linked.txt', 'overwrite'), /regular files/);
     await assert.rejects(writeProjectFile(project, 'linked-dir/escape.txt', 'escape'), /symlinks/);
     assert.equal(await readFile(path.join(root, 'outside.txt'), 'utf8'), 'keep safe');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('binary office artifacts stay within the selected project and approved office extensions', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-binary-'));
+  try {
+    const result = await writeProjectBinaryArtifact(root, 'reports/book.xlsx', Buffer.from('PK test'), ['.xlsx']);
+    assert.equal(result.created, true);
+    assert.equal((await readFile(path.join(root, 'reports/book.xlsx'))).toString(), 'PK test');
+    await assert.rejects(writeProjectBinaryArtifact(root, '../outside.xlsx', Buffer.from('x'), ['.xlsx']), /relative path/);
+    await assert.rejects(writeProjectBinaryArtifact(root, 'reports/file.exe', Buffer.from('x'), ['.xlsx']), /not supported/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
