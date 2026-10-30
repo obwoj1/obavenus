@@ -8,7 +8,7 @@ const MAX_INDEXED_FILES = 1200;
 const MAX_SCANNED_BYTES = 5 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'release', '.next', '.turbo']);
 const MAX_AGENT_WRITE_BYTES = 256 * 1024;
-const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.yaml', '.yml']);
+const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.csv', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.tsv', '.yaml', '.yml']);
 
 async function describeProject(selectedPath) {
   const projectPath = await realpath(selectedPath);
@@ -138,7 +138,7 @@ async function writeProjectFile(projectPath, relativeName, content) {
   if (bytes.length > MAX_AGENT_WRITE_BYTES) throw new RangeError('Generated files must be 256 KB or smaller.');
   const parts = relativeName.split(/[\\/]/);
   const extension = path.extname(parts.at(-1)).toLowerCase();
-  if (!TEXT_EXTENSIONS.has(extension)) throw new TypeError('Only supported plain-text project files can be written.');
+  if (!TEXT_EXTENSIONS.has(extension)) throw new TypeError('Only supported plain-text project files can be written, including Markdown, CSV, TSV, and HTML.');
   const root = await realpath(projectPath);
   let directory = root;
   for (const part of parts.slice(0, -1)) {

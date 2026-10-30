@@ -98,6 +98,9 @@ test('project writes stay inside the selected folder and only create bounded pla
     assert.equal((await readFile(path.join(project, 'reports', 'plan.md'), 'utf8')), '# Plan\n');
     const updated = await writeProjectFile(project, 'reports/plan.md', '# Updated\n');
     assert.equal(updated.created, false);
+    const sheet = await writeProjectFile(project, 'reports/roles.csv', 'title,agency\nSoftware Engineer,Treasury\n');
+    assert.equal(sheet.created, true);
+    assert.equal(await readFile(path.join(project, 'reports/roles.csv'), 'utf8'), 'title,agency\nSoftware Engineer,Treasury\n');
     assert.equal((await readFile(path.join(project, 'reports', 'plan.md'), 'utf8')), '# Updated\n');
     await assert.rejects(writeProjectFile(project, '../outside.md', 'no'), /relative path/);
     await assert.rejects(writeProjectFile(project, '.git/config', 'no'), /relative path/);

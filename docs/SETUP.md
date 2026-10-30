@@ -17,7 +17,11 @@ Choose a reusable workflow beside the composer mode to guide common requests suc
 
 To schedule a local task, choose a local CLI mode, enter its prompt, select **Schedule**, and choose a time. The task uses the project folder selected when it was queued, runs read-only, and appears under **Scheduled tasks** where queued tasks can be cancelled. Task prompts/results are encrypted with Electron safeStorage. The scheduler runs while Obavenus is open; if the app is closed or the Mac sleeps through the scheduled time, an overdue task is picked up when the app next runs. A desktop notification appears on completion when macOS notifications are enabled.
 
-Select **Team · write project files** to let the implementation specialist create or replace supported text files in the open project for that run. The default **Team · read-only** mode does not write. File writes are confined to the selected project and block hidden paths, symlinks, dependencies/build/release folders, binary formats, and files over 256 KB. The answer shows which paths it created or updated. Local CLI providers may have their own tools; Obavenus uses their read-only/default permission modes for this path.
+Select **Team · write project files** to let the implementation specialist create or replace supported text artifacts in the open project for that run. The default **Team · read-only** mode does not write. File writes are confined to the selected project and block hidden paths, symlinks, dependencies/build/release folders, binary formats, and files over 256 KB. Supported outputs include Markdown reports, CSV/TSV sheets, HTML presentations, and code. The answer shows which paths it created or updated. Local CLI providers may have their own tools; Obavenus uses their read-only/default permission modes for this path.
+
+For web research, choose **Team · browser research**. The analyst can open public HTTP(S) pages, read page text, and follow visible links in an Obavenus browser window. Browser access does not submit forms, log in, send, post, purchase, or change account settings. Page text is treated as untrusted reference material.
+
+Select several profiles from the composer’s specialist menu to spawn them concurrently alongside the built-in analysis and review agents. Up to five custom specialists can be selected for one run; their findings are included in the final synthesis.
 
 In **Find federal jobs**, paste offer/job descriptions and use **Build official search links** without credentials. For in-app open-announcement aggregation, request a USAJOBS developer API key from the official developer portal, then expand **Connect USAJOBS API**, enter the email used for the request and key, and save. Obavenus encrypts the key on this Mac and sends searches directly to USAJOBS. Current queries cover the listed agencies plus the 2210 IT occupational series and public announcements. Confirm each listing's eligibility, closing date, required documents, and application instructions on its official announcement; Obavenus does not submit applications.
 
@@ -25,6 +29,6 @@ Gmail is connected separately from the AI provider. Create a Google Cloud projec
 
 Use **Close** in the workspace panel to remove the saved folder selection. Keep secrets out of the renderer and Git history.
 
-The source repository is private at https://github.com/obwoj1/obavenus.
+The source repository is public at https://github.com/obwoj1/obavenus.
 
 To build a local Apple Silicon app bundle, run `npm run pack:mac`. To create a DMG installer, run `npm run dist:mac`; output goes under `release/`. These local builds are unsigned and not notarized, so macOS may require you to approve the app the first time you open it. Public distribution needs Apple signing and notarization.

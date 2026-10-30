@@ -2,7 +2,7 @@ const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeP
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
-  description: 'Create or replace a plain-text file inside the selected project folder. Only available when the user explicitly enables project writes for this run. Never write outside the selected folder or into hidden, dependency, build, or release paths.',
+  description: 'Create or replace a supported text artifact inside the selected project folder, including Markdown reports, CSV spreadsheets, HTML presentations, and code. Only available when the user explicitly enables project writes for this run. Never write outside the selected folder or into hidden, dependency, build, or release paths.',
   parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative path inside the project, for example reports/plan.md.' }, content: { type: 'string', description: 'Complete new file contents.' } }, required: ['path', 'content'], additionalProperties: false },
 };
 const BROWSER_TOOLS = [
