@@ -15,12 +15,14 @@ const { createLocalAgent } = require('./local-agent.cjs');
 const { SKILLS } = require('./skills.cjs');
 const { createTaskStore } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
+const { createAgentStore } = require('./agent-store.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
 let taskStore;
 let taskTimer;
 let skillStore;
+let agentStore;
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -37,6 +39,10 @@ function getTaskStore() {
 function getSkillStore() {
   if (!skillStore) skillStore = createSkillStore({ filePath: path.join(app.getPath('userData'), 'custom-skills.enc'), safeStorage });
   return skillStore;
+}
+function getAgentStore() {
+  if (!agentStore) agentStore = createAgentStore({ filePath: path.join(app.getPath('userData'), 'custom-agents.enc'), safeStorage });
+  return agentStore;
 }
 
 function broadcastTask(task) {
@@ -208,6 +214,9 @@ ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().cl
 ipcMain.handle('skills:list', async () => [...SKILLS, ...(await getSkillStore().list())]);
 ipcMain.handle('skills:save', (_event, skill) => getSkillStore().save(skill));
 ipcMain.handle('skills:delete', (_event, id) => getSkillStore().remove(id));
+ipcMain.handle('agents:list-custom', () => getAgentStore().list());
+ipcMain.handle('agents:save-custom', (_event, agent) => getAgentStore().save(agent));
+ipcMain.handle('agents:delete-custom', (_event, id) => getAgentStore().remove(id));
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   let projectPath = '';
@@ -284,7 +293,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
 
 ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
 
-ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false }) => {
+ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentId = '' }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
   const preparedMessages = messages.map((message) => ({ ...message }));
   const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
@@ -306,11 +315,14 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     getProfile: () => getProfileStore().get(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
+  const customAgents = await getAgentStore().list();
+  const selectedAgent = customAgents.find((agent) => agent.id === agentId);
   return runTeamWorkflow({
     messages: preparedMessages,
     dispatch: dispatchProviderMessages,
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
+    specialist: selectedAgent ? { name: selectedAgent.name, instructions: selectedAgent.instructions } : null,
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
     },

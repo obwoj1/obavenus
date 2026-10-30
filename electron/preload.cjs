@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('obavenus', {
   getSkills: () => ipcRenderer.invoke('skills:list'),
   saveSkill: (skill) => ipcRenderer.invoke('skills:save', skill),
   deleteSkill: (id) => ipcRenderer.invoke('skills:delete', id),
+  getCustomAgents: () => ipcRenderer.invoke('agents:list-custom'),
+  saveCustomAgent: (agent) => ipcRenderer.invoke('agents:save-custom', agent),
+  deleteCustomAgent: (id) => ipcRenderer.invoke('agents:delete-custom', id),
   listScheduledTasks: () => ipcRenderer.invoke('tasks:list'),
   scheduleLocalTask: (task) => ipcRenderer.invoke('tasks:schedule', task),
   cancelScheduledTask: (id) => ipcRenderer.invoke('tasks:cancel', id),
@@ -26,7 +29,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   },
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
   runLocalAgent: (provider, messages, writeAccess = false) => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess }),
-  runTeam: (messages, runId, writeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess }),
+  runTeam: (messages, runId, writeAccess = false, agentId = '') => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess, agentId }),
   onAgentProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
     ipcRenderer.on('agents:progress', listener);

@@ -48,6 +48,26 @@ test('team workflow rejects a conversation without a user message', async () => 
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });
 
+test('selected custom specialist profile is applied to the analysis agent', async () => {
+  const prompts = [];
+  await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Compare roles.' }],
+    specialist: { name: 'Federal hiring analyst', instructions: 'Prioritize official agency postings and clearance requirements.' },
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      prompts.push(prompt);
+      if (prompt.includes('You are the lead agent.')) return 'Plan.';
+      if (prompt.includes('You are an independent specialist agent.')) return 'Analysis.';
+      if (prompt.includes('You are an independent reviewer.')) return 'Review.';
+      return 'Answer.';
+    },
+  });
+  const analysisPrompt = prompts.find((prompt) => prompt.includes('You are an independent specialist agent.'));
+  assert.match(analysisPrompt, /Act as the Federal hiring analyst/);
+  assert.match(analysisPrompt, /official agency postings and clearance requirements/);
+  assert.ok(prompts.filter((prompt) => prompt.includes('Federal hiring analyst')).length === 1);
+});
+
 test('write mode exposes the write tool only to the implementation specialist and reports file changes', async () => {
   const toolAvailability = [];
   const executeTool = async () => ({ saved: true });

@@ -453,7 +453,7 @@ form.addEventListener('submit', async (event) => {
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
       if (teamMode) {
-        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess);
+        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, document.querySelector('#agent-choice').value);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
@@ -750,6 +750,77 @@ async function renderWorkflowLibrary() {
     list.append(card);
   });
 }
+const agentsDialog = document.querySelector('#agents-dialog');
+document.querySelector('#agents-nav').addEventListener('click', async () => {
+  await renderCustomAgents();
+  agentsDialog.showModal();
+});
+document.querySelector('#agents-close').addEventListener('click', () => agentsDialog.close());
+document.querySelector('#agent-new').addEventListener('click', () => {
+  document.querySelector('#custom-agent-id').value = '';
+  document.querySelector('#custom-agent-name').value = '';
+  document.querySelector('#custom-agent-instructions').value = '';
+  document.querySelector('#custom-agent-name').focus();
+});
+document.querySelector('#custom-agent-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#agent-status');
+  try {
+    const saved = await window.obavenus.saveCustomAgent({
+      id: document.querySelector('#custom-agent-id').value || undefined,
+      name: document.querySelector('#custom-agent-name').value,
+      instructions: document.querySelector('#custom-agent-instructions').value,
+    });
+    status.textContent = 'Profile saved on this Mac.';
+    await refreshCustomAgents(saved.id);
+    await renderCustomAgents();
+  } catch (error) { status.textContent = error.message || 'Could not save profile.'; }
+});
+async function refreshCustomAgents(selectedId = '') {
+  const select = document.querySelector('#agent-choice');
+  const agents = await window.obavenus.getCustomAgents();
+  select.replaceChildren(new Option('Default specialist', ''));
+  agents.forEach((agent) => select.add(new Option(agent.name, agent.id)));
+  if (selectedId) select.value = selectedId;
+}
+async function renderCustomAgents() {
+  const list = document.querySelector('#custom-agent-list');
+  const agents = await window.obavenus.getCustomAgents();
+  list.replaceChildren();
+  if (agents.length === 0) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No custom profiles yet. Create one below to give the team a repeatable specialist perspective.';
+    list.append(empty);
+  }
+  agents.forEach((agent) => {
+    const card = document.createElement('article');
+    card.className = 'gmail-item';
+    const title = document.createElement('strong');
+    title.textContent = agent.name;
+    const detail = document.createElement('p');
+    detail.textContent = agent.instructions;
+    const edit = document.createElement('button');
+    edit.className = 'context-action';
+    edit.textContent = 'Edit';
+    edit.addEventListener('click', () => {
+      document.querySelector('#custom-agent-id').value = agent.id;
+      document.querySelector('#custom-agent-name').value = agent.name;
+      document.querySelector('#custom-agent-instructions').value = agent.instructions;
+    });
+    const remove = document.createElement('button');
+    remove.className = 'context-action';
+    remove.textContent = 'Delete';
+    remove.addEventListener('click', async () => {
+      await window.obavenus.deleteCustomAgent(agent.id);
+      if (document.querySelector('#agent-choice').value === agent.id) document.querySelector('#agent-choice').value = '';
+      await refreshCustomAgents();
+      await renderCustomAgents();
+    });
+    card.append(title, detail, edit, remove);
+    list.append(card);
+  });
+}
+refreshCustomAgents().catch(() => {});
 document.querySelector('#schedule-toggle').addEventListener('click', () => {
   const panel = document.querySelector('#schedule-panel');
   panel.hidden = !panel.hidden;
