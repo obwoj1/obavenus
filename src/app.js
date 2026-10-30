@@ -669,10 +669,75 @@ document.querySelector('#federal-jobs-live').addEventListener('click', async () 
 document.querySelector('#open-project').addEventListener('click', chooseProject);
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
+const tasksDialog = document.querySelector('#tasks-dialog');
+const taskList = document.querySelector('#scheduled-task-list');
+document.querySelector('#tasks-nav').addEventListener('click', async () => {
+  await renderScheduledTasks();
+  tasksDialog.showModal();
+});
+document.querySelector('#tasks-close').addEventListener('click', () => tasksDialog.close());
+document.querySelector('#schedule-toggle').addEventListener('click', () => {
+  const panel = document.querySelector('#schedule-panel');
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) {
+    const earliest = new Date(Date.now() + 60_000);
+    earliest.setSeconds(0, 0);
+    const local = new Date(earliest.getTime() - earliest.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    document.querySelector('#schedule-at').min = local;
+    document.querySelector('#schedule-at').value = local;
+  }
+});
+document.querySelector('#schedule-submit').addEventListener('click', async () => {
+  const provider = runMode.value.startsWith('local-') ? runMode.value.slice('local-'.length) : '';
+  const prompt = promptInput.value.trim();
+  const executeAt = new Date(document.querySelector('#schedule-at').value).getTime();
+  if (!provider) { runStatus.hidden = false; runStatus.textContent = 'Choose a local CLI mode before scheduling.'; return; }
+  if (!prompt) { runStatus.hidden = false; runStatus.textContent = 'Enter the task in the composer first.'; return; }
+  try {
+    await window.obavenus.scheduleLocalTask({ provider, prompt, executeAt });
+    promptInput.value = '';
+    document.querySelector('#schedule-panel').hidden = true;
+    runStatus.hidden = false;
+    runStatus.textContent = 'Task queued on this Mac. Open Scheduled tasks to view or cancel it.';
+  } catch (error) { runStatus.hidden = false; runStatus.textContent = error.message || 'Could not schedule task.'; }
+});
+window.obavenus.onScheduledTaskUpdate((task) => {
+  if (tasksDialog.open) renderScheduledTasks();
+  runStatus.hidden = false;
+  runStatus.textContent = `Scheduled task ${task.status}.`;
+});
 document.querySelector('#email-nav').addEventListener('click', async () => {
   gmailDialog.showModal();
   await updateGmailStatus();
 });
+
+async function renderScheduledTasks() {
+  const tasks = await window.obavenus.listScheduledTasks();
+  taskList.replaceChildren();
+  if (!tasks.length) { taskList.textContent = 'No scheduled tasks yet.'; return; }
+  tasks.forEach((task) => {
+    const card = document.createElement('article');
+    card.className = 'gmail-item';
+    const title = document.createElement('strong');
+    title.textContent = task.prompt.slice(0, 140);
+    const meta = document.createElement('small');
+    meta.textContent = `${task.provider} · ${task.status} · ${new Date(task.executeAt).toLocaleString()}`;
+    card.append(title, meta);
+    if (task.result || task.error) {
+      const details = document.createElement('p');
+      details.textContent = task.result || task.error;
+      card.append(details);
+    }
+    if (task.status === 'queued') {
+      const cancel = document.createElement('button');
+      cancel.className = 'context-action';
+      cancel.textContent = 'Cancel task';
+      cancel.addEventListener('click', async () => { await window.obavenus.cancelScheduledTask(task.id); await renderScheduledTasks(); });
+      card.append(cancel);
+    }
+    taskList.append(card);
+  });
+}
 document.querySelector('#gmail-close').addEventListener('click', () => gmailDialog.close());
 document.querySelector('#gmail-connect').addEventListener('click', async () => {
   const status = document.querySelector('#gmail-status');

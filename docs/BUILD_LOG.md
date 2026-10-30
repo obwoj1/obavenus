@@ -31,8 +31,9 @@
 
 - Added an API-key-free local CLI route for Claude Code, Codex CLI, and Gemini CLI, using provider read-only/default modes, explicit attachments, and bounded runtime/output with focused tests.
 - Added six bundled reusable workflows to the composer, available with both provider and local CLI requests without adding an API dependency.
+- Added an encrypted, persistent local scheduled-task queue for the signed-in CLIs, with cancelable queued jobs, completion notifications, and overdue-task pickup on app launch.
 - Confirmed Claude Code, Codex CLI, and Gemini CLI are installed on the development Mac; the installed Grok CLI requires an xAI API key, so it remains deferred with other API setup.
-- Bumped the app to 0.1.8 for the next local macOS installer.
+- Bumped the app to 0.1.9 for the next local macOS installer.
 
 ## Next
 

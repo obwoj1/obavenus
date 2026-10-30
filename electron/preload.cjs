@@ -14,6 +14,14 @@ contextBridge.exposeInMainWorld('obavenus', {
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
   getSkills: () => ipcRenderer.invoke('skills:list'),
+  listScheduledTasks: () => ipcRenderer.invoke('tasks:list'),
+  scheduleLocalTask: (task) => ipcRenderer.invoke('tasks:schedule', task),
+  cancelScheduledTask: (id) => ipcRenderer.invoke('tasks:cancel', id),
+  onScheduledTaskUpdate: (callback) => {
+    const listener = (_event, task) => callback(task);
+    ipcRenderer.on('tasks:updated', listener);
+    return () => ipcRenderer.removeListener('tasks:updated', listener);
+  },
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
   runLocalAgent: (provider, messages) => ipcRenderer.invoke('local-agent:run', { provider, messages }),
   runTeam: (messages, runId, writeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess }),

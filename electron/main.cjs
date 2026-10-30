@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -13,9 +13,12 @@ const { createSearchPlan } = require('./job-search.cjs');
 const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 const { createLocalAgent } = require('./local-agent.cjs');
 const { SKILLS } = require('./skills.cjs');
+const { createTaskStore } = require('./tasks.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
+let taskStore;
+let taskTimer;
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -23,6 +26,42 @@ let chatGPTClientPromise;
 let profileStore;
 let usaJobsStore;
 let usaJobsClient;
+
+function getTaskStore() {
+  if (!taskStore) taskStore = createTaskStore({ filePath: path.join(app.getPath('userData'), 'tasks.enc'), safeStorage });
+  return taskStore;
+}
+
+function broadcastTask(task) {
+  for (const window of BrowserWindow.getAllWindows()) if (!window.isDestroyed()) window.webContents.send('tasks:updated', task);
+}
+
+async function runScheduledTasks() {
+  const store = getTaskStore();
+  const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
+  for (const task of due) {
+    await store.update(task.id, { status: 'running' });
+    broadcastTask({ id: task.id, status: 'running' });
+    try {
+      const result = await localAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
+      const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
+      broadcastTask({ id: task.id, status: completed.status, result: completed.result });
+      if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
+    } catch (error) {
+      const failed = await store.update(task.id, { status: 'error', error: (error.message || 'Local task failed.').slice(0, 2000), completedAt: Date.now() });
+      broadcastTask({ id: task.id, status: failed.status, error: failed.error });
+    }
+  }
+  await scheduleNextTask();
+}
+
+async function scheduleNextTask() {
+  clearTimeout(taskTimer);
+  const queued = (await getTaskStore().list()).filter((task) => task.status === 'queued');
+  if (!queued.length) return;
+  const delay = Math.max(0, Math.min(queued[0].executeAt - Date.now(), 2_147_000_000));
+  taskTimer = setTimeout(runScheduledTasks, delay);
+}
 
 async function getChatGPTClient() {
   if (!chatGPTClientPromise) {
@@ -160,6 +199,21 @@ ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore(
 
 ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
 ipcMain.handle('skills:list', () => SKILLS);
+ipcMain.handle('tasks:list', () => getTaskStore().list());
+ipcMain.handle('tasks:schedule', async (_event, task) => {
+  let projectPath = '';
+  try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const saved = await getTaskStore().schedule({ ...task, projectPath });
+  await scheduleNextTask();
+  broadcastTask({ id: saved.id, status: saved.status });
+  return saved;
+});
+ipcMain.handle('tasks:cancel', async (_event, id) => {
+  const cancelled = await getTaskStore().cancel(id);
+  if (cancelled) { broadcastTask({ id, status: 'cancelled' }); await scheduleNextTask(); }
+  return cancelled;
+});
 ipcMain.handle('local-agent:status', () => localAgent.status());
 ipcMain.handle('local-agent:run', async (_event, { provider, messages }) => {
   let projectPath;
@@ -318,6 +372,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  scheduleNextTask().catch(() => {});
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

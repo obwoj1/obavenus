@@ -24,3 +24,5 @@ Team runs now include a read-only mode and an explicit per-run project-write mod
 Local CLI runs use the selected project working directory (or app data without a project), read-only/default CLI permission modes, a bounded timeout, and bounded output. This provides provider CLI account-backed responses without implementing the providers' interactive sign-in flows inside Obavenus.
 
 The composer includes a bundled local workflow library for feature planning, codebase exploration, change review, debugging, technical documentation, and converting an idea into steps. The selected workflow adds focused instructions to that request only; it does not rewrite saved conversation history.
+
+Users can queue a prompt for a later local CLI run. Scheduled prompts and results are encrypted in the app's local data store, tasks can be cancelled before they start, and completion sends a desktop notification when supported. Tasks run only while the app is available and overdue queued work is picked up at next launch; this is not a cloud scheduler.
