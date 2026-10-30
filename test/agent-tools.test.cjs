@@ -34,3 +34,19 @@ test('project file writes require per-run authorization and report the exact fil
     assert.deepEqual(allowed.getChanges(), [{ path: path.join('docs', 'plan.md'), bytes: 23, created: true }]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('browser tools are unavailable outside browser mode and only navigate when explicitly enabled', async () => {
+  const denied = createAgentToolExecutor({ browser: {} });
+  assert.match((await denied('browser_open_page', { url: 'https://example.com' })).error, /disabled/);
+  const visited = [];
+  const browser = {
+    open: async (url) => { visited.push(url); return { url }; },
+    readPage: async () => ({ url: 'https://example.com', text: 'Public page text' }),
+    followLink: async (text) => ({ text, url: 'https://example.com/about' }),
+  };
+  const allowed = createAgentToolExecutor({ browserAccess: true, browser });
+  assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
+  assert.equal((await allowed('browser_read_page')).text, 'Public page text');
+  assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
+  assert.deepEqual(visited, ['https://example.com']);
+});

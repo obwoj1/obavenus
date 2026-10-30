@@ -68,6 +68,26 @@ test('selected custom specialist profile is applied to the analysis agent', asyn
   assert.ok(prompts.filter((prompt) => prompt.includes('Federal hiring analyst')).length === 1);
 });
 
+test('browser tools are passed only to the analysis specialist in browser mode', async () => {
+  const options = [];
+  await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Research this topic.' }],
+    browserAccess: true,
+    dispatch: async (messages, config) => {
+      options.push({ text: messages[0].text, tools: config.tools.map((tool) => tool.name) });
+      if (messages[0].text.includes('You are the lead agent.')) return 'Plan.';
+      if (messages[0].text.includes('You are an independent specialist agent.')) return 'Findings.';
+      if (messages[0].text.includes('You are an independent reviewer.')) return 'Review.';
+      return 'Done.';
+    },
+  });
+  const analyst = options.find((item) => item.text.includes('You are an independent specialist agent.'));
+  const reviewer = options.find((item) => item.text.includes('You are an independent reviewer.'));
+  assert.ok(analyst.tools.includes('browser_open_page'));
+  assert.ok(!reviewer.tools.includes('browser_open_page'));
+  assert.match(analyst.text, /never log in, submit forms/);
+});
+
 test('write mode exposes the write tool only to the implementation specialist and reports file changes', async () => {
   const toolAvailability = [];
   const executeTool = async () => ({ saved: true });

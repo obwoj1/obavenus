@@ -16,6 +16,7 @@ const { SKILLS } = require('./skills.cjs');
 const { createTaskStore } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
 const { createAgentStore } = require('./agent-store.cjs');
+const { createResearchBrowser } = require('./research-browser.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -23,7 +24,7 @@ let taskStore;
 let taskTimer;
 let skillStore;
 let agentStore;
-let researchWindow;
+let researchBrowser;
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -44,6 +45,10 @@ function getSkillStore() {
 function getAgentStore() {
   if (!agentStore) agentStore = createAgentStore({ filePath: path.join(app.getPath('userData'), 'custom-agents.enc'), safeStorage });
   return agentStore;
+}
+function getResearchBrowser() {
+  if (!researchBrowser) researchBrowser = createResearchBrowser({ BrowserWindow });
+  return researchBrowser;
 }
 
 function broadcastTask(task) {
@@ -240,23 +245,8 @@ ipcMain.handle('skills:delete', (_event, id) => getSkillStore().remove(id));
 ipcMain.handle('agents:list-custom', () => getAgentStore().list());
 ipcMain.handle('agents:save-custom', (_event, agent) => getAgentStore().save(agent));
 ipcMain.handle('agents:delete-custom', (_event, id) => getAgentStore().remove(id));
-ipcMain.handle('browser:open', async (_event, rawUrl) => {
-  let url;
-  try { url = new URL(rawUrl); } catch { throw new TypeError('Enter a valid http or https URL.'); }
-  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new TypeError('Research Browser only opens http and https pages without embedded credentials.');
-  if (researchWindow && !researchWindow.isDestroyed()) researchWindow.close();
-  researchWindow = new BrowserWindow({ width: 1160, height: 820, title: 'Obavenus Research Browser', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
-  researchWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  researchWindow.webContents.on('will-navigate', (event, target) => {
-    try { if (!['http:', 'https:'].includes(new URL(target).protocol)) event.preventDefault(); } catch { event.preventDefault(); }
-  });
-  await researchWindow.loadURL(url.toString());
-  return true;
-});
-ipcMain.handle('browser:import-page', async () => {
-  if (!researchWindow || researchWindow.isDestroyed() || researchWindow.webContents.isLoading()) throw new Error('Open a page and wait for it to finish loading first.');
-  return researchWindow.webContents.executeJavaScript(`(() => ({ title: document.title.slice(0, 300), url: location.href, text: (document.body?.innerText || '').slice(0, 20000) }))()`);
-});
+ipcMain.handle('browser:open', (_event, rawUrl) => getResearchBrowser().open(rawUrl));
+ipcMain.handle('browser:import-page', () => getResearchBrowser().readPage());
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   let projectPath = '';
@@ -333,7 +323,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
 
 ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
 
-ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentId = '' }) => {
+ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentId = '', browserAccess = false }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
   const preparedMessages = messages.map((message) => ({ ...message }));
   const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
@@ -352,6 +342,8 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
   const executeTool = createAgentToolExecutor({
     projectPath,
     writeAccess: writeAccess === true && Boolean(projectPath),
+    browserAccess: browserAccess === true,
+    browser: getResearchBrowser(),
     getProfile: () => getProfileStore().get(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
@@ -362,6 +354,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     dispatch: dispatchProviderMessages,
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
+    browserAccess: browserAccess === true,
     specialist: selectedAgent ? { name: selectedAgent.name, instructions: selectedAgent.instructions } : null,
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });

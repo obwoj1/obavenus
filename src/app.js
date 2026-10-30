@@ -407,10 +407,11 @@ form.addEventListener('submit', async (event) => {
   form.querySelector('.send').textContent = 'Sending…';
   runMode.disabled = true;
   const teamMode = runMode.value.startsWith('team');
+  const browserAccess = runMode.value === 'team-browser';
   const localProvider = localMode?.[1] || null;
   const writeAccess = runMode.value === 'team-write' || localWriteAccess;
   runStatus.hidden = !teamMode && !localProvider;
-  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
+  runStatus.textContent = teamMode ? (browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
   const teamRunId = crypto.randomUUID();
   activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
@@ -453,7 +454,7 @@ form.addEventListener('submit', async (event) => {
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
       if (teamMode) {
-        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, document.querySelector('#agent-choice').value);
+        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, document.querySelector('#agent-choice').value, browserAccess);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
