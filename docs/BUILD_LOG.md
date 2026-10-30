@@ -29,6 +29,10 @@
 - Added Google OAuth for Gemini API access, with PKCE, encrypted credential storage, Cloud project billing attribution, and an API-key option. Google AI subscriptions are not used for API requests.
 - Updated product documentation to describe the current app rather than the first prototype.
 
+- Added an API-key-free local CLI route for Claude Code, Codex CLI, and Gemini CLI, using provider read-only/default modes, explicit attachments, and bounded runtime/output with focused tests.
+- Confirmed Claude Code, Codex CLI, and Gemini CLI are installed on the development Mac; the installed Grok CLI requires an xAI API key, so it remains deferred with other API setup.
+- Bumped the app to 0.1.7 for the next local macOS installer.
+
 ## Next
 
 - Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.

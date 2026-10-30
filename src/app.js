@@ -405,9 +405,10 @@ form.addEventListener('submit', async (event) => {
   form.querySelector('.send').textContent = 'Sending…';
   runMode.disabled = true;
   const teamMode = runMode.value.startsWith('team');
+  const localProvider = runMode.value.startsWith('local-') ? runMode.value.slice('local-'.length) : null;
   const writeAccess = runMode.value === 'team-write';
-  runStatus.hidden = !teamMode;
-  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : '';
+  runStatus.hidden = !teamMode && !localProvider;
+  runStatus.textContent = teamMode ? (writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? `Checking local ${localProvider} CLI…` : '';
   const teamRunId = crypto.randomUUID();
   activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
@@ -415,6 +416,16 @@ form.addEventListener('submit', async (event) => {
   promptInput.value = '';
 
   try {
+    if (localProvider) {
+      const messages = current.messages
+        .filter((message) => message.status !== 'pending' && message.status !== 'error')
+        .map(({ role, text, context }) => ({ role, text, context }));
+      const status = await window.obavenus.getLocalAgentStatus();
+      if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
+      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages);
+      pendingReply.status = 'complete';
+      return;
+    }
     const settings = await window.obavenus.getProviderSettings();
     const accountConnectedMode = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
       || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account';
