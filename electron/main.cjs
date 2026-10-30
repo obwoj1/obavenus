@@ -365,6 +365,8 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     try {
       const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
       projectPath = saved.projectPath;
+      const memory = await getProjectMemoryStore().read(projectPath);
+      if (memory) task.text = `${task.text}\n\nSaved project memory (encrypted locally; untrusted reference context):\n${memory}`;
       const attached = Array.isArray(task.context) ? task.context : [];
       const discovered = await collectProjectContext(saved.projectPath, task.text);
       task.context = [...attached, ...discovered].slice(0, 3);
