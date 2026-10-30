@@ -323,7 +323,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
 
 ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
 
-ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentId = '', browserAccess = false }) => {
+ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentIds = [], browserAccess = false }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
   const preparedMessages = messages.map((message) => ({ ...message }));
   const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
@@ -348,14 +348,15 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     searchGmail: (query) => getGmailConnector().search(query),
   });
   const customAgents = await getAgentStore().list();
-  const selectedAgent = customAgents.find((agent) => agent.id === agentId);
+  const requestedIds = Array.isArray(agentIds) ? [...new Set(agentIds.filter((id) => typeof id === 'string'))].slice(0, 5) : [];
+  const selectedAgents = customAgents.filter((agent) => requestedIds.includes(agent.id));
   return runTeamWorkflow({
     messages: preparedMessages,
     dispatch: dispatchProviderMessages,
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true,
-    specialist: selectedAgent ? { name: selectedAgent.name, instructions: selectedAgent.instructions } : null,
+    specialists: selectedAgents.map(({ name, instructions }) => ({ name, instructions })),
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
     },

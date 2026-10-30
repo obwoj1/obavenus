@@ -454,7 +454,7 @@ form.addEventListener('submit', async (event) => {
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
       if (teamMode) {
-        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, document.querySelector('#agent-choice').value, browserAccess);
+        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, getSelectedAgentIds(), browserAccess);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
@@ -794,11 +794,39 @@ document.querySelector('#custom-agent-form').addEventListener('submit', async (e
   } catch (error) { status.textContent = error.message || 'Could not save profile.'; }
 });
 async function refreshCustomAgents(selectedId = '') {
-  const select = document.querySelector('#agent-choice');
   const agents = await window.obavenus.getCustomAgents();
-  select.replaceChildren(new Option('Default specialist', ''));
-  agents.forEach((agent) => select.add(new Option(agent.name, agent.id)));
-  if (selectedId) select.value = selectedId;
+  const options = document.querySelector('#agent-options');
+  const previouslySelected = new Set(getSelectedAgentIds());
+  if (selectedId) previouslySelected.add(selectedId);
+  options.replaceChildren();
+  agents.forEach((agent) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = agent.id;
+    checkbox.checked = previouslySelected.has(agent.id);
+    checkbox.addEventListener('change', () => updateAgentPickerLabel());
+    const name = document.createElement('span');
+    name.textContent = agent.name;
+    label.append(checkbox, name);
+    options.append(label);
+  });
+  if (!agents.length) {
+    const empty = document.createElement('small');
+    empty.textContent = 'Create custom profiles in Agent profiles.';
+    options.append(empty);
+  }
+  updateAgentPickerLabel();
+}
+function getSelectedAgentIds() {
+  return [...document.querySelectorAll('#agent-options input[type="checkbox"]:checked')].slice(0, 5).map((checkbox) => checkbox.value);
+}
+function updateAgentPickerLabel() {
+  const selected = getSelectedAgentIds();
+  document.querySelector('#agent-picker-label').textContent = selected.length ? `${selected.length} specialist${selected.length === 1 ? '' : 's'} selected` : 'Default team';
+  document.querySelectorAll('#agent-options input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.disabled = !checkbox.checked && selected.length >= 5;
+  });
 }
 async function renderCustomAgents() {
   const list = document.querySelector('#custom-agent-list');
@@ -829,7 +857,6 @@ async function renderCustomAgents() {
     remove.textContent = 'Delete';
     remove.addEventListener('click', async () => {
       await window.obavenus.deleteCustomAgent(agent.id);
-      if (document.querySelector('#agent-choice').value === agent.id) document.querySelector('#agent-choice').value = '';
       await refreshCustomAgents();
       await renderCustomAgents();
     });

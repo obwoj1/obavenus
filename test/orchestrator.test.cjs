@@ -25,8 +25,8 @@ test('team workflow plans, runs independent specialists in parallel, then synthe
       await specialistsStarted;
       return 'Review: option A needs a caveat.';
     }
-    assert.match(text, /Specialist analysis:[\s\S]*Analysis: option A is strongest\./);
-    assert.match(text, /Independent review:[\s\S]*Review: option A needs a caveat\./);
+    assert.match(text, /Specialist · analysis:[\s\S]*Analysis: option A is strongest\./);
+    assert.match(text, /Specialist · review:[\s\S]*Review: option A needs a caveat\./);
     return 'Final: choose A with the caveat.';
   };
 
@@ -48,11 +48,11 @@ test('team workflow rejects a conversation without a user message', async () => 
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });
 
-test('selected custom specialist profile is applied to the analysis agent', async () => {
+test('selected custom specialist profile spawns an independent specialist', async () => {
   const prompts = [];
   await runTeamWorkflow({
     messages: [{ role: 'user', text: 'Compare roles.' }],
-    specialist: { name: 'Federal hiring analyst', instructions: 'Prioritize official agency postings and clearance requirements.' },
+    specialists: [{ name: 'Federal hiring analyst', instructions: 'Prioritize official agency postings and clearance requirements.' }],
     dispatch: async (messages) => {
       const prompt = messages[0].text;
       prompts.push(prompt);
@@ -62,10 +62,40 @@ test('selected custom specialist profile is applied to the analysis agent', asyn
       return 'Answer.';
     },
   });
-  const analysisPrompt = prompts.find((prompt) => prompt.includes('You are an independent specialist agent.'));
-  assert.match(analysisPrompt, /Act as the Federal hiring analyst/);
-  assert.match(analysisPrompt, /official agency postings and clearance requirements/);
-  assert.ok(prompts.filter((prompt) => prompt.includes('Federal hiring analyst')).length === 1);
+  const customPrompt = prompts.find((prompt) => prompt.includes('You are an independent specialist agent named Federal hiring analyst.'));
+  assert.match(customPrompt, /official agency postings and clearance requirements/);
+  assert.ok(prompts.some((prompt) => prompt.includes('Federal hiring analyst')));
+});
+
+test('multiple custom specialists run in parallel and their reports reach synthesis', async () => {
+  const started = [];
+  let releaseAgentBarrier;
+  const allStarted = new Promise((resolve) => { releaseAgentBarrier = resolve; });
+  const result = await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Review this proposal from several perspectives.' }],
+    specialists: [
+      { name: 'Security reviewer', instructions: 'Focus on security.' },
+      { name: 'Accessibility reviewer', instructions: 'Focus on accessibility.' },
+    ],
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      if (prompt.includes('You are the lead agent.')) return 'Plan.';
+      if (prompt.includes('You are an independent specialist agent named')) {
+        const name = prompt.includes('Security reviewer') ? 'Security reviewer' : 'Accessibility reviewer';
+        started.push(name);
+        if (started.length === 2) releaseAgentBarrier();
+        await allStarted;
+        return `${name} findings.`;
+      }
+      if (prompt.includes('You are an independent specialist agent.')) return 'General findings.';
+      if (prompt.includes('You are an independent reviewer.')) return 'Review findings.';
+      assert.match(prompt, /Security reviewer:\nSecurity reviewer findings\./);
+      assert.match(prompt, /Accessibility reviewer:\nAccessibility reviewer findings\./);
+      return 'Combined answer.';
+    },
+  });
+  assert.equal(result.agents.length, 5);
+  assert.deepEqual(started.sort(), ['Accessibility reviewer', 'Security reviewer']);
 });
 
 test('browser tools are passed only to the analysis specialist in browser mode', async () => {
