@@ -473,7 +473,10 @@ document.querySelectorAll('.suggestions button').forEach((button) => {
 });
 
 const federalJobsDialog = document.querySelector('#federal-jobs-dialog');
-document.querySelector('#federal-jobs-open').addEventListener('click', () => federalJobsDialog.showModal());
+document.querySelector('#federal-jobs-open').addEventListener('click', async () => {
+  federalJobsDialog.showModal();
+  await updateUSAJobsConnectionStatus();
+});
 document.querySelector('#federal-jobs-close').addEventListener('click', () => federalJobsDialog.close());
 document.querySelector('#federal-jobs-search').addEventListener('click', async () => {
   const results = document.querySelector('#federal-jobs-results');
@@ -500,6 +503,130 @@ document.querySelector('#federal-jobs-search').addEventListener('click', async (
     steps.textContent = 'Next: open each search, filter to Full-time, check each announcement’s hiring path and closing date, then follow its “How to Apply” section. Save suitable announcements to a USAJOBS account and tailor your federal resume to the specialized experience listed.';
     results.append(steps);
   } catch (error) { results.textContent = error.message || 'Could not build job searches.'; }
+});
+
+document.querySelector('#usajobs-save').addEventListener('click', async () => {
+  const status = document.querySelector('#usajobs-status');
+  status.textContent = 'Encrypting credentials on this Mac…';
+  try {
+    await window.obavenus.saveUSAJobsCredentials({
+      email: document.querySelector('#usajobs-email').value.trim(),
+      apiKey: document.querySelector('#usajobs-key').value,
+    });
+    document.querySelector('#usajobs-key').value = '';
+    await updateUSAJobsConnectionStatus('USAJOBS API connected.');
+  } catch (error) { status.textContent = error.message || 'Could not save USAJOBS credentials.'; }
+});
+document.querySelector('#usajobs-disconnect').addEventListener('click', async () => {
+  await window.obavenus.clearUSAJobsCredentials();
+  await updateUSAJobsConnectionStatus('USAJOBS API key removed.');
+});
+
+async function updateUSAJobsConnectionStatus(message = '') {
+  const status = document.querySelector('#usajobs-status');
+  try {
+    const connection = await window.obavenus.getUSAJobsStatus();
+    if (connection.email) document.querySelector('#usajobs-email').value = connection.email;
+    document.querySelector('#usajobs-disconnect').hidden = !connection.configured;
+    document.querySelector('#federal-jobs-live').disabled = !connection.configured;
+    document.querySelector('#federal-jobs-live').title = connection.configured ? '' : 'Connect a USAJOBS API key to fetch results inside Obavenus.';
+    status.textContent = message || (connection.configured
+      ? `Connected as ${connection.email} · API key stored securely.`
+      : 'Not connected · public search links work without an API key.');
+    return connection;
+  } catch (error) { status.textContent = error.message || 'USAJOBS status unavailable.'; return { configured: false }; }
+}
+
+document.querySelector('#federal-jobs-live').addEventListener('click', async () => {
+  const results = document.querySelector('#federal-jobs-results');
+  const input = document.querySelector('#federal-jobs-input').value;
+  results.replaceChildren('Searching official USAJOBS announcements…');
+  try {
+    const salaryValue = Number(document.querySelector('#federal-jobs-min-salary').value);
+    const response = await window.obavenus.searchUSAJobsLive(input, {
+      location: document.querySelector('#federal-jobs-location').value.trim(),
+      fullTime: document.querySelector('#federal-jobs-full-time').checked,
+      minimumSalary: Number.isFinite(salaryValue) && salaryValue > 0 ? salaryValue : undefined,
+    });
+    results.replaceChildren();
+    const summary = document.createElement('p');
+    summary.textContent = `${response.total} distinct announcements loaded (${response.totalMatches} total matches across ${response.searches.length} searches) · Retrieved ${new Date(response.retrievedAt).toLocaleString()} · live USAJOBS data.`;
+    results.append(summary);
+    for (const warning of response.warnings || []) {
+      const note = document.createElement('p');
+      note.textContent = warning;
+      results.append(note);
+    }
+    if (!response.jobs.length) {
+      const empty = document.createElement('p');
+      empty.textContent = 'No open matches were returned. Broaden the location or remove the minimum-salary filter, then try again.';
+      results.append(empty);
+      return;
+    }
+    response.jobs.forEach((job) => {
+      const card = document.createElement('article');
+      card.className = 'job-result';
+      const title = document.createElement('strong');
+      title.textContent = job.title;
+      const detail = document.createElement('small');
+      const pay = job.pay.map((range) => {
+        const min = Number(range.minimum);
+        const max = Number(range.maximum);
+        const interval = range.rate ? ` / ${range.rate}` : '';
+        return `${Number.isFinite(min) ? `$${min.toLocaleString()}` : range.minimum || 'Pay not listed'}${Number.isFinite(max) ? `–$${max.toLocaleString()}` : ''}${interval}`;
+      }).join(' · ');
+      const parsedClose = job.closeDate ? new Date(job.closeDate) : null;
+      const closeDate = parsedClose && !Number.isNaN(parsedClose.valueOf()) ? `Closes ${parsedClose.toLocaleDateString()}` : 'Closing date not listed';
+      detail.textContent = `${job.agency} · ${job.location} · ${pay || job.grade || 'Pay not listed'} · ${closeDate}`;
+      const reason = document.createElement('p');
+      const matchBasis = job.matchedAgencies?.length
+        ? `target agency (${job.matchedAgencies.join(', ')}) and role`
+        : job.similarITMatch ? 'related federal Information Technology Management (2210) occupational series' : 'selected role';
+      reason.textContent = `Match basis: ${matchBasis}, selected location${document.querySelector('#federal-jobs-full-time').checked ? ', Full-time schedule' : ''}, and public announcements.`;
+      card.append(title, detail, reason);
+      if (job.summary) {
+        const summary = document.createElement('p');
+        summary.textContent = job.summary.slice(0, 900);
+        card.append(summary);
+      }
+      const officialUrl = [job.url, job.applyUrl].find((value) => {
+        try { const url = new URL(value); return url.protocol === 'https:' && (url.hostname === 'usajobs.gov' || url.hostname.endsWith('.usajobs.gov')); } catch { return false; }
+      });
+      if (officialUrl) {
+        const link = document.createElement('a');
+        link.href = officialUrl;
+        link.target = '_blank';
+        link.rel = 'noreferrer';
+        link.textContent = 'Review official announcement and apply ↗';
+        card.append(link);
+      }
+      const instructions = [['Eligibility and requirements', job.requirements], ['Required documents', job.requiredDocuments], ['How to apply', job.howToApply]];
+      for (const [label, value] of instructions) if (value) {
+        const disclosure = document.createElement('details');
+        const heading = document.createElement('summary');
+        heading.textContent = label;
+        const content = document.createElement('p');
+        content.textContent = value.slice(0, 4000);
+        disclosure.append(heading, content);
+        card.append(disclosure);
+      }
+      results.append(card);
+    });
+  } catch (error) {
+    results.replaceChildren();
+    const failure = document.createElement('p');
+    failure.textContent = error.message || 'Could not fetch USAJOBS announcements.';
+    results.append(failure);
+    const plan = await window.obavenus.findFederalJobs(input).catch(() => null);
+    plan?.searches.forEach((search) => {
+      const link = document.createElement('a');
+      link.href = search.url;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = `Open USAJOBS: ${search.label} ↗`;
+      results.append(link);
+    });
+  }
 });
 
 document.querySelector('#open-project').addEventListener('click', chooseProject);

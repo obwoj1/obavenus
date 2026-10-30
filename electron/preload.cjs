@@ -31,4 +31,8 @@ contextBridge.exposeInMainWorld('obavenus', {
   disconnectGmail: () => ipcRenderer.invoke('gmail:disconnect'),
   searchGmail: (query) => ipcRenderer.invoke('gmail:search', query),
   findFederalJobs: (text) => ipcRenderer.invoke('jobs:search-plan', text),
+  getUSAJobsStatus: () => ipcRenderer.invoke('jobs:usajobs-status'),
+  saveUSAJobsCredentials: (credentials) => ipcRenderer.invoke('jobs:usajobs-save', credentials),
+  clearUSAJobsCredentials: () => ipcRenderer.invoke('jobs:usajobs-clear'),
+  searchUSAJobsLive: (text, filters) => ipcRenderer.invoke('jobs:search-live', { text, filters }),
 });

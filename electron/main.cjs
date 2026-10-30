@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { describeProject, readProjectFile, collectProjectContext } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
@@ -9,6 +10,7 @@ const { runTeamWorkflow } = require('./orchestrator.cjs');
 const { createAgentToolExecutor } = require('./agent-tools.cjs');
 const { createProfileStore } = require('./profile.cjs');
 const { createSearchPlan } = require('./job-search.cjs');
+const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 let providerStore;
@@ -16,6 +18,8 @@ let gmailConnector;
 let geminiConnector;
 let chatGPTClientPromise;
 let profileStore;
+let usaJobsStore;
+let usaJobsClient;
 
 async function getChatGPTClient() {
   if (!chatGPTClientPromise) {
@@ -72,6 +76,16 @@ function getProfileStore() {
   return profileStore;
 }
 
+function getUSAJobsStore() {
+  if (!usaJobsStore) usaJobsStore = createUSAJobsStore({ filePath: path.join(app.getPath('userData'), 'usajobs.json'), safeStorage });
+  return usaJobsStore;
+}
+
+function getUSAJobsClient() {
+  if (!usaJobsClient) usaJobsClient = createUSAJobsClient({ store: getUSAJobsStore() });
+  return usaJobsClient;
+}
+
 async function saveWorkspace(projectPath) {
   const file = workspaceFile();
   await mkdir(path.dirname(file), { recursive: true });
@@ -125,6 +139,17 @@ ipcMain.handle('profile:choose-resume', async () => {
 });
 
 ipcMain.handle('jobs:search-plan', (_event, text) => createSearchPlan(text));
+ipcMain.handle('jobs:usajobs-status', () => getUSAJobsStore().status());
+ipcMain.handle('jobs:usajobs-save', (_event, credentials) => getUSAJobsStore().save(credentials));
+ipcMain.handle('jobs:usajobs-clear', () => getUSAJobsStore().clear());
+ipcMain.handle('jobs:search-live', async (_event, { text, filters = {} }) => {
+  const plan = createSearchPlan(text);
+  const location = typeof filters.location === 'string' ? filters.location.trim() : '';
+  if (location.length > 120) throw new RangeError('Location must be 120 characters or fewer.');
+  const minimumSalary = filters.minimumSalary === undefined ? undefined : Number(filters.minimumSalary);
+  if (minimumSalary !== undefined && (!Number.isFinite(minimumSalary) || minimumSalary < 0 || minimumSalary > 10_000_000)) throw new TypeError('Minimum salary must be between 0 and 10,000,000.');
+  return getUSAJobsClient().search({ targets: plan.targets, location: location || plan.targets[0].location, fullTime: filters.fullTime !== false, minimumSalary });
+});
 
 ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettings());
 
@@ -265,7 +290,18 @@ function createWindow() {
     },
   });
 
-  window.loadFile(path.join(__dirname, '..', 'src', 'index.html'));
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'https:') shell.openExternal(target.toString()).catch(() => {});
+    } catch {}
+    return { action: 'deny' };
+  });
+  const entryFile = path.join(__dirname, '..', 'src', 'index.html');
+  window.webContents.on('will-navigate', (event, url) => {
+    if (url !== pathToFileURL(entryFile).href) event.preventDefault();
+  });
+  window.loadFile(entryFile);
 }
 
 app.whenReady().then(() => {

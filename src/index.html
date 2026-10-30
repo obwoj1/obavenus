@@ -121,6 +121,14 @@
       .job-result { padding: 12px; border: 1px solid #dce5da; border-radius: 11px; background: #f8faf6; }
       .job-result strong, .job-result small { display: block; }
       .job-result a { display: inline-block; margin-top: 7px; color: #3e704b; font-size: 11px; font-weight: 700; }
+      .job-result p { margin: 8px 0 0; color: #526657; font-size: 11px; line-height: 1.55; }
+      .job-result details { margin-top: 9px; color: #526657; font-size: 11px; line-height: 1.55; }
+      .job-result summary { cursor: pointer; font-weight: 700; }
+      .job-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+      .job-filters label { color: #526657; font-size: 11px; }
+      .job-filters input[type="text"], .job-filters input[type="number"] { width: 150px; padding: 8px; border: 1px solid #cbd9cb; border-radius: 8px; background: #f7f9f5; color: #26372b; }
+      .job-connect { padding: 12px; border: 1px solid #dce5da; border-radius: 11px; background: #f4f7f1; }
+      .job-connect input { width: 100%; margin: 5px 0; padding: 9px; border: 1px solid #cbd9cb; border-radius: 8px; background: white; color: #26372b; }
       /* Obavenus workspace refresh: stronger contrast, tighter hierarchy, useful density. */
       :root { background: #f7f8f4; color: #202d24; }
       body, main { background: #f7f8f4; }
@@ -266,8 +274,17 @@
         <h2 id="federal-jobs-title">Federal role finder</h2>
         <p>Paste job descriptions or offer examples. Obavenus extracts titles, agencies, and locations, then builds live searches on USAJOBS. Use the official announcement for eligibility, salary, closing date, and application instructions.</p>
         <textarea id="federal-jobs-input" aria-label="Job or offer text" placeholder="Paste role, agency, location, and any other details…"></textarea>
-        <div class="settings-actions"><button type="button" id="federal-jobs-close">Close</button><button type="button" class="primary" id="federal-jobs-search">Build my job searches</button></div>
-        <small>Source: USAJOBS · Links open official live search results. These searches are not an application or an endorsement.</small>
+        <div class="job-filters"><label>Location <input id="federal-jobs-location" type="text" placeholder="Use location from pasted roles" /></label><label><input id="federal-jobs-full-time" type="checkbox" checked /> Full-time only</label><label>Minimum salary <input id="federal-jobs-min-salary" type="number" min="0" step="5000" placeholder="Any" /></label></div>
+        <details class="job-connect" id="usajobs-connect">
+          <summary>Connect USAJOBS API for in-app listings</summary>
+          <p>Request a free key from <a href="https://developer.usajobs.gov/apirequest/index" target="_blank" rel="noreferrer">the USAJOBS developer portal</a>. Your key is encrypted in macOS Keychain-backed storage; searches go directly to USAJOBS.</p>
+          <input id="usajobs-email" type="email" autocomplete="email" placeholder="Email used for API key request" aria-label="USAJOBS API email" />
+          <input id="usajobs-key" type="password" autocomplete="off" placeholder="USAJOBS API key" aria-label="USAJOBS API key" />
+          <div class="settings-actions"><button type="button" id="usajobs-disconnect" class="remove" hidden>Remove API key</button><button type="button" id="usajobs-save">Save secure connection</button></div>
+          <small id="usajobs-status" role="status" aria-live="polite">Not connected · public search links work without an API key.</small>
+        </details>
+        <div class="settings-actions"><button type="button" id="federal-jobs-close">Close</button><button type="button" id="federal-jobs-search">Build official search links</button><button type="button" class="primary" id="federal-jobs-live">Find live listings</button></div>
+        <small>Source: USAJOBS · Live announcement links lead to the official application page. Obavenus does not submit applications.</small>
         <div id="federal-jobs-results" class="job-results" aria-live="polite"></div>
       </section>
     </dialog>
