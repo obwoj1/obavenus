@@ -49,7 +49,22 @@ function getAgentStore() {
   return agentStore;
 }
 function getResearchBrowser() {
-  if (!researchBrowser) researchBrowser = createResearchBrowser({ BrowserWindow });
+  if (!researchBrowser) researchBrowser = createResearchBrowser({
+    BrowserWindow,
+    confirmAction: async (control) => {
+      const source = new URL(control.url);
+      const result = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Approve browser action?',
+        message: `The research agent wants to activate “${control.label}” on ${source.hostname}.`,
+        detail: 'This page control could submit information or change account data. Review the page before approving.',
+        buttons: ['Cancel', 'Approve action'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      return result.response === 1;
+    },
+  });
   return researchBrowser;
 }
 

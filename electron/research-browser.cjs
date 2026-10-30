@@ -5,7 +5,7 @@ function validateHttpUrl(value) {
   return url;
 }
 
-function createResearchBrowser({ BrowserWindow }) {
+function createResearchBrowser({ BrowserWindow, confirmAction = async () => false }) {
   let window;
   function current() {
     if (!window || window.isDestroyed()) throw new Error('Research Browser is not open. Open a page first.');
@@ -36,7 +36,19 @@ function createResearchBrowser({ BrowserWindow }) {
     await active.loadURL(target.toString());
     return { url: target.toString(), linkText: result.text };
   }
-  return { open, readPage, followLink };
+  async function clickControl(text) {
+    if (typeof text !== 'string' || !text.trim() || text.length > 160) throw new TypeError('Control text must contain 1–160 characters.');
+    const active = current();
+    const needle = text.trim();
+    const escapedNeedle = JSON.stringify(needle.toLocaleLowerCase());
+    const candidate = await active.webContents.executeJavaScript(`(() => { const needle = ${escapedNeedle}; const controls = [...document.querySelectorAll('button, input[type="submit"], input[type="button"], [role="button"]')]; const item = controls.find((el) => { const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim(); const rect = el.getBoundingClientRect(); return !el.disabled && rect.width > 0 && rect.height > 0 && text.toLocaleLowerCase().includes(needle); }); if (!item) return null; return { label: (item.innerText || item.value || item.getAttribute('aria-label') || item.title || '').trim().slice(0, 160), url: location.href, kind: (item.getAttribute('type') || item.getAttribute('role') || item.tagName).toLowerCase() }; })()`);
+    if (!candidate) throw new Error('No enabled, visible button with that text was found.');
+    if (!await confirmAction(candidate)) return { approved: false, label: candidate.label, url: candidate.url };
+    const clicked = await active.webContents.executeJavaScript(`(() => { const needle = ${escapedNeedle}; const controls = [...document.querySelectorAll('button, input[type="submit"], input[type="button"], [role="button"]')]; const item = controls.find((el) => { const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.title || '').trim(); const rect = el.getBoundingClientRect(); return !el.disabled && rect.width > 0 && rect.height > 0 && text.toLocaleLowerCase().includes(needle); }); if (!item) return false; item.click(); return true; })()`);
+    if (!clicked) throw new Error('The page changed before the approved control could be activated.');
+    return { approved: true, label: candidate.label, url: candidate.url };
+  }
+  return { open, readPage, followLink, clickControl };
 }
 
 module.exports = { createResearchBrowser, validateHttpUrl };

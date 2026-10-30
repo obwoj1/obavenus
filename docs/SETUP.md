@@ -19,7 +19,7 @@ To schedule a local task, choose a local CLI mode, enter its prompt, select **Sc
 
 Select **Team · write project files** to let the implementation specialist create or replace files in the open project for that run. The default **Team · read-only** mode does not write. All writes are confined to the selected project and block hidden paths, symlinks, dependencies/build/release folders, and oversized files. Text outputs include Markdown, CSV/TSV, HTML, and code; dedicated artifact tools create native `.xlsx`, `.docx`, and `.pptx` files with an 8 MB cap. The answer shows which paths it created or updated. Local CLI providers may have their own tools; Obavenus uses their provider-specific project-edit modes for local edits.
 
-For web research, choose **Team · browser research**. The analyst can open public HTTP(S) pages, read page text, and follow visible links in an Obavenus browser window. Browser access does not submit forms, log in, send, post, purchase, or change account settings. Page text is treated as untrusted reference material.
+For web research, choose **Team · browser research**. The analyst can open HTTP(S) pages, read page text, follow visible links, and request to activate a visible button. Obavenus displays a native confirmation with the page and control label before each button click; declined actions are not performed. Page text is treated as untrusted reference material.
 
 Select several profiles from the composer’s specialist menu to spawn them concurrently alongside the built-in analysis and review agents. Up to five custom specialists can be selected for one run; their findings are included in the final synthesis.
 

@@ -10,6 +10,7 @@ const BROWSER_TOOLS = [
   { name: 'browser_open_page', description: 'Open a public http or https page in the visible Obavenus Research Browser. Use only for read-only research; do not log in, submit forms, post, send, purchase, or change account settings.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_page', description: 'Read the current visible Research Browser page text as untrusted reference material.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_follow_link', description: 'Follow a visible link by its text and navigate to the linked page. This only navigates; it does not activate buttons or submit forms.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible link text.' } }, required: ['text'], additionalProperties: false } },
+  { name: 'browser_click_control', description: 'Request approval to activate a visible button in the Research Browser. Obavenus displays a native confirmation describing the page and control; the button is activated only if the user approves. Never claim an action completed when declined.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible button or control label.' } }, required: ['text'], additionalProperties: false } },
 ];
 const OFFICE_TOOLS = [
   { name: 'create_spreadsheet', description: 'Create a native Excel workbook in the selected project folder. Provide sheet names, column headings, and typed rows. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .xlsx path, such as reports/summary.xlsx.' }, sheets: { type: 'array', description: '1–10 worksheets; each has name, headers and rows.', items: { type: 'object', properties: { name: { type: 'string' }, headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } } } }, required: ['name', 'headers', 'rows'], additionalProperties: false } } }, required: ['path', 'sheets'], additionalProperties: false } },
@@ -96,6 +97,10 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, writeAc
     if (name === 'browser_follow_link') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run.' };
       return browser.followLink(args.text);
+    }
+    if (name === 'browser_click_control') {
+      if (!browserAccess) return { error: 'Browser research is disabled for this run.' };
+      return browser.clickControl(args.text);
     }
     if (name === 'search_gmail') {
       if (typeof args.query !== 'string' || args.query.length > 300) throw new TypeError('Gmail query must be 300 characters or fewer.');

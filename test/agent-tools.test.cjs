@@ -43,11 +43,13 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     open: async (url) => { visited.push(url); return { url }; },
     readPage: async () => ({ url: 'https://example.com', text: 'Public page text' }),
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
+    clickControl: async (text) => ({ approved: true, label: text }),
   };
   const allowed = createAgentToolExecutor({ browserAccess: true, browser });
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
   assert.equal((await allowed('browser_read_page')).text, 'Public page text');
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
+  assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });
   assert.deepEqual(visited, ['https://example.com']);
 });
 
