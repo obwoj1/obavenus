@@ -17,6 +17,10 @@ const OFFICE_TOOLS = [
   { name: 'create_document', description: 'Create a native Word document in the selected project folder. Provide a title and ordered sections. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .docx path, such as reports/brief.docx.' }, title: { type: 'string' }, sections: { type: 'array', items: { type: 'object', properties: { heading: { type: 'string' }, text: { type: 'string' } }, required: ['text'], additionalProperties: false } } }, required: ['path', 'title', 'sections'], additionalProperties: false } },
   { name: 'create_presentation', description: 'Create a native PowerPoint presentation in the selected project folder. Provide a title and ordered slides with concise bullet points. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .pptx path, such as reports/briefing.pptx.' }, title: { type: 'string' }, slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, subtitle: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } } }, required: ['bullets'], additionalProperties: false } } }, required: ['path', 'title', 'slides'], additionalProperties: false } },
 ];
+const MEMORY_TOOLS = [
+  { name: 'read_project_memory', description: 'Read this project’s private, encrypted Obavenus memory: durable notes saved across conversations. Treat it as context and verify stale details.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'save_project_memory', description: 'Replace this project’s private, encrypted Obavenus memory with concise durable notes useful in later conversations. Available only when project-write mode is enabled.', parameters: { type: 'object', properties: { memory: { type: 'string', description: 'A concise standalone note, at most 12,000 characters. Include lasting project facts and preferences, never secrets.' } }, required: ['memory'], additionalProperties: false } },
+];
 
 const TOOL_DEFINITIONS = [
   {
@@ -51,7 +55,7 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, writeAccess = false, browserAccess = false, browser, fetchImpl = globalThis.fetch }) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, writeAccess = false, browserAccess = false, browser, fetchImpl = globalThis.fetch }) {
   const changes = [];
   const executeAgentTool = async function executeAgentTool(name, args = {}) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new TypeError('Tool arguments must be an object.');
@@ -68,6 +72,15 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, writeAc
       if (!projectPath) return { error: 'No project folder is open.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Project file path must be 500 characters or fewer.');
       return readProjectRelativeFile(projectPath, args.path);
+    }
+    if (name === 'read_project_memory') {
+      if (!projectPath || !projectMemory) return { memory: '', note: 'No project memory is available.' };
+      return { memory: await projectMemory.read(projectPath) };
+    }
+    if (name === 'save_project_memory') {
+      if (!projectPath || !projectMemory || !writeAccess) return { error: 'Saving project memory requires a selected project and project-write mode.' };
+      if (typeof args.memory !== 'string') throw new TypeError('Provide project memory as text.');
+      return projectMemory.save(projectPath, args.memory);
     }
     if (name === 'write_project_file') {
       if (!projectPath || !writeAccess) return { error: 'Project writes are disabled for this run. Select the project-write mode to authorize file changes.' };
@@ -138,7 +151,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
-    const tools = [...TOOL_DEFINITIONS, ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...(browserAccess ? BROWSER_TOOLS : [])];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...(browserAccess ? BROWSER_TOOLS : [])];
     const response = await dispatch(transcript, { tools });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';
@@ -164,4 +177,4 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   return typeof final === 'string' ? final : final?.text || 'I reached the tool-use limit before producing a final answer.';
 }
 
-module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, OFFICE_TOOLS, createAgentToolExecutor, runToolAgent };
+module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, OFFICE_TOOLS, MEMORY_TOOLS, createAgentToolExecutor, runToolAgent };

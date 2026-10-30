@@ -18,6 +18,7 @@ const { createSkillStore } = require('./skill-store.cjs');
 const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
 const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
+const { createProjectMemoryStore } = require('./project-memory.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -35,6 +36,12 @@ let chatGPTClientPromise;
 let profileStore;
 let usaJobsStore;
 let usaJobsClient;
+let projectMemoryStore;
+
+function getProjectMemoryStore() {
+  if (!projectMemoryStore) projectMemoryStore = createProjectMemoryStore({ directory: path.join(app.getPath('userData'), 'project-memory'), safeStorage });
+  return projectMemoryStore;
+}
 
 function getTaskStore() {
   if (!taskStore) taskStore = createTaskStore({ filePath: path.join(app.getPath('userData'), 'tasks.enc'), safeStorage });
@@ -371,6 +378,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     browserAccess: browserAccess === true,
     browser: getResearchBrowser(),
     getProfile: () => getProfileStore().get(),
+    projectMemory: getProjectMemoryStore(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
   const customAgents = await getAgentStore().list();

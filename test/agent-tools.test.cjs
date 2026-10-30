@@ -35,6 +35,20 @@ test('project file writes require per-run authorization and report the exact fil
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('project memory can be read across runs but saving requires project-write authorization', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-tool-memory-'));
+  let note = '';
+  const projectMemory = { read: async () => note, save: async (_project, value) => { note = value; return { saved: true, characters: value.length }; } };
+  try {
+    const readOnly = createAgentToolExecutor({ projectPath: root, projectMemory });
+    assert.equal((await readOnly('read_project_memory')).memory, '');
+    assert.match((await readOnly('save_project_memory', { memory: 'Use the existing component library.' })).error, /project-write mode/);
+    const writer = createAgentToolExecutor({ projectPath: root, projectMemory, writeAccess: true });
+    assert.deepEqual(await writer('save_project_memory', { memory: 'Use the existing component library.' }), { saved: true, characters: 35 });
+    assert.equal((await readOnly('read_project_memory')).memory, 'Use the existing component library.');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('browser tools are unavailable outside browser mode and only navigate when explicitly enabled', async () => {
   const denied = createAgentToolExecutor({ browser: {} });
   assert.match((await denied('browser_open_page', { url: 'https://example.com' })).error, /disabled/);
