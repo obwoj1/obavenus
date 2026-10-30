@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('obavenus', {
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
   getSkills: () => ipcRenderer.invoke('skills:list'),
+  saveSkill: (skill) => ipcRenderer.invoke('skills:save', skill),
+  deleteSkill: (id) => ipcRenderer.invoke('skills:delete', id),
   listScheduledTasks: () => ipcRenderer.invoke('tasks:list'),
   scheduleLocalTask: (task) => ipcRenderer.invoke('tasks:schedule', task),
   cancelScheduledTask: (id) => ipcRenderer.invoke('tasks:cancel', id),

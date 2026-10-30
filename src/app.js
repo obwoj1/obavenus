@@ -678,6 +678,78 @@ document.querySelector('#tasks-nav').addEventListener('click', async () => {
   tasksDialog.showModal();
 });
 document.querySelector('#tasks-close').addEventListener('click', () => tasksDialog.close());
+const skillsDialog = document.querySelector('#skills-dialog');
+document.querySelector('#skills-nav').addEventListener('click', async () => {
+  await renderWorkflowLibrary();
+  skillsDialog.showModal();
+});
+document.querySelector('#workflows-close').addEventListener('click', () => skillsDialog.close());
+document.querySelector('#workflow-new').addEventListener('click', () => {
+  document.querySelector('#workflow-id').value = '';
+  document.querySelector('#workflow-name').value = '';
+  document.querySelector('#workflow-instructions').value = '';
+  document.querySelector('#workflow-name').focus();
+});
+document.querySelector('#workflow-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#workflow-status');
+  try {
+    const saved = await window.obavenus.saveSkill({
+      id: document.querySelector('#workflow-id').value || undefined,
+      name: document.querySelector('#workflow-name').value,
+      instructions: document.querySelector('#workflow-instructions').value,
+    });
+    status.textContent = 'Workflow saved on this Mac.';
+    await refreshSkills(saved.id);
+    await renderWorkflowLibrary();
+  } catch (error) { status.textContent = error.message || 'Could not save workflow.'; }
+});
+async function refreshSkills(selectedId = '') {
+  const select = document.querySelector('#skill-choice');
+  const skills = await window.obavenus.getSkills();
+  select.replaceChildren(new Option('No workflow', ''));
+  skills.forEach((skill) => select.add(new Option(skill.name, skill.id)));
+  if (selectedId) select.value = selectedId;
+}
+async function renderWorkflowLibrary() {
+  const list = document.querySelector('#workflow-list');
+  const skills = await window.obavenus.getSkills();
+  list.replaceChildren();
+  skills.forEach((skill) => {
+    const card = document.createElement('article');
+    card.className = 'gmail-item';
+    const title = document.createElement('strong');
+    title.textContent = skill.name;
+    const detail = document.createElement('p');
+    detail.textContent = skill.instructions;
+    card.append(title, detail);
+    if (skill.custom) {
+      const edit = document.createElement('button');
+      edit.className = 'context-action';
+      edit.textContent = 'Edit';
+      edit.addEventListener('click', () => {
+        document.querySelector('#workflow-id').value = skill.id;
+        document.querySelector('#workflow-name').value = skill.name;
+        document.querySelector('#workflow-instructions').value = skill.instructions;
+      });
+      const remove = document.createElement('button');
+      remove.className = 'context-action';
+      remove.textContent = 'Delete';
+      remove.addEventListener('click', async () => {
+        await window.obavenus.deleteSkill(skill.id);
+        if (document.querySelector('#skill-choice').value === skill.id) document.querySelector('#skill-choice').value = '';
+        await refreshSkills();
+        await renderWorkflowLibrary();
+      });
+      card.append(edit, remove);
+    } else {
+      const badge = document.createElement('small');
+      badge.textContent = 'Built in';
+      card.append(badge);
+    }
+    list.append(card);
+  });
+}
 document.querySelector('#schedule-toggle').addEventListener('click', () => {
   const panel = document.querySelector('#schedule-panel');
   panel.hidden = !panel.hidden;
@@ -1071,15 +1143,7 @@ async function refreshChatGPTModels() {
   if (!models.some((item) => item.slug === providerModelInput.value)) providerModelInput.value = models[0]?.slug || providerModelInput.value;
 }
 
-window.obavenus.getSkills().then((skills) => {
-  const select = document.querySelector('#skill-choice');
-  skills.forEach((skill) => {
-    const option = document.createElement('option');
-    option.value = skill.id;
-    option.textContent = skill.name;
-    select.append(option);
-  });
-}).catch(() => {});
+refreshSkills().catch(() => {});
 
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);

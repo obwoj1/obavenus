@@ -70,6 +70,8 @@
       .settings label { display: block; margin: 17px 0 7px; color: #d7d6de; font-size: 11px; }
       .settings input { width: 100%; padding: 11px 12px; border: 1px solid #393943; border-radius: 8px; outline: 0; background: #101116; color: #f5f4f1; font: inherit; font-size: 12px; }
       .settings input:focus { border-color: #bda8ff; }
+      .settings textarea { width: 100%; min-height: 112px; padding: 11px 12px; border: 1px solid #dce4d9; border-radius: 8px; outline: 0; resize: vertical; background: #fff; color: #344438; font: inherit; font-size: 12px; line-height: 1.5; }
+      .settings textarea:focus { border-color: #829c84; }
       .settings small { display: block; margin-top: 7px; color: #898995; font-size: 10px; line-height: 1.5; }
       .settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
       .settings-actions button { padding: 9px 12px; border: 1px solid #393943; border-radius: 8px; background: #24252e; font-size: 11px; cursor: pointer; }
@@ -241,6 +243,7 @@
         <div class="nav-item active"><span>✦</span> Assistant</div>
         <button class="nav-item" id="projects-nav" type="button"><span>▤</span> Projects</button>
         <button class="nav-item" id="tasks-nav" type="button"><span>◷</span> Scheduled tasks</button>
+        <button class="nav-item" id="skills-nav" type="button"><span>✧</span> Workflows</button>
         <button class="nav-item" id="email-nav" type="button"><span>✉</span> Gmail</button>
         <div class="section-label">Recent work</div>
         <div class="recent-list" id="recent-work" aria-label="Recent conversations"></div>
@@ -371,6 +374,7 @@
       </section>
     </dialog>
     <dialog id="tasks-dialog" aria-labelledby="tasks-title"><section class="settings"><h2 id="tasks-title">Scheduled local tasks</h2><p>Tasks run with the chosen local CLI and project folder while Obavenus is open. If the Mac sleeps or the app closes, queued tasks run when the app is available again. Runs stay read-only.</p><div id="scheduled-task-list" class="gmail-results"></div><div class="settings-actions"><button type="button" id="tasks-close">Close</button></div></section></dialog>
+    <dialog id="skills-dialog" aria-labelledby="skills-title"><section class="settings"><h2 id="skills-title">Reusable workflows</h2><p>Workflows are saved on this Mac and add focused instructions to a request. Custom instructions are encrypted locally.</p><div id="workflow-list" class="gmail-results"></div><form id="workflow-form"><input id="workflow-id" type="hidden" /><label for="workflow-name">Name</label><input id="workflow-name" maxlength="60" required placeholder="e.g. Prepare a release review" /><label for="workflow-instructions">Instructions</label><textarea id="workflow-instructions" maxlength="2500" required placeholder="Describe the repeatable steps and the output you expect."></textarea><div class="settings-actions"><button type="button" id="workflow-new">New workflow</button><button type="button" id="workflows-close">Close</button><button class="primary" type="submit">Save workflow</button></div><small id="workflow-status" role="status" aria-live="polite"></small></form></section></dialog>
     <script src="./app.js"></script>
   </body>
 </html>

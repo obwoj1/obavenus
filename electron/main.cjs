@@ -14,11 +14,13 @@ const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 const { createLocalAgent } = require('./local-agent.cjs');
 const { SKILLS } = require('./skills.cjs');
 const { createTaskStore } = require('./tasks.cjs');
+const { createSkillStore } = require('./skill-store.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
 let taskStore;
 let taskTimer;
+let skillStore;
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -30,6 +32,11 @@ let usaJobsClient;
 function getTaskStore() {
   if (!taskStore) taskStore = createTaskStore({ filePath: path.join(app.getPath('userData'), 'tasks.enc'), safeStorage });
   return taskStore;
+}
+
+function getSkillStore() {
+  if (!skillStore) skillStore = createSkillStore({ filePath: path.join(app.getPath('userData'), 'custom-skills.enc'), safeStorage });
+  return skillStore;
 }
 
 function broadcastTask(task) {
@@ -198,7 +205,9 @@ ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettin
 ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore().save(settings));
 
 ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
-ipcMain.handle('skills:list', () => SKILLS);
+ipcMain.handle('skills:list', async () => [...SKILLS, ...(await getSkillStore().list())]);
+ipcMain.handle('skills:save', (_event, skill) => getSkillStore().save(skill));
+ipcMain.handle('skills:delete', (_event, id) => getSkillStore().remove(id));
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   let projectPath = '';
