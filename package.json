@@ -1,7 +1,7 @@
 {
   "name": "obavenus",
   "productName": "Obavenus",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "description": "Obavenus, a local-first Electron desktop assistant.",
   "author": "Obavenus",
