@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('obavenus', {
   saveProviderSettings: (settings) => ipcRenderer.invoke('provider:save-settings', settings),
   clearProviderKey: (provider) => ipcRenderer.invoke('provider:clear-key', provider),
   sendChat: (messages) => ipcRenderer.invoke('provider:send', messages),
+  getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
+  runLocalAgent: (provider, messages) => ipcRenderer.invoke('local-agent:run', { provider, messages }),
   runTeam: (messages, runId, writeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess }),
   onAgentProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);

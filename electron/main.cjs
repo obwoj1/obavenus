@@ -11,8 +11,10 @@ const { createAgentToolExecutor } = require('./agent-tools.cjs');
 const { createProfileStore } = require('./profile.cjs');
 const { createSearchPlan } = require('./job-search.cjs');
 const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
+const { createLocalAgent } = require('./local-agent.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
+const localAgent = createLocalAgent();
 let providerStore;
 let gmailConnector;
 let geminiConnector;
@@ -156,6 +158,13 @@ ipcMain.handle('provider:get-settings', () => getProviderStore().getPublicSettin
 ipcMain.handle('provider:save-settings', (_event, settings) => getProviderStore().save(settings));
 
 ipcMain.handle('provider:clear-key', (_event, provider) => getProviderStore().clearKey(provider));
+ipcMain.handle('local-agent:status', () => localAgent.status());
+ipcMain.handle('local-agent:run', async (_event, { provider, messages }) => {
+  let projectPath;
+  try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  return localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData') });
+});
 
 async function dispatchProviderMessages(messages, { tools } = {}) {
   const prepared = Array.isArray(messages) ? messages.map((message) => ({ ...message })) : messages;
