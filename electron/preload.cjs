@@ -43,6 +43,11 @@ contextBridge.exposeInMainWorld('obavenus', {
   saveRemoteMachine: (machine) => ipcRenderer.invoke('remote-machines:save', machine),
   removeRemoteMachine: (id) => ipcRenderer.invoke('remote-machines:remove', id),
   runRemoteAgent: (provider, machineId, remotePath, messages, writeAccess = false) => ipcRenderer.invoke('remote-agent:run', { provider, machineId, remotePath, messages, writeAccess }),
+  listRemoteJobs: () => ipcRenderer.invoke('remote-jobs:list'),
+  startRemoteJob: (provider, machineId, remotePath, messages, writeAccess = false) => ipcRenderer.invoke('remote-jobs:start', { provider, machineId, remotePath, messages, writeAccess }),
+  refreshRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:refresh', id),
+  cancelRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:cancel', id),
+  removeRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:remove', id),
   runTeam: (messages, runId, writeAccess = false, agentIds = [], browserAccess = false, chromeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess, agentIds, browserAccess, chromeAccess }),
   onAgentProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);

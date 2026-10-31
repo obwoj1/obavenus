@@ -524,13 +524,14 @@ form.addEventListener('submit', async (event) => {
         const lastUser = [...messages].reverse().find((message) => message.role === 'user');
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
-      pendingReply.text = await window.obavenus.runRemoteAgent(
-        remoteProvider,
-        document.querySelector('#remote-machine-choice').value,
-        document.querySelector('#remote-project-path').value.trim(),
-        messages,
-        remoteWriteAccess,
-      );
+      const machineId = document.querySelector('#remote-machine-choice').value;
+      const remotePath = document.querySelector('#remote-project-path').value.trim();
+      if (document.querySelector('#remote-background').checked) {
+        const job = await window.obavenus.startRemoteJob(remoteProvider, machineId, remotePath, messages, remoteWriteAccess);
+        pendingReply.text = `Started a background task on the remote machine. It will continue if Obavenus closes. Track it under Remote jobs (ID ${job.id}).`;
+      } else {
+        pendingReply.text = await window.obavenus.runRemoteAgent(remoteProvider, machineId, remotePath, messages, remoteWriteAccess);
+      }
       pendingReply.status = 'complete';
       return;
     }
@@ -847,6 +848,65 @@ remoteMachineForm.addEventListener('submit', async (event) => {
     await renderRemoteMachineList();
   } catch (error) { remoteMachineStatus.textContent = error.message || 'Could not save that machine.'; }
 });
+const remoteJobsDialog = document.querySelector('#remote-jobs-dialog');
+async function renderRemoteJobs() {
+  const list = document.querySelector('#remote-job-list');
+  list.replaceChildren();
+  const jobs = await window.obavenus.listRemoteJobs();
+  if (!jobs.length) { list.textContent = 'No background remote jobs yet.'; return; }
+  for (const job of jobs) {
+    const card = document.createElement('article');
+    card.className = 'gmail-item';
+    const title = document.createElement('strong');
+    title.textContent = `${job.title} · ${job.provider} · ${job.status}`;
+    const meta = document.createElement('small');
+    meta.textContent = `${job.machineLabel} · ${new Date(job.startedAt).toLocaleString()} · ${job.writeAccess ? 'project edits enabled' : 'read-only'}`;
+    card.append(title, meta);
+    if (job.output) {
+      const output = document.createElement('pre');
+      output.style.cssText = 'white-space:pre-wrap;max-height:180px;overflow:auto;font-size:11px';
+      output.textContent = job.output.slice(-20_000);
+      card.append(output);
+    }
+    if (job.error) {
+      const error = document.createElement('p');
+      error.textContent = job.error.slice(-4000);
+      card.append(error);
+    }
+    const refresh = document.createElement('button');
+    refresh.type = 'button'; refresh.textContent = 'Check status';
+    refresh.addEventListener('click', async () => {
+      refresh.disabled = true;
+      try { await window.obavenus.refreshRemoteJob(job.id); await renderRemoteJobs(); }
+      catch (error) { refresh.disabled = false; title.textContent = `${job.title} · ${error.message || 'Could not connect'}`; }
+    });
+    card.append(refresh);
+    if (job.status === 'running') {
+      const cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.textContent = 'Stop remote job';
+      cancel.addEventListener('click', async () => {
+        cancel.disabled = true;
+        try { await window.obavenus.cancelRemoteJob(job.id); await renderRemoteJobs(); }
+        catch (error) { cancel.disabled = false; title.textContent = `${job.title} · ${error.message || 'Could not stop job'}`; }
+      });
+      card.append(cancel);
+    } else {
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.textContent = 'Delete remote task data';
+      remove.addEventListener('click', async () => { await window.obavenus.removeRemoteJob(job.id); await renderRemoteJobs(); });
+      card.append(remove);
+    }
+    list.append(card);
+  }
+}
+async function openRemoteJobs() {
+  try { await renderRemoteJobs(); remoteJobsDialog.showModal(); }
+  catch (error) { document.querySelector('#run-status').textContent = error.message || 'Could not load remote jobs.'; }
+}
+document.querySelector('#remote-jobs-open').addEventListener('click', openRemoteJobs);
+document.querySelector('#remote-jobs-nav').addEventListener('click', openRemoteJobs);
+document.querySelector('#remote-jobs-refresh').addEventListener('click', () => renderRemoteJobs().catch((error) => { document.querySelector('#remote-job-list').textContent = error.message || 'Could not refresh remote jobs.'; }));
+document.querySelector('#remote-jobs-close').addEventListener('click', () => remoteJobsDialog.close());
 document.querySelector('#research-open').addEventListener('click', async () => {
   const status = document.querySelector('#research-status');
   try {
