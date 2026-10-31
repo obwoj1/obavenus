@@ -20,6 +20,7 @@ const { createResearchBrowser } = require('./research-browser.cjs');
 const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
+const { formatConversationMarkdown } = require('./conversation-export.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -254,6 +255,17 @@ ipcMain.handle('project:close', async () => {
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
   return readProjectFile(saved.projectPath, fileName);
+});
+ipcMain.handle('conversation:export', async (_event, conversation) => {
+  const markdown = formatConversationMarkdown(conversation);
+  const result = await dialog.showSaveDialog({
+    title: 'Export Obavenus conversation',
+    defaultPath: `${(conversation.title || 'obavenus-conversation').replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 70) || 'obavenus-conversation'}.md`,
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  });
+  if (result.canceled || !result.filePath) return { saved: false };
+  await writeFile(result.filePath, markdown, { mode: 0o600 });
+  return { saved: true, filePath: result.filePath };
 });
 
 ipcMain.handle('profile:get', () => getProfileStore().get());

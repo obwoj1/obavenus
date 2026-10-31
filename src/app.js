@@ -290,6 +290,24 @@ function getActiveConversation() {
   return conversations.find((item) => item.id === activeConversationId);
 }
 
+document.querySelector('#conversation-export').addEventListener('click', async () => {
+  const current = getActiveConversation();
+  const status = runStatus;
+  if (!current?.messages.length) {
+    status.hidden = false;
+    status.textContent = 'Send or open a conversation before exporting it.';
+    return;
+  }
+  try {
+    const result = await window.obavenus.exportConversation(current);
+    status.hidden = false;
+    status.textContent = result.saved ? `Conversation exported to ${result.filePath}` : 'Export cancelled.';
+  } catch (error) {
+    status.hidden = false;
+    status.textContent = error.message || 'Could not export this conversation.';
+  }
+});
+
 function renderMessages() {
   conversation.querySelectorAll('.message').forEach((message) => message.remove());
   const current = getActiveConversation();
