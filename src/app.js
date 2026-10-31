@@ -539,8 +539,12 @@ form.addEventListener('submit', async (event) => {
       const machineId = document.querySelector('#remote-machine-choice').value;
       const remotePath = document.querySelector('#remote-project-path').value.trim();
       if (document.querySelector('#remote-background').checked) {
-        const job = await window.obavenus.startRemoteJob(remoteProvider, machineId, remotePath, messages, remoteWriteAccess);
-        pendingReply.text = `Started a background task on the remote machine. It will continue if Obavenus closes. Track it under Remote jobs (ID ${job.id}).`;
+        const value = document.querySelector('#remote-run-at').value;
+        const executeAt = value ? new Date(value).getTime() : 0;
+        const job = await window.obavenus.startRemoteJob(remoteProvider, machineId, remotePath, messages, remoteWriteAccess, executeAt);
+        pendingReply.text = executeAt
+          ? `Scheduled a background task for ${new Date(executeAt).toLocaleString()} on the remote machine. It will run if Obavenus closes. Track it under Remote jobs (ID ${job.id}).`
+          : `Started a background task on the remote machine. It will continue if Obavenus closes. Track it under Remote jobs (ID ${job.id}).`;
       } else {
         pendingReply.text = await window.obavenus.runRemoteAgent(remoteProvider, machineId, remotePath, messages, remoteWriteAccess);
       }
@@ -792,6 +796,11 @@ runMode.addEventListener('change', () => {
   if (remoteModeSelected) document.querySelector('#schedule-panel').hidden = true;
   if (remoteModeSelected) refreshRemoteMachineChoices().catch(() => {});
 });
+document.querySelector('#remote-background').addEventListener('change', (event) => {
+  const startAt = document.querySelector('#remote-run-at');
+  startAt.disabled = !event.currentTarget.checked;
+  if (!event.currentTarget.checked) startAt.value = '';
+});
 runMode.dispatchEvent(new Event('change'));
 let remoteMachines = [];
 async function refreshRemoteMachineChoices() {
@@ -873,7 +882,7 @@ async function renderRemoteJobs() {
     const title = document.createElement('strong');
     title.textContent = `${job.title} · ${job.provider} · ${job.status}`;
     const meta = document.createElement('small');
-    meta.textContent = `${job.machineLabel} · ${new Date(job.startedAt).toLocaleString()} · ${job.writeAccess ? 'project edits enabled' : 'read-only'}`;
+    meta.textContent = `${job.machineLabel} · ${job.executeAt ? `starts ${new Date(job.executeAt).toLocaleString()}` : new Date(job.startedAt).toLocaleString()} · ${job.writeAccess ? 'project edits enabled' : 'read-only'}`;
     card.append(title, meta);
     if (job.output) {
       const output = document.createElement('pre');
@@ -894,7 +903,7 @@ async function renderRemoteJobs() {
       catch (error) { refresh.disabled = false; title.textContent = `${job.title} · ${error.message || 'Could not connect'}`; }
     });
     card.append(refresh);
-    if (job.status === 'running') {
+    if (['running', 'scheduled'].includes(job.status)) {
       const cancel = document.createElement('button');
       cancel.type = 'button'; cancel.textContent = 'Stop remote job';
       cancel.addEventListener('click', async () => {
