@@ -479,7 +479,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     searchGmail: (query) => getGmailConnector().search(query),
   });
   const customAgents = await getAgentStore().list();
-  const requestedIds = Array.isArray(agentIds) ? [...new Set(agentIds.filter((id) => typeof id === 'string'))].slice(0, 5) : [];
+  const requestedIds = Array.isArray(agentIds) ? [...new Set(agentIds.filter((id) => typeof id === 'string'))].slice(0, 12) : [];
   const selectedAgents = customAgents.filter((agent) => requestedIds.includes(agent.id));
   return runTeamWorkflow({
     messages: preparedMessages,

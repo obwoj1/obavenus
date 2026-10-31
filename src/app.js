@@ -1008,13 +1008,13 @@ async function refreshCustomAgents(selectedId = '') {
   updateAgentPickerLabel();
 }
 function getSelectedAgentIds() {
-  return [...document.querySelectorAll('#agent-options input[type="checkbox"]:checked')].slice(0, 5).map((checkbox) => checkbox.value);
+  return [...document.querySelectorAll('#agent-options input[type="checkbox"]:checked')].slice(0, 12).map((checkbox) => checkbox.value);
 }
 function updateAgentPickerLabel() {
   const selected = getSelectedAgentIds();
   document.querySelector('#agent-picker-label').textContent = selected.length ? `${selected.length} specialist${selected.length === 1 ? '' : 's'} selected` : 'Default team';
   document.querySelectorAll('#agent-options input[type="checkbox"]').forEach((checkbox) => {
-    checkbox.disabled = !checkbox.checked && selected.length >= 5;
+    checkbox.disabled = !checkbox.checked && selected.length >= 12;
   });
 }
 async function renderCustomAgents() {
