@@ -3,6 +3,7 @@ const { mkdtemp, mkdir, writeFile, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { buildSpreadsheet, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
 const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
@@ -43,6 +44,35 @@ test('opening a project file returns small text and rejects paths and oversized 
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('project previews and read tools extract bounded text from local Word, Excel, and PowerPoint files', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-office-read-'));
+  try {
+    await writeFile(path.join(root, 'summary.xlsx'), await buildSpreadsheet({ sheets: [{ name: 'Offers', headers: ['Agency', 'Salary'], rows: [['Treasury', 153000]] }] }));
+    await writeFile(path.join(root, 'brief.docx'), await buildDocument({ title: 'Hiring plan', sections: [{ heading: 'Next step', text: 'Apply through USAJOBS.' }] }));
+    await writeFile(path.join(root, 'deck.pptx'), await buildPresentation({ title: 'Hiring', slides: [{ title: 'Targets', bullets: ['Treasury', 'Energy'] }] }));
+    const spreadsheet = await readProjectFile(root, 'summary.xlsx');
+    const document = await readProjectRelativeFile(root, 'brief.docx');
+    const presentation = await readProjectRelativeFile(root, 'deck.pptx');
+    assert.match(spreadsheet.content, /Sheet: Offers[\s\S]*Treasury\t153000/);
+    assert.match(document.content, /Hiring plan[\s\S]*Next step[\s\S]*Apply through USAJOBS/);
+    assert.match(presentation.content, /Slide 1[\s\S]*Targets[\s\S]*Treasury[\s\S]*Energy/);
+    assert.equal(spreadsheet.truncated, false);
+    assert.deepEqual((await listProjectFiles(root)).files, ['brief.docx', 'deck.pptx', 'summary.xlsx']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Office previews cap extracted text and reject malformed document archives', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-office-bounds-'));
+  try {
+    await writeFile(path.join(root, 'long.docx'), await buildDocument({ title: 'Long report', sections: Array.from({ length: 4 }, () => ({ text: 'x'.repeat(18_000) })) }));
+    await writeFile(path.join(root, 'bad.docx'), 'not a zip archive');
+    const preview = await readProjectFile(root, 'long.docx');
+    assert.equal(preview.content.length, 60_000);
+    assert.equal(preview.truncated, true);
+    await assert.rejects(readProjectFile(root, 'bad.docx'));
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('team context deterministically selects relevant nested text files and skips dependencies and symlinks', async () => {

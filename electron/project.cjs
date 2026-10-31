@@ -1,5 +1,7 @@
 const { readFile, readdir, realpath, stat, lstat, mkdir, open } = require('node:fs/promises');
 const path = require('node:path');
+const ExcelJS = require('exceljs');
+const JSZip = require('jszip');
 
 const MAX_PROJECT_FILE_BYTES = 64 * 1024;
 const MAX_CONTEXT_FILES = 3;
@@ -9,6 +11,99 @@ const MAX_SCANNED_BYTES = 5 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'release', '.next', '.turbo']);
 const MAX_AGENT_WRITE_BYTES = 256 * 1024;
 const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.csv', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.tsv', '.yaml', '.yml']);
+const OFFICE_READ_EXTENSIONS = new Set(['.docx', '.pptx', '.xlsx']);
+const MAX_OFFICE_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_OFFICE_UNCOMPRESSED_BYTES = 40 * 1024 * 1024;
+const MAX_EXTRACTED_TEXT_CHARACTERS = 60_000;
+
+function xmlText(value) {
+  return value.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code))).replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+async function loadOfficeArchive(bytes) {
+  if (bytes.length > MAX_OFFICE_FILE_BYTES) throw new RangeError('Office files must be 10 MB or smaller.');
+  const archive = await JSZip.loadAsync(bytes, { checkCRC32: false, createFolders: false });
+  const files = Object.entries(archive.files).filter(([, entry]) => !entry.dir);
+  if (files.length > 5000) throw new RangeError('Office archive contains too many entries.');
+  let expanded = 0;
+  for (const [name, entry] of files) {
+    if (name.split('/').some((part) => part === '..')) throw new TypeError('Office archive contains an unsafe path.');
+    expanded += entry._data?.uncompressedSize || 0;
+    if (expanded > MAX_OFFICE_UNCOMPRESSED_BYTES) throw new RangeError('Office archive expands beyond the 40 MB reading limit.');
+  }
+  return archive;
+}
+
+async function readOfficeText(bytes, extension) {
+  const archive = await loadOfficeArchive(bytes);
+  let blocks = [];
+  if (extension === '.xlsx') {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes);
+    if (workbook.worksheets.length > 30) throw new RangeError('A workbook can contain at most 30 worksheets for preview.');
+    for (const sheet of workbook.worksheets) {
+      const lines = [`Sheet: ${sheet.name}`];
+      const lastRow = Math.min(sheet.rowCount, 2000);
+      for (let rowNumber = 1; rowNumber <= lastRow; rowNumber += 1) {
+        const row = sheet.getRow(rowNumber);
+        if (!row.hasValues) continue;
+        const values = Array.from({ length: Math.min(row.cellCount, 200) }, (_, index) => row.getCell(index + 1).value).map((value) => {
+          if (value && typeof value === 'object') {
+            if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || '').join('');
+            if ('result' in value) return value.result ?? '';
+            if ('text' in value) return value.text;
+          }
+          return value instanceof Date ? value.toISOString() : value ?? '';
+        });
+        lines.push(values.map((value) => String(value).replace(/[\r\n]+/g, ' ')).join('\t'));
+      }
+      blocks.push(lines.join('\n'));
+    }
+  } else if (extension === '.docx') {
+    const document = archive.file('word/document.xml');
+    if (!document || (document._data?.uncompressedSize || 0) > MAX_OFFICE_UNCOMPRESSED_BYTES) throw new TypeError('This Word document has no readable body.');
+    const xml = await document.async('string');
+    blocks = [xml.split(/<w:p(?:\s[^>]*)?>/).slice(1).map((paragraph) => xmlText(paragraph.split('</w:p>')[0]).trim()).filter(Boolean).join('\n')];
+  } else if (extension === '.pptx') {
+    const slides = Object.keys(archive.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name)).sort((a, b) => Number(a.match(/slide(\d+)/)[1]) - Number(b.match(/slide(\d+)/)[1]));
+    if (!slides.length) throw new TypeError('This presentation has no readable slides.');
+    if (slides.length > 100) throw new RangeError('A presentation can contain at most 100 slides for preview.');
+    for (const [index, name] of slides.entries()) {
+      const xml = await archive.file(name).async('string');
+      const text = [...xml.matchAll(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g)].map((match) => xmlText(match[1]).trim()).filter(Boolean);
+      if (text.length) blocks.push(`Slide ${index + 1}\n${text.join('\n')}`);
+    }
+  }
+  const content = blocks.join('\n\n').trim();
+  if (!content) throw new TypeError('No readable text was found in this Office file.');
+  return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: content.length > MAX_EXTRACTED_TEXT_CHARACTERS };
+}
+
+async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false } = {}) {
+  if (typeof relativeName !== 'string' || !relativeName || (topLevelOnly && (path.basename(relativeName) !== relativeName || ['.', '..'].includes(relativeName))) || path.isAbsolute(relativeName)
+    || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
+    throw new TypeError(topLevelOnly ? 'Only a top-level file name can be opened' : 'Use a relative project file path without traversal segments.');
+  }
+  const root = await realpath(projectPath);
+  const parts = relativeName.split(/[\\/]/);
+  let target = root;
+  for (const [index, part] of parts.entries()) {
+    target = path.join(target, part);
+    const details = await lstat(target);
+    if (details.isSymbolicLink()) throw new TypeError('Symbolic links are not available to project tools.');
+    if (index < parts.length - 1 && !details.isDirectory()) throw new TypeError('A project path segment is not a folder.');
+    if (index === parts.length - 1 && !details.isFile()) throw new TypeError('Only regular project files can be read.');
+  }
+  const details = await lstat(target);
+  const extension = path.extname(target).toLowerCase();
+  const office = OFFICE_READ_EXTENSIONS.has(extension);
+  const limit = office ? MAX_OFFICE_FILE_BYTES : MAX_PROJECT_FILE_BYTES;
+  if (details.size > limit) throw new RangeError(office ? 'Office files must be 10 MB or smaller.' : 'File is larger than 64 KB');
+  const bytes = await readFile(target);
+  if (office) return { name: parts.join(path.sep), size: bytes.length, ...(await readOfficeText(bytes, extension)) };
+  if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
+  return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length, truncated: false };
+}
 
 async function describeProject(selectedPath) {
   const projectPath = await realpath(selectedPath);
@@ -31,19 +126,7 @@ async function describeProject(selectedPath) {
 }
 
 async function readProjectFile(projectPath, fileName) {
-  if (typeof fileName !== 'string' || fileName.length === 0 || path.basename(fileName) !== fileName || fileName === '.' || fileName === '..') {
-    throw new TypeError('Only a top-level file name can be opened');
-  }
-
-  const root = await realpath(projectPath);
-  const target = path.join(root, fileName);
-  const details = await lstat(target);
-  if (!details.isFile()) throw new TypeError('Only regular files can be opened');
-  if (details.size > MAX_PROJECT_FILE_BYTES) throw new RangeError('File is larger than 64 KB');
-
-  const bytes = await readFile(target);
-  if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
-  return { content: bytes.toString('utf8'), size: bytes.length, truncated: false };
+  return readProjectBytes(projectPath, fileName, { topLevelOnly: true });
 }
 
 function queryTerms(query) {
@@ -111,21 +194,7 @@ async function readProjectRelativeFile(projectPath, relativeName) {
     || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
     throw new TypeError('Use a relative project file path without traversal segments.');
   }
-  const root = await realpath(projectPath);
-  const parts = relativeName.split(/[\\/]/);
-  let target = root;
-  for (const [index, part] of parts.entries()) {
-    target = path.join(target, part);
-    const details = await lstat(target);
-    if (details.isSymbolicLink()) throw new TypeError('Symbolic links are not available to project tools.');
-    if (index < parts.length - 1 && !details.isDirectory()) throw new TypeError('A project path segment is not a folder.');
-    if (index === parts.length - 1 && !details.isFile()) throw new TypeError('Only regular project files can be read.');
-  }
-  const details = await lstat(target);
-  if (details.size > MAX_PROJECT_FILE_BYTES) throw new RangeError('File is larger than 64 KB');
-  const bytes = await readFile(target);
-  if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
-  return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length };
+  return readProjectBytes(projectPath, relativeName);
 }
 
 async function writeProjectArtifact(projectPath, relativeName, content, { extensions = TEXT_EXTENSIONS, maxBytes = MAX_AGENT_WRITE_BYTES, binary = false } = {}) {
@@ -186,7 +255,7 @@ async function listProjectFiles(projectPath, limit = 500) {
       const name = path.join(relative, entry.name);
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.') && !IGNORED_DIRECTORIES.has(entry.name)) await walk(name);
-      } else if (entry.isFile() && TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      } else if (entry.isFile() && (TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || OFFICE_READ_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
         files.push(name);
       }
     }
@@ -195,4 +264,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, MAX_PROJECT_FILE_BYTES, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };
