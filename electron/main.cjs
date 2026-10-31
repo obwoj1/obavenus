@@ -480,14 +480,15 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
   });
   const customAgents = await getAgentStore().list();
   const requestedIds = Array.isArray(agentIds) ? [...new Set(agentIds.filter((id) => typeof id === 'string'))].slice(0, 12) : [];
-  const selectedAgents = customAgents.filter((agent) => requestedIds.includes(agent.id));
+  const selectedAgents = requestedIds.length ? customAgents.filter((agent) => requestedIds.includes(agent.id)) : customAgents;
   return runTeamWorkflow({
     messages: preparedMessages,
     dispatch: dispatchProviderMessages,
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true || chromeAccess === true,
-    specialists: selectedAgents.map(({ name, instructions }) => ({ name, instructions })),
+    specialists: selectedAgents.map(({ id, name, instructions }) => ({ id, name, instructions })),
+    autoSelectSpecialists: requestedIds.length === 0 && customAgents.length > 0,
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
     },

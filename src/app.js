@@ -1012,7 +1012,7 @@ function getSelectedAgentIds() {
 }
 function updateAgentPickerLabel() {
   const selected = getSelectedAgentIds();
-  document.querySelector('#agent-picker-label').textContent = selected.length ? `${selected.length} specialist${selected.length === 1 ? '' : 's'} selected` : 'Default team';
+  document.querySelector('#agent-picker-label').textContent = selected.length ? `${selected.length} specialist${selected.length === 1 ? '' : 's'} selected · manual` : 'Auto-pick saved specialists';
   document.querySelectorAll('#agent-options input[type="checkbox"]').forEach((checkbox) => {
     checkbox.disabled = !checkbox.checked && selected.length >= 12;
   });
