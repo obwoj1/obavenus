@@ -45,3 +45,11 @@ test('SSH aliases and remote paths reject invalid input', () => {
   assert.equal(validateRemotePath('', false), '');
   assert.equal(shellQuote("a'b"), "'a'\\''b'");
 });
+
+test('remote connection checks use batch SSH and never allow a shell', async () => {
+  const calls = [];
+  const agent = createRemoteAgent({ spawnImpl: fakeSpawn(calls), timeoutMs: 1000 });
+  assert.deepEqual(await agent.probe('studio'), { connected: true });
+  assert.deepEqual(calls[0].args, ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', 'studio', 'true']);
+  assert.equal(calls[0].options.shell, false);
+});

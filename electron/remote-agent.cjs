@@ -24,6 +24,18 @@ function validateRemotePath(value, writeAccess) {
 function shellQuote(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 
 function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeoutMs = 180_000, maxOutputBytes = 2_000_000 } = {}) {
+  function probe(rawTarget) {
+    const target = validateTarget(rawTarget);
+    const child = spawnImpl(sshPath, ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', target, 'true'], {
+      cwd: os.homedir(), shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return new Promise((resolve, reject) => {
+      let stderr = '';
+      child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString('utf8')).slice(-2000); });
+      child.on('error', (error) => reject(new Error(`Could not start SSH: ${error.message}`)));
+      child.on('close', (code) => code === 0 ? resolve({ connected: true }) : reject(new Error((stderr.trim() || `SSH exited with code ${code}. Check the alias, key, and trusted host key.`).slice(0, 2000))));
+    });
+  }
   function run({ provider, target: rawTarget, remotePath = '', messages, writeAccess = false }) {
     const buildArgs = REMOTE_COMMANDS[provider];
     if (!buildArgs) throw new TypeError('Choose Claude Code, Codex CLI, or Gemini CLI for the remote machine.');
@@ -91,7 +103,7 @@ function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeou
       else child.stdin.end();
     });
   }
-  return { run };
+  return { run, probe };
 }
 
 module.exports = { REMOTE_COMMANDS, validateTarget, validateRemotePath, shellQuote, createRemoteAgent };
