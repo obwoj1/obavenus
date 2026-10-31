@@ -21,6 +21,7 @@ const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
+const { createWorkspaceStore } = require('./workspaces.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -40,6 +41,12 @@ let usaJobsStore;
 let usaJobsClient;
 let projectMemoryStore;
 let scheduledTaskRunner;
+let workspaceStore;
+
+function getWorkspaceStore() {
+  if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
+  return workspaceStore;
+}
 
 function getProjectMemoryStore() {
   if (!projectMemoryStore) projectMemoryStore = createProjectMemoryStore({ directory: path.join(app.getPath('userData'), 'project-memory'), safeStorage });
@@ -219,38 +226,20 @@ function getUSAJobsClient() {
   return usaJobsClient;
 }
 
-async function saveWorkspace(projectPath) {
-  const file = workspaceFile();
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify({ projectPath }), { mode: 0o600 });
-}
-
 ipcMain.handle('project:choose', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   if (result.canceled || result.filePaths.length === 0) return null;
-
-  const project = await describeProject(result.filePaths[0]);
-  await saveWorkspace(project.path);
-  return project.summary;
+  return getWorkspaceStore().add(result.filePaths[0]);
 });
 
-ipcMain.handle('project:last', async () => {
-  try {
-    const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
-    const project = await describeProject(saved.projectPath);
-    return project.summary;
-  } catch (error) {
-    if (error.code !== 'ENOENT') await unlink(workspaceFile()).catch(() => {});
-    return null;
-  }
-});
+ipcMain.handle('project:last', () => getWorkspaceStore().last().catch(async (error) => {
+  if (error.code !== 'ENOENT') await unlink(workspaceFile()).catch(() => {});
+  return null;
+}));
+ipcMain.handle('project:list', () => getWorkspaceStore().list());
+ipcMain.handle('project:activate', (_event, id) => getWorkspaceStore().activate(id));
 
-ipcMain.handle('project:close', async () => {
-  await unlink(workspaceFile()).catch((error) => {
-    if (error.code !== 'ENOENT') throw error;
-  });
-  return true;
-});
+ipcMain.handle('project:close', () => getWorkspaceStore().close());
 
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));

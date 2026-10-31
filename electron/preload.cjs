@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('obavenus', {
   chooseProject: () => ipcRenderer.invoke('project:choose'),
   getLastProject: () => ipcRenderer.invoke('project:last'),
+  listProjects: () => ipcRenderer.invoke('project:list'),
+  activateProject: (id) => ipcRenderer.invoke('project:activate', id),
   closeProject: () => ipcRenderer.invoke('project:close'),
   readProjectFile: (fileName) => ipcRenderer.invoke('project:read-file', fileName),
   exportConversation: (conversation) => ipcRenderer.invoke('conversation:export', conversation),

@@ -103,6 +103,7 @@ function loadConversations() {
     ).map((conversation) => ({
       id: conversation.id,
       title: conversation.title,
+      projectId: typeof conversation.projectId === 'string' ? conversation.projectId : '',
       createdAt: conversation.createdAt,
       messages: conversation.messages.filter((message) =>
         (message.role === 'user' || message.role === 'assistant')
@@ -269,13 +270,53 @@ function renderPendingContext() {
 
 async function chooseProject() {
   const project = await window.obavenus.chooseProject();
-  if (project) renderProject(project);
+  if (project) {
+    renderProject(project);
+    const current = getActiveConversation();
+    if (current) current.projectId = project.id;
+    saveConversations();
+    await renderSpaces();
+  }
 }
 
 async function closeProject() {
   await window.obavenus.closeProject();
   selectedProject = null;
+  const current = getActiveConversation();
+  if (current) { current.projectId = ''; saveConversations(); }
   renderEmptyWorkspace();
+}
+
+async function renderSpaces() {
+  const list = document.querySelector('#space-list');
+  const spaces = await window.obavenus.listProjects();
+  list.replaceChildren();
+  if (!spaces.length) {
+    const empty = document.createElement('small');
+    empty.textContent = 'Open a project folder to create a space.';
+    list.append(empty);
+    return;
+  }
+  spaces.forEach((space) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `recent-item${selectedProject?.id === space.id ? ' active' : ''}`;
+    button.textContent = space.name;
+    button.title = `${space.name} · local project space`;
+    button.addEventListener('click', async () => {
+      try {
+        const active = await window.obavenus.activateProject(space.id);
+        renderProject(active);
+        const current = getActiveConversation();
+        if (current) { current.projectId = active.id; saveConversations(); }
+        await renderSpaces();
+      } catch (error) {
+        runStatus.hidden = false;
+        runStatus.textContent = error.message || 'Could not open this project space.';
+      }
+    });
+    list.append(button);
+  });
 }
 
 function addMessage(text, kind) {
@@ -363,8 +404,16 @@ function renderRecentWork() {
     button.className = `recent-item${item.id === activeConversationId ? ' active' : ''}`;
     button.textContent = item.title;
     button.title = item.title;
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       activeConversationId = item.id;
+      try {
+        if (item.projectId) renderProject(await window.obavenus.activateProject(item.projectId));
+        else await closeProject();
+      } catch (error) {
+        runStatus.hidden = false;
+        runStatus.textContent = error.message || 'Could not open this conversation’s project space.';
+        return;
+      }
       renderMessages();
     });
     list.append(button);
@@ -376,6 +425,7 @@ function startConversation() {
     id: crypto.randomUUID(),
     title: 'New conversation',
     createdAt: new Date().toISOString(),
+    projectId: selectedProject?.id || '',
     messages: [],
   };
   conversations.push(item);
@@ -403,11 +453,13 @@ form.addEventListener('submit', async (event) => {
       id: crypto.randomUUID(),
       title: 'New conversation',
       createdAt: new Date().toISOString(),
+      projectId: selectedProject?.id || '',
       messages: [],
     };
     conversations.push(current);
     activeConversationId = current.id;
   }
+  if (!current.messages.length) current.projectId = selectedProject?.id || '';
   if (current.messages.length === 0) current.title = prompt.slice(0, 48);
   const submittedMessage = { role: 'user', text: prompt, status: 'complete', context: [...pendingContext] };
   current.messages.push(submittedMessage);
@@ -1316,6 +1368,7 @@ refreshSkills().catch(() => {});
 window.obavenus.getLastProject().then((project) => {
   if (project) renderProject(project);
 });
+renderSpaces().catch(() => {});
 window.obavenus.getProfile().then((profile) => {
   if (!profile.completed) editProfile(profile);
 }).catch(() => {});
