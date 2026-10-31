@@ -43,6 +43,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "assets/Obavenus.icns",
       "identity": null,
       "target": [
         "dmg"
