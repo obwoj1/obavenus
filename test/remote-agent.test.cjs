@@ -6,7 +6,7 @@ const { spawnSync } = require('node:child_process');
 const { mkdtemp, mkdir, writeFile, chmod, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createRemoteAgent, validateTarget, validateRemotePath, shellQuote, backgroundBootstrap } = require('../electron/remote-agent.cjs');
+const { createRemoteAgent, validateTarget, validateRemotePath, validateExecuteAt, shellQuote, backgroundBootstrap } = require('../electron/remote-agent.cjs');
 
 function fakeSpawn(calls, { output = 'remote answer', code = 0 } = {}) {
   return (command, args, options) => {
@@ -50,6 +50,15 @@ test('SSH aliases and remote paths reject invalid input', () => {
   assert.equal(shellQuote("a'b"), "'a'\\''b'");
 });
 
+test('remote start times require a safe timestamp 1 minute to 30 days ahead', () => {
+  const now = 1_800_000_000_000;
+  assert.equal(validateExecuteAt(undefined, now), 0);
+  assert.equal(validateExecuteAt(now + 60_999, now), Math.floor((now + 60_999) / 1000));
+  for (const value of [now + 59_999, now + 30 * 24 * 60 * 60 * 1000 + 1, 'tomorrow', Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => validateExecuteAt(value, now), /start time/);
+  }
+});
+
 test('remote connection checks use batch SSH and never allow a shell', async () => {
   const calls = [];
   const agent = createRemoteAgent({ spawnImpl: fakeSpawn(calls), timeoutMs: 1000 });
@@ -91,6 +100,32 @@ test('a detached remote runner finishes and retains its result after the launche
   } finally { await rm(home, { recursive: true, force: true }); }
 });
 
+test('detached remote runner waits until its scheduled start time', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'obavenus-remote-scheduled-'));
+  try {
+    const bin = path.join(home, 'bin');
+    await mkdir(bin);
+    const codex = path.join(bin, 'codex');
+    await writeFile(codex, '#!/bin/sh\nprintf started\n');
+    await chmod(codex, 0o700);
+    const jobId = '123e4567-e89b-12d3-a456-426614174001';
+    const runAt = Math.floor(Date.now() / 1000) + 2;
+    const script = backgroundBootstrap({ jobId, provider: 'codex', projectPath: '', prompt: 'scheduled payload', writeAccess: false, runAt });
+    const launched = spawnSync('sh', ['-s'], { input: script, encoding: 'utf8', env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}` }, timeout: 3000 });
+    assert.equal(launched.status, 0, launched.stderr);
+    const jobDir = path.join(home, '.cache/obavenus/jobs', jobId);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await assert.rejects(readFile(path.join(jobDir, 'status')));
+    let status = '';
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      try { status = await readFile(path.join(jobDir, 'status'), 'utf8'); break; }
+      catch { await new Promise((resolve) => setTimeout(resolve, 20)); }
+    }
+    assert.equal(status, '0\n');
+    assert.equal(await readFile(path.join(jobDir, 'output'), 'utf8'), 'started');
+  } finally { await rm(home, { recursive: true, force: true }); }
+});
+
 test('remote jobs detach over SSH and can be inspected after reconnecting', async () => {
   const calls = [];
   const spawnImpl = (command, args, options) => {
@@ -118,6 +153,15 @@ test('remote jobs detach over SSH and can be inspected after reconnecting', asyn
   assert.ok(!calls[0].input.includes('Long remote task'));
   assert.match(calls[0].input, /workspace-write/);
   assert.deepEqual(await agent.inspect('studio', started.jobId), { status: 'completed', exitCode: 0, output: 'Done', error: '' });
+});
+
+test('remote job inspection recognizes a scheduled state', async () => {
+  const agent = createRemoteAgent({ spawnImpl: (command, args) => {
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => {};
+    process.nextTick(() => { child.stdout.end('OBAVENUS_STATUS:scheduled\nOBAVENUS_OUTPUT_B64\n\nOBAVENUS_ERROR_B64\n\n'); child.stderr.end(); child.emit('close', 0); });
+    return child;
+  } });
+  assert.deepEqual(await agent.inspect('studio', '123e4567-e89b-12d3-a456-426614174000'), { status: 'scheduled', exitCode: null, output: '', error: '' });
 });
 
 test('remote background cancellation uses only a validated job ID', async () => {

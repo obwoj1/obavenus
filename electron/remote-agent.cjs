@@ -25,6 +25,11 @@ function validateJobId(value) {
   if (typeof value !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value)) throw new TypeError('Invalid remote job ID.');
   return value;
 }
+function validateExecuteAt(value, now = Date.now()) {
+  if (value === undefined || value === null || value === 0) return 0;
+  if (!Number.isSafeInteger(value) || value < now + 60_000 || value > now + 30 * 24 * 60 * 60 * 1000) throw new RangeError('Choose a remote start time at least one minute from now and within 30 days.');
+  return Math.floor(value / 1000);
+}
 
 function shellQuote(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 
@@ -55,7 +60,8 @@ function prepareRun({ provider, target: rawTarget, remotePath = '', messages, wr
   return { provider, target, projectPath, prompt, writeAccess, remoteArgs: buildArgs(prompt, writeAccess) };
 }
 
-function backgroundBootstrap({ jobId, provider, projectPath, prompt, writeAccess }) {
+function backgroundBootstrap({ jobId, provider, projectPath, prompt, writeAccess, runAt = 0 }) {
+  if (!Number.isSafeInteger(runAt) || runAt < 0) throw new TypeError('Invalid remote job start time.');
   const encodedPrompt = Buffer.from(prompt).toString('base64');
   const encodedPath = Buffer.from(projectPath || '').toString('base64');
   return `set -eu
@@ -64,6 +70,7 @@ mkdir -p "$jobdir"
 chmod 700 "$HOME/.cache/obavenus" "$HOME/.cache/obavenus/jobs" "$jobdir" 2>/dev/null || true
 printf '%s' '${encodedPrompt}' > "$jobdir/prompt.b64"
 printf '%s' '${encodedPath}' > "$jobdir/project.b64"
+printf '%s\\n' '${runAt}' > "$jobdir/run-at"
 chmod 600 "$jobdir/prompt.b64" "$jobdir/project.b64"
 cat > "$jobdir/runner.sh" <<'OBAVENUS_RUNNER'
 #!/bin/sh
@@ -81,6 +88,16 @@ project_path=$(cat "$jobdir/project")
 prompt=$(cat "$jobdir/prompt"; printf x)
 prompt=\${prompt%x}
 result=0
+run_at=$(cat "$jobdir/run-at" 2>/dev/null || printf '0')
+case "$run_at" in ''|*[!0-9]*) run_at=0;; esac
+while [ "$run_at" -gt 0 ] && [ "$result" -eq 0 ]; do
+  if [ -f "$jobdir/cancel.request" ]; then result=143; break; fi
+  now=$(date +%s)
+  [ "$now" -ge "$run_at" ] && break
+  delay=$((run_at - now))
+  [ "$delay" -gt 30 ] && delay=30
+  sleep "$delay"
+done
 if [ -n "$project_path" ] && ! cd "$project_path" 2> "$jobdir/error"; then
   printf 'Remote project path is not available on this machine.\\n' > "$jobdir/error"
   result=72
@@ -174,9 +191,10 @@ function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeou
   }
   function start(input) {
     const { provider, target, projectPath, prompt, writeAccess } = prepareRun(input);
+    const runAt = validateExecuteAt(input.executeAt);
     const jobId = input.jobId || randomUUID();
     validateJobId(jobId);
-    const script = backgroundBootstrap({ jobId, provider, projectPath, prompt, writeAccess });
+    const script = backgroundBootstrap({ jobId, provider, projectPath, prompt, writeAccess, runAt });
     const child = spawnImpl(sshPath, ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', target, 'sh -s'], {
       cwd: os.homedir(), shell: false, stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -200,7 +218,7 @@ function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeou
     const target = validateTarget(rawTarget);
     const safeId = validateJobId(rawJobId);
     const jobDir = `"$HOME/.cache/obavenus/jobs/${safeId}"`;
-    const command = `jobdir=${jobDir}; if [ -f "$jobdir/status" ]; then code=$(cat "$jobdir/status"); else code=running; fi; printf 'OBAVENUS_STATUS:%s\\n' "$code"; printf 'OBAVENUS_OUTPUT_B64\\n'; tail -c 750000 "$jobdir/output" 2>/dev/null | base64 | tr -d '\\r\\n'; printf '\\nOBAVENUS_ERROR_B64\\n'; tail -c 100000 "$jobdir/error" 2>/dev/null | base64 | tr -d '\\r\\n'; printf '\\n'`;
+    const command = `jobdir=${jobDir}; if [ -f "$jobdir/status" ]; then code=$(cat "$jobdir/status"); elif [ -f "$jobdir/run-at" ] && [ "$(cat "$jobdir/run-at")" -gt "$(date +%s)" ]; then code=scheduled; else code=running; fi; printf 'OBAVENUS_STATUS:%s\\n' "$code"; printf 'OBAVENUS_OUTPUT_B64\\n'; tail -c 750000 "$jobdir/output" 2>/dev/null | base64 | tr -d '\\r\\n'; printf '\\nOBAVENUS_ERROR_B64\\n'; tail -c 100000 "$jobdir/error" 2>/dev/null | base64 | tr -d '\\r\\n'; printf '\\n'`;
     const child = spawnImpl(sshPath, ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', target, command], {
       cwd: os.homedir(), shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -214,9 +232,10 @@ function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeou
       child.on('close', (code) => {
         clearTimeout(timer);
         if (code !== 0) return reject(new Error((stderr.trim() || `SSH exited with code ${code} while checking the remote job.`).slice(0, 2000)));
-        const match = stdout.match(/OBAVENUS_STATUS:(running|0|[1-9][0-9]*)\nOBAVENUS_OUTPUT_B64\n([A-Za-z0-9+/=]*)\nOBAVENUS_ERROR_B64\n([A-Za-z0-9+/=]*)\n?$/);
+        const match = stdout.match(/OBAVENUS_STATUS:(scheduled|running|0|[1-9][0-9]*)\nOBAVENUS_OUTPUT_B64\n([A-Za-z0-9+/=]*)\nOBAVENUS_ERROR_B64\n([A-Za-z0-9+/=]*)\n?$/);
         if (!match) return reject(new Error('Remote job status response was malformed.'));
-        resolve({ status: match[1] === 'running' ? 'running' : match[1] === '0' ? 'completed' : 'error', exitCode: match[1] === 'running' ? null : Number(match[1]), output: Buffer.from(match[2], 'base64').toString('utf8'), error: Buffer.from(match[3], 'base64').toString('utf8') });
+        const status = match[1] === 'scheduled' || match[1] === 'running' ? match[1] : match[1] === '0' ? 'completed' : 'error';
+        resolve({ status, exitCode: ['scheduled', 'running'].includes(match[1]) ? null : Number(match[1]), output: Buffer.from(match[2], 'base64').toString('utf8'), error: Buffer.from(match[3], 'base64').toString('utf8') });
       });
     });
   }
@@ -258,4 +277,4 @@ function createRemoteAgent({ spawnImpl = spawn, sshPath = '/usr/bin/ssh', timeou
   return { run, probe, start, inspect, cancel, removeJob };
 }
 
-module.exports = { REMOTE_COMMANDS, validateTarget, validateRemotePath, validateJobId, shellQuote, prepareRun, backgroundBootstrap, createRemoteAgent };
+module.exports = { REMOTE_COMMANDS, validateTarget, validateRemotePath, validateJobId, validateExecuteAt, shellQuote, prepareRun, backgroundBootstrap, createRemoteAgent };
