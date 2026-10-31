@@ -20,12 +20,16 @@
     "typescript": "^7.0.0"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.1.0",
     "@siwc/local": "0.1.0",
+    "@tesseract.js-data/eng": "1.0.0",
     "docx": "^9.15.0",
     "exceljs": "^4.4.0",
+    "image-size": "2.0.4",
     "jszip": "^3.10.2",
     "pdfjs-dist": "^6.4.299",
     "pptxgenjs": "^4.0.1",
+    "tesseract.js": "7.0.0",
     "ws": "^8.22.1"
   },
   "workspaces": [
@@ -43,6 +47,11 @@
       "src/**/*",
       "vendor/sign-in-with-chatgpt-devkit/packages/local/dist/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/tesseract.js/**/*",
+      "node_modules/tesseract.js-core/**/*",
+      "node_modules/@tesseract.js-data/eng/**/*"
     ],
     "extraResources": [
       {
