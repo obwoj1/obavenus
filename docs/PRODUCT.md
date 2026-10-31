@@ -21,7 +21,7 @@ The Federal Role Finder parses pasted job and offer blocks into titles, agencies
 
 Team runs include a read-only mode and an explicit per-run project-write mode, and local CLI agents now have provider-specific edit modes that require an open project. Codex uses its workspace-write sandbox; Claude disables Bash and web fetch while enabling accepted file edits; Gemini enables its auto-edit mode. Review changed files in Git after a run. Scheduled local jobs stay read-only.
 
-Local CLI runs use the selected project working directory (or app data without a project), read-only/default CLI permission modes, a bounded timeout, and bounded output. This provides provider CLI account-backed responses without implementing the providers' interactive sign-in flows inside Obavenus.
+Local CLI runs use the selected project working directory (or app data without a project), read-only/default CLI permission modes, a bounded timeout, and bounded output. The user can stop an active Claude Code, Codex CLI, or Gemini CLI run from the composer; Obavenus sends SIGTERM to that local process and records the stopped run in conversation history. This provides provider CLI account-backed responses without implementing the providers' interactive sign-in flows inside Obavenus.
 
 The composer includes a bundled local workflow library for feature planning, codebase exploration, change review, debugging, technical documentation, and converting an idea into steps. The selected workflow adds focused instructions to that request only; it does not rewrite saved conversation history.
 

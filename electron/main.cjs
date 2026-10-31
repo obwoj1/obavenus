@@ -32,6 +32,7 @@ const { createChromeBridge } = require('./chrome-bridge.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
+const activeLocalRuns = new Map();
 const remoteAgent = createRemoteAgent();
 const scheduledLocalAgent = createLocalAgent({ timeoutMs: 2 * 60 * 60 * 1000, maxOutputBytes: 8 * 1024 * 1024 });
 let taskStore;
@@ -422,12 +423,24 @@ ipcMain.handle('tasks:cancel', async (_event, id) => {
   return cancelled;
 });
 ipcMain.handle('local-agent:status', () => localAgent.status());
-ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAccess = false }) => {
-  let projectPath;
-  try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
-  return localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true });
+ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAccess = false, runId }) => {
+  if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId) || activeLocalRuns.has(runId)) throw new TypeError('Invalid local-agent run ID.');
+  const controller = new AbortController();
+  activeLocalRuns.set(runId, controller);
+  try {
+    let projectPath;
+    try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
+    return await localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true, signal: controller.signal });
+  } finally { activeLocalRuns.delete(runId); }
+});
+ipcMain.handle('local-agent:cancel', (_event, runId) => {
+  if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) return false;
+  const controller = activeLocalRuns.get(runId);
+  if (!controller) return false;
+  controller.abort();
+  return true;
 });
 ipcMain.handle('remote-machines:list', () => getRemoteMachineStore().list());
 ipcMain.handle('remote-machines:probe', (_event, target) => remoteAgent.probe(target));

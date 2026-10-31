@@ -42,6 +42,32 @@ test('Codex uses read-only sandbox and feeds the prompt over stdin', async () =>
   assert.equal(calls[0].args.at(-1), '-');
 });
 
+test('local agent stops the active CLI process when its run is cancelled', async () => {
+  let killedWith = null;
+  const agent = createLocalAgent({
+    env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, timeoutMs: 1000,
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
+      child.kill = (signal) => { killedWith = signal; process.nextTick(() => child.emit('close', null, signal)); return true; };
+      return child;
+    },
+  });
+  const controller = new AbortController();
+  const pending = agent.run({ provider: 'claude', messages: [{ role: 'user', text: 'Long task' }], signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, (error) => error.name === 'AbortError' && /stopped/.test(error.message));
+  assert.equal(killedWith, 'SIGTERM');
+});
+
+test('an already-cancelled local run never starts its CLI', async () => {
+  let spawned = false;
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: () => { spawned = true; } });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(agent.run({ provider: 'codex', messages: [{ role: 'user', text: 'Do not run' }], signal: controller.signal }), { name: 'AbortError' });
+  assert.equal(spawned, false);
+});
+
 test('project-edit mode uses provider-specific edit controls and requires a selected folder', async () => {
   assert.ok(COMMANDS.claude.args('prompt', true).includes('acceptEdits'));
   assert.ok(COMMANDS.claude.args('prompt', true).includes('Bash'));

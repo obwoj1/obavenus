@@ -12,6 +12,7 @@ let conversations = loadConversations();
 let activeConversationId = conversations.at(-1)?.id ?? null;
 let sending = false;
 let pendingContext = [];
+let activeLocalRunId = null;
 
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
@@ -113,7 +114,7 @@ function loadConversations() {
         role: message.role,
         text: message.text,
         localOnly: message.localOnly === true || message.text === LOCAL_PLACEHOLDER,
-        status: message.status === 'error' ? 'error' : 'complete',
+        status: ['error', 'cancelled'].includes(message.status) ? message.status : 'complete',
         context: Array.isArray(message.context) ? message.context.filter((file) =>
           file && typeof file.name === 'string' && typeof file.content === 'string',
         ).slice(0, 3) : [],
@@ -531,6 +532,10 @@ form.addEventListener('submit', async (event) => {
   const browserAccess = runMode.value === 'team-browser' || runMode.value === 'team-chrome';
   const chromeAccess = runMode.value === 'team-chrome';
   const localProvider = localMode?.[1] || null;
+  activeLocalRunId = localProvider ? crypto.randomUUID() : null;
+  const cancelLocalButton = document.querySelector('#cancel-local-run');
+  cancelLocalButton.hidden = !activeLocalRunId;
+  cancelLocalButton.disabled = false;
   const remoteProvider = remoteMode?.[1] || null;
   const writeAccess = runMode.value === 'team-write' || localWriteAccess || remoteWriteAccess;
   runStatus.hidden = !teamMode && !localProvider && !remoteProvider;
@@ -555,7 +560,7 @@ form.addEventListener('submit', async (event) => {
       }
       const status = await window.obavenus.getLocalAgentStatus();
       if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
-      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess);
+      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess, activeLocalRunId);
       pendingReply.status = 'complete';
       return;
     }
@@ -612,15 +617,22 @@ form.addEventListener('submit', async (event) => {
       pendingReply.status = 'complete';
     }
   } catch (error) {
-    submittedMessage.localOnly = true;
-    pendingReply.text = `Request failed: ${error.message || 'Unknown error.'}`;
-    pendingReply.localOnly = true;
-    pendingReply.status = 'error';
+    if (error.name === 'AbortError') {
+      pendingReply.text = 'Stopped.';
+      pendingReply.status = 'cancelled';
+    } else {
+      submittedMessage.localOnly = true;
+      pendingReply.text = `Request failed: ${error.message || 'Unknown error.'}`;
+      pendingReply.localOnly = true;
+      pendingReply.status = 'error';
+    }
   } finally {
     sending = false;
     promptInput.disabled = false;
     form.querySelector('.send').disabled = false;
     form.querySelector('.send').textContent = 'Send ↗';
+    cancelLocalButton.hidden = true;
+    activeLocalRunId = null;
     runMode.disabled = false;
     runStatus.hidden = true;
     runStatus.textContent = '';
@@ -629,6 +641,17 @@ form.addEventListener('submit', async (event) => {
     renderRecentWork();
     if (activeConversationId === current.id) renderMessages();
   }
+});
+
+document.querySelector('#cancel-local-run').addEventListener('click', async () => {
+  const runId = activeLocalRunId;
+  if (!runId) return;
+  const button = document.querySelector('#cancel-local-run');
+  button.disabled = true;
+  button.textContent = 'Stopping…';
+  try { await window.obavenus.cancelLocalAgent(runId); }
+  catch (error) { runStatus.hidden = false; runStatus.textContent = error.message || 'Could not stop the local agent.'; }
+  finally { button.textContent = 'Stop'; }
 });
 
 let activeTeamRunId = null;
