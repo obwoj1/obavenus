@@ -59,14 +59,47 @@ test('team workflow preserves review findings when planning and one specialist f
       if (prompt.includes('You are an independent specialist agent.')) throw new Error('analysis provider failed');
       if (prompt.includes('You are an independent reviewer.')) return 'Review: the proposal needs a cost estimate.';
       assert.match(prompt, /planning step failed \(planner timed out\)/);
-      assert.match(prompt, /could not finish: analysis provider failed/);
+      assert.match(prompt, /failed after a retry: analysis provider failed/);
       assert.match(prompt, /needs a cost estimate/);
       return 'The review found a missing cost estimate; detailed analysis was unavailable.';
     },
   });
   assert.equal(result.text, 'The review found a missing cost estimate; detailed analysis was unavailable.');
   assert.equal(result.agents.length, 3);
-  assert.equal(warnings.length, 2);
+  assert.equal(warnings.length, 3);
+});
+
+test('a failed specialist triggers replanning and one retry, while the team can run twelve selected specialists', async () => {
+  const customAgents = Array.from({ length: 13 }, (_value, index) => ({ name: `Specialist ${index + 1}`, instructions: `Focus ${index + 1}.` }));
+  const attempts = new Map();
+  const progress = [];
+  const result = await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Inspect the full project.' }],
+    specialists: customAgents,
+    onProgress: (event) => progress.push(event.stage),
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      if (prompt.includes('You are the lead agent.')) return prompt.includes('These specialist steps failed:') ? 'Revised plan: use a narrower inspection.' : 'Plan: inspect each concern.';
+      if (prompt.includes('You are an independent specialist agent named')) {
+        const match = prompt.match(/named (Specialist \d+)/);
+        const name = match?.[1];
+        if (!name) return 'General analysis.';
+        const count = (attempts.get(name) || 0) + 1;
+        attempts.set(name, count);
+        if (name === 'Specialist 1' && count === 1) throw new Error('temporary provider timeout');
+        return `${name} findings.`;
+      }
+      if (prompt.includes('You are an independent reviewer.')) return 'Review completed.';
+      assert.match(prompt, /Revised plan: use a narrower inspection/);
+      assert.match(prompt, /Specialist 1 findings\./);
+      assert.doesNotMatch(prompt, /Specialist 13 findings/);
+      return 'All selected specialists reported.';
+    },
+  });
+  assert.equal(result.agents.length, 15);
+  assert.equal(attempts.get('Specialist 1'), 2);
+  assert.ok(progress.includes('replanning'));
+  assert.ok(progress.includes('retry'));
 });
 
 test('selected custom specialist profile spawns an independent specialist', async () => {

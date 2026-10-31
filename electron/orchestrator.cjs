@@ -63,22 +63,44 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
     onProgress({ stage: 'warning', label: 'Planner failed · specialists will continue independently' });
   }
   onProgress({ stage: 'specialists', label: 'Specialists · working in parallel' });
-  const custom = Array.isArray(specialists) ? specialists.slice(0, 5) : [];
+  const custom = Array.isArray(specialists) ? specialists.slice(0, 12) : [];
   const jobs = [
-    { key: 'analysis', role: 'analyst', label: ROLES.analyst.label, run: () => send('analyst', `Lead plan:\n${plan}`) },
-    { key: 'review', role: 'reviewer', label: ROLES.reviewer.label, run: () => send('reviewer', `Lead plan:\n${plan}`) },
+    { key: 'analysis', role: 'analyst', label: ROLES.analyst.label, run: (activePlan, retryNote = '') => send('analyst', `Lead plan:\n${activePlan}${retryNote}`) },
+    { key: 'review', role: 'reviewer', label: ROLES.reviewer.label, run: (activePlan, retryNote = '') => send('reviewer', `Lead plan:\n${activePlan}${retryNote}`) },
     ...custom.map((agent, index) => {
       const key = `custom-${index}`;
-      return { key, role: key, label: `Specialist · ${agent.name}`, run: () => send(key, `Lead plan:\n${plan}`, agent) };
+      return { key, role: key, label: `Specialist · ${agent.name}`, run: (activePlan, retryNote = '') => send(key, `Lead plan:\n${activePlan}${retryNote}`, agent) };
     }),
   ];
-  const outcomes = await Promise.allSettled(jobs.map((job) => job.run()));
+  let outcomes = await Promise.allSettled(jobs.map((job) => job.run(plan)));
+  const failed = jobs.filter((_job, index) => outcomes[index].status === 'rejected');
+  if (failed.length) {
+    onProgress({ stage: 'replanning', label: `Lead · replanning after ${failed.length} failed step${failed.length === 1 ? '' : 's'}` });
+    const failures = failed.map((job) => `${job.label}: ${outcomes[jobs.indexOf(job)].reason?.message || 'unknown error'}`).join('\n');
+    try {
+      const revised = await send('planner', `The previous plan was:\n${plan}\n\nThese specialist steps failed:\n${failures}\n\nRevise the plan so the failed steps can make another attempt. Preserve useful completed work and keep the retry focused.`);
+      if (revised.trim()) plan = revised;
+    } catch (error) {
+      onProgress({ stage: 'warning', label: `Replanning failed · retrying with the existing plan (${error.message || 'unknown error'})` });
+    }
+    const retries = await Promise.all(failed.map(async (job) => {
+      const firstError = outcomes[jobs.indexOf(job)].reason?.message || 'unknown error';
+      onProgress({ stage: 'retry', label: `${job.label} · retrying once with the revised plan` });
+      try {
+        return { job, value: await job.run(plan, `\n\nRetry instruction: The previous attempt failed with: ${firstError}. Re-check the revised plan, use any available evidence, and complete this step without repeating failed actions.`) };
+      } catch (error) { return { job, error }; }
+    }));
+    for (const retry of retries) {
+      const index = jobs.indexOf(retry.job);
+      outcomes[index] = retry.error ? { status: 'rejected', reason: retry.error } : { status: 'fulfilled', value: retry.value };
+    }
+  }
   const findings = Object.fromEntries(jobs.map((job, index) => {
     const outcome = outcomes[index];
     if (outcome.status === 'fulfilled') return [job.key, outcome.value];
     const reason = outcome.reason?.message || 'unknown error';
-    onProgress({ stage: 'warning', label: `${job.label} failed · retaining other findings` });
-    return [job.key, `This specialist could not finish: ${reason}.`];
+    onProgress({ stage: 'warning', label: `${job.label} failed after one retry · retaining other findings` });
+    return [job.key, `This specialist failed after a retry: ${reason}.`];
   }));
   const specialistNotes = jobs.map((job) => `${job.label}:\n${findings[job.key]}`).join('\n\n');
   onProgress({ stage: 'synthesis', label: ROLES.synthesis.label });
