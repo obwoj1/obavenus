@@ -19,11 +19,13 @@ test('the packaged extension key is pinned to the bridge origin', () => {
 test('Chrome bridge pairs with the pinned extension and requires approval before a control click', async () => {
   const commands = [];
   let allowAction = false;
+  let allowFill = false;
+  const confirmations = [];
   const bridge = createChromeBridge({
     WebSocketServer,
     port: 0,
     confirmPairing: async () => true,
-    confirmAction: async () => allowAction,
+    confirmAction: async (action) => { confirmations.push(action); return action.action === 'fill' ? allowFill : allowAction; },
   });
   try {
     const status = await bridge.start();
@@ -42,7 +44,11 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
           commands.push(message.command);
           const result = message.command === 'findControl'
             ? { found: true, label: 'Continue', pageUrl: 'https://example.com/form' }
-            : { clicked: true, label: 'Continue' };
+            : message.command === 'findField'
+              ? { found: true, label: 'Email', fieldType: 'email', pageUrl: 'https://example.com/form' }
+              : message.command === 'fillField'
+                ? { filled: true, label: 'Email', pageUrl: 'https://example.com/form', submitted: false }
+                : { clicked: true, label: 'Continue' };
           client.send(JSON.stringify({ id: message.id, result }));
         }
       });
@@ -54,6 +60,13 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
     allowAction = true;
     assert.deepEqual(await bridge.clickControl('Continue'), { clicked: true, label: 'Continue' });
     assert.deepEqual(commands, ['findControl', 'findControl', 'clickControl']);
+    assert.deepEqual(await bridge.fillField('Email', 'person@example.com'), { approved: false, message: 'The user declined to fill the Chrome field.' });
+    assert.deepEqual(commands.at(-1), 'findField');
+    allowFill = true;
+    assert.deepEqual(await bridge.fillField('Email', 'person@example.com'), { filled: true, label: 'Email', pageUrl: 'https://example.com/form', submitted: false });
+    assert.deepEqual(commands.slice(-3), ['findField', 'findField', 'fillField']);
+    assert.deepEqual(confirmations.at(-1), { found: true, label: 'Email', fieldType: 'email', pageUrl: 'https://example.com/form', action: 'fill', value: 'person@example.com' });
+    await assert.rejects(bridge.fillField('Email', 'x'.repeat(2001)), /2,000/);
     client.close();
   } finally { await bridge.close(); }
 });

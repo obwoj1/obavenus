@@ -62,8 +62,18 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
     clickControl: async (text) => {
       const control = await request('findControl', { text: String(text || '').slice(0, 200) });
       if (!control.found) return control;
-      if (!await confirmAction(control)) return { approved: false, message: 'The user declined the Chrome page action.' };
+      if (!await confirmAction({ ...control, action: 'click' })) return { approved: false, message: 'The user declined the Chrome page action.' };
       return request('clickControl', { text: String(text || '').slice(0, 200), pageUrl: control.pageUrl, label: control.label });
+    },
+    fillField: async (label, rawValue) => {
+      const text = String(label || '').trim().slice(0, 200);
+      if (!text) throw new TypeError('Describe the visible browser field to fill.');
+      if (typeof rawValue !== 'string' || rawValue.length > 2_000 || rawValue.includes('\0')) throw new TypeError('Browser field text must be at most 2,000 characters.');
+      const field = await request('findField', { label: text });
+      if (!field.found) return field;
+      const action = { ...field, action: 'fill', value: rawValue };
+      if (!await confirmAction(action)) return { approved: false, message: 'The user declined to fill the Chrome field.' };
+      return request('fillField', { label: text, pageUrl: field.pageUrl, fieldLabel: field.label, fieldType: field.fieldType, value: rawValue });
     },
     close: async () => {
       for (const resolve of pending.values()) resolve({ error: 'Obavenus is closing.' });

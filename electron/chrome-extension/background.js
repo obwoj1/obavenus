@@ -2,6 +2,7 @@ let socket;
 let reconnectTimer;
 let desiredConnection = false;
 let approvedControl;
+let approvedField;
 
 function setState(connected) {
   chrome.storage.local.set({ connected });
@@ -52,6 +53,23 @@ async function inspect(tab, action, argument) {
       if (controls.length !== 1) return { found: false, message: controls.length ? 'More than one visible control matches; specify a more distinctive label.' : 'No matching visible enabled control was found.' };
       return { found: true, pageUrl: location.href, label: norm(controls[0].innerText || controls[0].value || controls[0].getAttribute('aria-label')) };
     }
+    const visibleTextFields = () => [...document.querySelectorAll('input,textarea')].filter((el) => {
+      const type = (el.getAttribute('type') || 'text').toLowerCase();
+      const label = norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label') || el.getAttribute('placeholder'));
+      const privateField = /password|passcode|one[- ]time|verification code|security code|authenticator|\botp\b|social security|\bssn\b|access token|api key/i.test(`${label} ${el.name || ''} ${el.id || ''}`);
+      return ['text','email','search','tel','url','number'].includes(type)
+        && !el.disabled && !el.readOnly && !privateField && label && el.getClientRects().length;
+    });
+    if (kind === 'findField') {
+      const wanted = norm(value.label).toLowerCase();
+      const fields = visibleTextFields().filter((el) => {
+        const label = norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label') || el.getAttribute('placeholder'));
+        return label.toLowerCase() === wanted;
+      });
+      if (fields.length !== 1) return { found: false, message: fields.length ? 'More than one visible field has that exact label.' : 'No normal visible text field has that exact label. Password, verification-code, and credential fields are not supported.' };
+      const el = fields[0];
+      return { found: true, pageUrl: location.href, label: norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label') || el.getAttribute('placeholder')), fieldType: el.tagName === 'TEXTAREA' ? 'textarea' : (el.getAttribute('type') || 'text').toLowerCase() };
+    }
     if (kind === 'clickControl') {
       if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
       const controls = [...document.querySelectorAll('button,input[type=button],input[type=submit],[role=button]')].filter((el) => {
@@ -60,6 +78,22 @@ async function inspect(tab, action, argument) {
       });
       if (controls.length !== 1) return { error: 'The approved control is no longer unique and available.' };
       controls[0].click(); return { clicked: true, label: value.label, url: location.href };
+    }
+    if (kind === 'fillField') {
+      if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
+      const fields = visibleTextFields().filter((el) => {
+        const label = norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label') || el.getAttribute('placeholder'));
+        const type = el.tagName === 'TEXTAREA' ? 'textarea' : (el.getAttribute('type') || 'text').toLowerCase();
+        return label === value.fieldLabel && type === value.fieldType;
+      });
+      if (fields.length !== 1) return { error: 'The approved field is no longer unique and available.' };
+      const field = fields[0];
+      field.focus();
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
+      if (descriptor?.set) descriptor.set.call(field, value.value); else field.value = value.value;
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value.value || null }));
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      return { filled: field.value === value.value, label: value.fieldLabel, pageUrl: location.href, submitted: false };
     }
     return { error: 'Unsupported Chrome command.' };
   }, args: [action, argument] });
@@ -81,6 +115,20 @@ async function execute(command, args) {
     approvedControl = found.found ? { ...approvedControl, label: found.label, pageUrl: found.pageUrl } : null;
     return found;
   }
+  if (command === 'findField') {
+    approvedField = { tabId: tab.id, pageUrl: tab.url, label: String(args.label || '').slice(0, 200) };
+    const found = await inspect(tab, 'findField', approvedField);
+    approvedField = found.found ? { ...approvedField, label: found.label, fieldType: found.fieldType, pageUrl: found.pageUrl } : null;
+    return found;
+  }
+  if (command === 'fillField') {
+    if (!approvedField || approvedField.tabId !== tab.id || approvedField.pageUrl !== args.pageUrl || approvedField.label !== args.fieldLabel || approvedField.fieldType !== args.fieldType) throw new Error('The approved Chrome tab or field changed. Review it and request approval again.');
+    const pinnedTab = await chrome.tabs.get(approvedField.tabId);
+    if (pinnedTab.url !== approvedField.pageUrl) throw new Error('The approved Chrome page has changed.');
+    const filled = await inspect(pinnedTab, 'fillField', args);
+    approvedField = null;
+    return filled;
+  }
   if (command === 'clickControl') {
     if (!approvedControl || approvedControl.tabId !== tab.id || approvedControl.pageUrl !== args.pageUrl || approvedControl.label !== args.label) throw new Error('The approved Chrome tab or control changed. Review it and request approval again.');
     const pinnedTab = await chrome.tabs.get(approvedControl.tabId);
@@ -93,7 +141,7 @@ async function execute(command, args) {
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'connect') { connect(); sendResponse({ connecting: true }); }
-  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; setState(false); sendResponse({ disconnected: true }); }
+  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; approvedField = null; setState(false); sendResponse({ disconnected: true }); }
   if (message?.type === 'state') sendResponse({ connected: socket?.readyState === WebSocket.OPEN });
   return true;
 });
