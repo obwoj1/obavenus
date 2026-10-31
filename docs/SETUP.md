@@ -1,6 +1,6 @@
 # Local setup
 
-Project previews support plain text files up to 64 KB plus Word, Excel, and PowerPoint files up to 10 MB. Office extraction happens locally and is capped at 60,000 text characters. Previews stay on the Mac unless you explicitly add the extracted text to a message; attached context is shown in the composer before sending.
+Project previews support plain text files up to 64 KB plus PDF and Office files up to 10 MB. PDF and Office extraction happens locally and is capped at 60,000 text characters; PDFs are limited to 200 pages. Scanned PDFs need OCR before they can be read. Previews stay on the Mac unless you explicitly add the extracted text to a message; attached context is shown in the composer before sending.
 
 Use Node.js 24 and npm. From the project folder:
 
