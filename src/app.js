@@ -399,7 +399,17 @@ function renderMessages() {
 function renderRecentWork() {
   const list = document.querySelector('#recent-work');
   list.replaceChildren();
-  [...conversations].reverse().slice(0, 20).forEach((item) => {
+  const query = document.querySelector('#conversation-search').value.trim().toLocaleLowerCase();
+  const matching = [...conversations].reverse().filter((item) => !query ||
+    item.title.toLocaleLowerCase().includes(query) ||
+    item.messages.some((message) => message.text.toLocaleLowerCase().includes(query)));
+  const visible = query ? matching : matching.slice(0, 20);
+  if (!visible.length) {
+    const empty = document.createElement('small');
+    empty.textContent = query ? 'No matching conversations.' : 'No conversations yet.';
+    list.append(empty);
+  }
+  visible.forEach((item) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `recent-item${item.id === activeConversationId ? ' active' : ''}`;
@@ -420,6 +430,8 @@ function renderRecentWork() {
     list.append(button);
   });
 }
+
+document.querySelector('#conversation-search').addEventListener('input', renderRecentWork);
 
 function startConversation() {
   const item = {
