@@ -1,5 +1,6 @@
 const { readFile, readdir, realpath, stat, lstat, mkdir, open } = require('node:fs/promises');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const ExcelJS = require('exceljs');
 const JSZip = require('jszip');
 let pdfjsPromise;
@@ -225,16 +226,69 @@ async function readProjectRelativeFile(projectPath, relativeName) {
   return readProjectBytes(projectPath, relativeName);
 }
 
-async function writeProjectArtifact(projectPath, relativeName, content, { extensions = TEXT_EXTENSIONS, maxBytes = MAX_AGENT_WRITE_BYTES, binary = false } = {}) {
+function validateWritableRelativePath(relativeName) {
   if (typeof relativeName !== 'string' || !relativeName || path.isAbsolute(relativeName)
     || relativeName.length > 500 || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..' || part.startsWith('.') || IGNORED_DIRECTORIES.has(part.toLowerCase()))) {
     throw new TypeError('Use a non-hidden relative path inside the project, without traversal or protected directories.');
   }
+  return relativeName.split(/[\\/]/);
+}
+
+function hashBytes(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
+
+async function snapshotProjectFile(projectPath, relativeName, maxBytes = 8 * 1024 * 1024) {
+  const parts = validateWritableRelativePath(relativeName);
+  const root = await realpath(projectPath);
+  let directory = root;
+  for (const part of parts.slice(0, -1)) {
+    directory = path.join(directory, part);
+    try {
+      const details = await lstat(directory);
+      if (details.isSymbolicLink() || !details.isDirectory()) throw new TypeError('Project folders must be regular directories, not symlinks.');
+    } catch (error) {
+      if (error.code === 'ENOENT') return { created: true, beforeBytes: Buffer.alloc(0), beforeHash: null };
+      throw error;
+    }
+  }
+  const target = path.join(directory, parts.at(-1));
+  const details = await lstat(target).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+  if (!details) return { created: true, beforeBytes: Buffer.alloc(0), beforeHash: null };
+  if (!details.isFile() || details.isSymbolicLink()) throw new TypeError('Only regular files can be captured for undo.');
+  if (details.size > maxBytes) throw new RangeError('The existing file is too large to make an undo snapshot.');
+  const beforeBytes = await readFile(target);
+  return { created: false, beforeBytes, beforeHash: hashBytes(beforeBytes) };
+}
+
+async function restoreProjectSnapshot(projectPath, relativeName, { created, beforeBytes, expectedAfterHash }) {
+  const parts = validateWritableRelativePath(relativeName);
+  if (!Buffer.isBuffer(beforeBytes) || typeof expectedAfterHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedAfterHash)) throw new TypeError('Undo snapshot is invalid.');
+  const root = await realpath(projectPath);
+  let directory = root;
+  for (const part of parts.slice(0, -1)) {
+    directory = path.join(directory, part);
+    const details = await lstat(directory);
+    if (details.isSymbolicLink() || !details.isDirectory()) throw new TypeError('Project folders must be regular directories, not symlinks.');
+  }
+  const target = path.join(directory, parts.at(-1));
+  const details = await lstat(target).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
+  if (!details || !details.isFile() || details.isSymbolicLink()) throw new Error('The output file is no longer in its expected state; undo was not applied.');
+  if (hashBytes(await readFile(target)) !== expectedAfterHash) throw new Error('This file changed after the agent run. Undo was not applied, so newer edits stay intact.');
+  if (created) {
+    await require('node:fs/promises').unlink(target);
+    return { restored: true, removed: true };
+  }
+  const { constants } = require('node:fs');
+  const handle = await open(target, constants.O_WRONLY | constants.O_TRUNC | (constants.O_NOFOLLOW || 0));
+  try { await handle.writeFile(beforeBytes); } finally { await handle.close(); }
+  return { restored: true, removed: false };
+}
+
+async function writeProjectArtifact(projectPath, relativeName, content, { extensions = TEXT_EXTENSIONS, maxBytes = MAX_AGENT_WRITE_BYTES, binary = false, expectedBeforeHash, expectedAbsent } = {}) {
+  const parts = validateWritableRelativePath(relativeName);
   if (binary ? !Buffer.isBuffer(content) : typeof content !== 'string' || content.includes('\0')) throw new TypeError(binary ? 'Generated artifact data must be a buffer.' : 'File content must be plain text.');
   const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
   const limitLabel = maxBytes === MAX_AGENT_WRITE_BYTES ? '256 KB' : `${Math.round(maxBytes / (1024 * 1024))} MB`;
   if (bytes.length > maxBytes) throw new RangeError(`Generated files must be ${limitLabel} or smaller.`);
-  const parts = relativeName.split(/[\\/]/);
   const extension = path.extname(parts.at(-1)).toLowerCase();
   if (!extensions.has(extension)) throw new TypeError('That project artifact format is not supported.');
   const root = await realpath(projectPath);
@@ -255,6 +309,8 @@ async function writeProjectArtifact(projectPath, relativeName, content, { extens
   const target = path.join(directory, parts.at(-1));
   const before = await lstat(target).catch((error) => error.code === 'ENOENT' ? null : Promise.reject(error));
   if (before && (!before.isFile() || before.isSymbolicLink())) throw new TypeError('Only regular files can be replaced; symlinks and special files are blocked.');
+  if (expectedAbsent === true && before) throw new Error('This file appeared after the undo snapshot was made. The write was stopped.');
+  if (expectedBeforeHash && (!before || hashBytes(await readFile(target)) !== expectedBeforeHash)) throw new Error('This file changed after the undo snapshot was made. The write was stopped.');
   if (before && before.size > maxBytes) throw new RangeError(`Existing file is larger than the ${limitLabel} write limit.`);
   const { constants } = require('node:fs');
   const handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW || 0), 0o600);
@@ -262,12 +318,12 @@ async function writeProjectArtifact(projectPath, relativeName, content, { extens
   return { path: parts.join(path.sep), bytes: bytes.length, created: !before };
 }
 
-async function writeProjectFile(projectPath, relativeName, content) {
-  return writeProjectArtifact(projectPath, relativeName, content);
+async function writeProjectFile(projectPath, relativeName, content, options) {
+  return writeProjectArtifact(projectPath, relativeName, content, options);
 }
 
-async function writeProjectBinaryArtifact(projectPath, relativeName, content, extensions, maxBytes = 8 * 1024 * 1024) {
-  return writeProjectArtifact(projectPath, relativeName, content, { extensions: new Set(extensions), maxBytes, binary: true });
+async function writeProjectBinaryArtifact(projectPath, relativeName, content, extensions, maxBytes = 8 * 1024 * 1024, options = {}) {
+  return writeProjectArtifact(projectPath, relativeName, content, { extensions: new Set(extensions), maxBytes, binary: true, ...options });
 }
 
 async function listProjectFiles(projectPath, limit = 500) {
@@ -292,4 +348,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };

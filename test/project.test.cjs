@@ -24,7 +24,7 @@ function makeTextPdf(text) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf, 'latin1');
 }
-const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -186,6 +186,30 @@ test('project writes reject symlink targets and parent folders', async () => {
     await assert.rejects(writeProjectFile(project, 'linked.txt', 'overwrite'), /regular files/);
     await assert.rejects(writeProjectFile(project, 'linked-dir/escape.txt', 'escape'), /symlinks/);
     assert.equal(await readFile(path.join(root, 'outside.txt'), 'utf8'), 'keep safe');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('project undo restores the original file, removes new outputs, and preserves later edits', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-undo-'));
+  try {
+    await writeFile(path.join(root, 'existing.md'), 'original\n');
+    const snapshot = await snapshotProjectFile(root, 'existing.md');
+    const updated = Buffer.from('agent output\n');
+    await writeProjectFile(root, 'existing.md', updated.toString(), { expectedBeforeHash: snapshot.beforeHash });
+    await restoreProjectSnapshot(root, 'existing.md', { ...snapshot, expectedAfterHash: hashBytes(updated) });
+    assert.equal(await readFile(path.join(root, 'existing.md'), 'utf8'), 'original\n');
+
+    const created = await snapshotProjectFile(root, 'reports/new.md');
+    await writeProjectFile(root, 'reports/new.md', 'generated\n', { expectedAbsent: true });
+    await restoreProjectSnapshot(root, 'reports/new.md', { ...created, expectedAfterHash: hashBytes(Buffer.from('generated\n')) });
+    await assert.rejects(readFile(path.join(root, 'reports/new.md')));
+
+    const changed = await snapshotProjectFile(root, 'existing.md');
+    const agentOutput = Buffer.from('second agent output\n');
+    await writeProjectFile(root, 'existing.md', agentOutput.toString(), { expectedBeforeHash: changed.beforeHash });
+    await writeFile(path.join(root, 'existing.md'), 'newer human edit\n');
+    await assert.rejects(restoreProjectSnapshot(root, 'existing.md', { ...changed, expectedAfterHash: hashBytes(agentOutput) }), /changed after the agent run/);
+    assert.equal(await readFile(path.join(root, 'existing.md'), 'utf8'), 'newer human edit\n');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

@@ -1,4 +1,4 @@
-const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact } = require('./project.cjs');
+const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
 const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
 
 const WRITE_PROJECT_FILE = {
@@ -56,8 +56,22 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
   const changes = [];
+  async function writeWithUndo(relativePath, content, write) {
+    const snapshot = await snapshotProjectFile(projectPath, relativePath, Math.max(MAX_AGENT_WRITE_BYTES, Buffer.byteLength(content)));
+    const options = { expectedAbsent: snapshot.created, expectedBeforeHash: snapshot.beforeHash || undefined };
+    const result = await write(options);
+    let undoToken = null;
+    if (projectUndo) {
+      try {
+        undoToken = await projectUndo.record({ projectPath, relativePath, beforeBytes: snapshot.beforeBytes, beforeHash: snapshot.beforeHash, created: snapshot.created, expectedAfterHash: hashBytes(Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8')) });
+      } catch {}
+    }
+    const change = { ...result, ...(undoToken ? { undoToken } : {}) };
+    changes.push(change);
+    return change;
+  }
   const executeAgentTool = async function executeAgentTool(name, args = {}) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new TypeError('Tool arguments must be an object.');
     if (name === 'list_project_files') {
@@ -86,8 +100,7 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
     if (name === 'write_project_file') {
       if (!projectPath || !writeAccess) return { error: 'Project writes are disabled for this run. Select the project-write mode to authorize file changes.' };
       if (typeof args.path !== 'string' || args.path.length > 500 || typeof args.content !== 'string') throw new TypeError('Provide a relative path and plain-text file content.');
-      const result = await writeProjectFile(projectPath, args.path, args.content);
-      changes.push(result);
+      const result = await writeWithUndo(args.path, args.content, (options) => writeProjectFile(projectPath, args.path, args.content, options));
       return { ...result, saved: true };
     }
     if (['create_spreadsheet', 'create_document', 'create_presentation'].includes(name)) {
@@ -96,8 +109,7 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const kind = name === 'create_spreadsheet' ? 'spreadsheet' : name === 'create_document' ? 'document' : 'presentation';
       const build = name === 'create_spreadsheet' ? buildSpreadsheet : name === 'create_document' ? buildDocument : buildPresentation;
       const artifact = await build(args);
-      const result = await writeProjectBinaryArtifact(projectPath, args.path, artifact, OFFICE_EXTENSIONS[kind]);
-      changes.push(result);
+      const result = await writeWithUndo(args.path, artifact, (options) => writeProjectBinaryArtifact(projectPath, args.path, artifact, OFFICE_EXTENSIONS[kind], undefined, options));
       return { ...result, saved: true, format: kind };
     }
     if (name === 'browser_open_page') {
