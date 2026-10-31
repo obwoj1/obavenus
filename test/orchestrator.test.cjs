@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { runTeamWorkflow } = require('../electron/orchestrator.cjs');
+const { runTeamWorkflow, rankSpecialists, parseAutomaticPlan } = require('../electron/orchestrator.cjs');
 const { runToolAgent } = require('../electron/agent-tools.cjs');
 
 test('team workflow plans, runs independent specialists in parallel, then synthesizes', async () => {
@@ -119,6 +119,42 @@ test('selected custom specialist profile spawns an independent specialist', asyn
   const customPrompt = prompts.find((prompt) => prompt.includes('You are an independent specialist agent named Federal hiring analyst.'));
   assert.match(customPrompt, /official agency postings and clearance requirements/);
   assert.ok(prompts.some((prompt) => prompt.includes('Federal hiring analyst')));
+});
+
+test('the planner automatically assigns only validated relevant specialist profile IDs', async () => {
+  const candidates = [
+    { id: 'sec-1', name: 'Security reviewer', instructions: 'Review authentication, encryption and access control.' },
+    { id: 'copy-2', name: 'Copy editor', instructions: 'Review tone, wording and spelling.' },
+  ];
+  const used = [];
+  const result = await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Review authentication and access control.' }],
+    specialists: candidates,
+    autoSelectSpecialists: true,
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      if (prompt.includes('You are the lead agent.')) return JSON.stringify({ plan: 'Check authentication boundaries.', specialists: ['sec-1', 'untrusted-id'] });
+      if (prompt.includes('You are an independent specialist agent named')) {
+        used.push(prompt.includes('Security reviewer'));
+        return 'Security review completed.';
+      }
+      if (prompt.includes('You are an independent specialist agent.')) return 'Analysis completed.';
+      if (prompt.includes('You are an independent reviewer.')) return 'Review completed.';
+      assert.match(prompt, /Security reviewer:[\s\S]*Security review completed/);
+      return 'Security review done.';
+    },
+  });
+  assert.deepEqual(used, [true]);
+  assert.equal(result.agents.filter((agent) => agent.role.includes('Security reviewer')).length, 1);
+  assert.equal(parseAutomaticPlan('{"plan":"ok","specialists":["unknown"]}', candidates).specialists.length, 0);
+});
+
+test('deterministic specialist matching selects task-relevant profiles as planner fallback', () => {
+  const ranked = rankSpecialists('Review authentication and access control', [
+    { id: 'copy', name: 'Copy editor', instructions: 'Improve spelling, wording, grammar and tone.' },
+    { id: 'security', name: 'Security specialist', instructions: 'Inspect authentication, access control and encryption.' },
+  ]);
+  assert.deepEqual(ranked.map((agent) => agent.id), ['security']);
 });
 
 test('multiple custom specialists run in parallel and their reports reach synthesis', async () => {

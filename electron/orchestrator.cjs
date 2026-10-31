@@ -18,17 +18,51 @@ const ROLES = {
 };
 const { runToolAgent } = require('./agent-tools.cjs');
 
+const STOP_WORDS = new Set('a an and are as at be by can do for from how i in is it of on or our please the this to we what with you your'.split(' '));
+function words(value) {
+  return new Set(String(value || '').toLowerCase().match(/[a-z0-9]{3,}/g)?.filter((word) => !STOP_WORDS.has(word)) || []);
+}
+function rankSpecialists(task, candidates, limit = 6) {
+  const taskWords = words(task);
+  return candidates.map((agent) => {
+    const nameWords = words(agent.name);
+    const instructionWords = words(agent.instructions);
+    let score = 0;
+    for (const word of taskWords) {
+      if (nameWords.has(word)) score += 3;
+      if (instructionWords.has(word)) score += 1;
+    }
+    return { agent, score };
+  }).filter(({ score }) => score > 0)
+    .sort((left, right) => right.score - left.score || left.agent.name.localeCompare(right.agent.name))
+    .slice(0, limit).map(({ agent }) => agent);
+}
+
+function parseAutomaticPlan(value, candidates) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    if (typeof parsed.plan !== 'string' || !Array.isArray(parsed.specialists)) return null;
+    const allowed = new Map(candidates.map((agent) => [agent.id, agent]));
+    const selected = [...new Set(parsed.specialists.filter((id) => typeof id === 'string' && allowed.has(id)))].slice(0, 6).map((id) => allowed.get(id));
+    return { plan: parsed.plan.slice(0, 8000), specialists: selected };
+  } catch { return null; }
+}
+
 function lastUserMessage(messages) {
   return [...messages].reverse().find((message) => message.role === 'user');
 }
 
-async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, specialist = null, specialists = [] }) {
+async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, specialist = null, specialists = [], autoSelectSpecialists = false }) {
   if (!Array.isArray(messages) || messages.length === 0) throw new TypeError('Add a message before starting a team run.');
   if (typeof dispatch !== 'function') throw new TypeError('A provider dispatcher is required.');
   const task = lastUserMessage(messages);
   if (!task) throw new TypeError('A team run needs a user request.');
   const taskText = task.text;
   const context = Array.isArray(task.context) ? task.context : [];
+  const candidates = Array.isArray(specialists) ? specialists.slice(0, 30) : [];
   const traces = {};
   async function send(role, extra = '', custom = null) {
     const definition = custom
@@ -57,13 +91,26 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
 
   onProgress({ stage: 'planner', label: ROLES.planner.label });
   let plan;
-  try { plan = await send('planner'); }
+  let custom = candidates.slice(0, 12);
+  const automaticCandidates = autoSelectSpecialists ? rankSpecialists(taskText, candidates, 12) : [];
+  try {
+    const catalog = automaticCandidates.length
+      ? `\n\nChoose up to six relevant specialists from this saved-profile catalog. Return JSON only with shape {"plan":"short actionable plan","specialists":["exact profile ID", ...]}. Do not invent IDs. Catalog:\n${JSON.stringify(automaticCandidates.map(({ id, name, instructions }) => ({ id, name, instructions: instructions.slice(0, 600) })))}\n`
+      : '';
+    const plannerResult = await send('planner', catalog);
+    if (automaticCandidates.length) {
+      const parsed = parseAutomaticPlan(plannerResult, automaticCandidates);
+      if (parsed) { plan = parsed.plan; custom = parsed.specialists; }
+      else { plan = plannerResult; custom = rankSpecialists(taskText, candidates); }
+    } else plan = plannerResult;
+  }
   catch (error) {
     plan = `The planning step failed (${error.message || 'unknown error'}). Continue independently from the user request and available evidence.`;
+    if (autoSelectSpecialists) custom = rankSpecialists(taskText, candidates);
     onProgress({ stage: 'warning', label: 'Planner failed · specialists will continue independently' });
   }
+  if (autoSelectSpecialists && candidates.length) onProgress({ stage: 'assignment', label: custom.length ? `Lead · assigned ${custom.length} relevant specialist${custom.length === 1 ? '' : 's'}` : 'Lead · no saved profile matched; built-in agents will handle this request' });
   onProgress({ stage: 'specialists', label: 'Specialists · working in parallel' });
-  const custom = Array.isArray(specialists) ? specialists.slice(0, 12) : [];
   const jobs = [
     { key: 'analysis', role: 'analyst', label: ROLES.analyst.label, run: (activePlan, retryNote = '') => send('analyst', `Lead plan:\n${activePlan}${retryNote}`) },
     { key: 'review', role: 'reviewer', label: ROLES.reviewer.label, run: (activePlan, retryNote = '') => send('reviewer', `Lead plan:\n${activePlan}${retryNote}`) },
@@ -115,4 +162,4 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
   };
 }
 
-module.exports = { runTeamWorkflow };
+module.exports = { runTeamWorkflow, rankSpecialists, parseAutomaticPlan };
