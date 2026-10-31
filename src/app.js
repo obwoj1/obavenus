@@ -285,6 +285,7 @@ async function closeProject() {
   const current = getActiveConversation();
   if (current) { current.projectId = ''; saveConversations(); }
   renderEmptyWorkspace();
+  await renderSpaces().catch(() => {});
 }
 
 async function renderSpaces() {
