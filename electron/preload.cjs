@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   activateProject: (id) => ipcRenderer.invoke('project:activate', id),
   closeProject: () => ipcRenderer.invoke('project:close'),
   readProjectFile: (fileName) => ipcRenderer.invoke('project:read-file', fileName),
+  undoProjectChange: (undoToken) => ipcRenderer.invoke('project:undo-change', undoToken),
   exportConversation: (conversation) => ipcRenderer.invoke('conversation:export', conversation),
   getProfile: () => ipcRenderer.invoke('profile:get'),
   saveProfile: (profile) => ipcRenderer.invoke('profile:save', profile),

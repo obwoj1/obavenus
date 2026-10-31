@@ -3,7 +3,7 @@ const { readFile, writeFile, mkdir, unlink, cp } = require('node:fs/promises');
 const { WebSocketServer } = require('ws');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { describeProject, readProjectFile, collectProjectContext } = require('./project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, restoreProjectSnapshot } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
 const { createGeminiConnector } = require('./gemini.cjs');
@@ -23,6 +23,7 @@ const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
 const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
+const { createProjectUndoStore } = require('./project-undo.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
@@ -46,6 +47,7 @@ let profileStore;
 let usaJobsStore;
 let usaJobsClient;
 let projectMemoryStore;
+let projectUndoStore;
 let scheduledTaskRunner;
 let workspaceStore;
 let chromeBridge;
@@ -70,6 +72,11 @@ function getRemoteJobStore() {
 function getProjectMemoryStore() {
   if (!projectMemoryStore) projectMemoryStore = createProjectMemoryStore({ directory: path.join(app.getPath('userData'), 'project-memory'), safeStorage });
   return projectMemoryStore;
+}
+
+function getProjectUndoStore() {
+  if (!projectUndoStore) projectUndoStore = createProjectUndoStore({ filePath: path.join(app.getPath('userData'), 'project-undo.enc'), safeStorage });
+  return projectUndoStore;
 }
 
 function getScheduledTaskRunner() {
@@ -293,6 +300,16 @@ ipcMain.handle('project:close', () => getWorkspaceStore().close());
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
   return readProjectFile(saved.projectPath, fileName);
+});
+ipcMain.handle('project:undo-change', async (_event, undoToken) => {
+  const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+  const projectPath = await require('node:fs/promises').realpath(saved.projectPath);
+  const entry = await getProjectUndoStore().get(undoToken);
+  if (!entry) throw new Error('This undo snapshot is no longer available on this Mac.');
+  if (await require('node:fs/promises').realpath(entry.projectPath) !== projectPath) throw new Error('Open the project that received this change before undoing it.');
+  const result = await restoreProjectSnapshot(projectPath, entry.relativePath, { created: entry.created, beforeBytes: entry.beforeBytes, expectedAfterHash: entry.expectedAfterHash });
+  await getProjectUndoStore().remove(undoToken);
+  return result;
 });
 ipcMain.handle('conversation:export', async (_event, conversation) => {
   const markdown = formatConversationMarkdown(conversation);
@@ -532,6 +549,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     browser: chromeAccess === true ? getChromeBridge() : getResearchBrowser(),
     getProfile: () => getProfileStore().get(),
     projectMemory: getProjectMemoryStore(),
+    projectUndo: getProjectUndoStore(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
   const customAgents = await getAgentStore().list();

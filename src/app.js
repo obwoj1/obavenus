@@ -120,7 +120,7 @@ function loadConversations() {
         agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
           agent && typeof agent.role === 'string' && typeof agent.text === 'string',
         ).slice(0, 4).map((agent) => ({ ...agent, tools: Array.isArray(agent.tools) ? agent.tools.filter((tool) => typeof tool === 'string').slice(0, 12) : [] })) : [],
-        changes: Array.isArray(message.changes) ? message.changes.filter((change) => change && typeof change.path === 'string').slice(0, 50).map((change) => ({ path: change.path, bytes: Number(change.bytes) || 0, created: change.created === true })) : [],
+        changes: Array.isArray(message.changes) ? message.changes.filter((change) => change && typeof change.path === 'string').slice(0, 50).map((change) => ({ path: change.path, bytes: Number(change.bytes) || 0, created: change.created === true, undoToken: typeof change.undoToken === 'string' && /^[0-9a-f-]{36}$/.test(change.undoToken) ? change.undoToken : null, undone: change.undone === true })) : [],
       })),
     }));
   } catch {
@@ -387,9 +387,40 @@ function renderMessages() {
       rendered.insertAdjacentElement('afterend', trace);
     }
     if (message.changes?.length) {
-      const changed = document.createElement('small');
-      changed.className = 'message-context';
-      changed.textContent = `Files written in the selected project: ${message.changes.map((change) => `${change.path}${change.created ? ' (created)' : ' (updated)'}`).join(', ')}`;
+      const changed = document.createElement('div');
+      changed.className = 'message-context project-changes';
+      const heading = document.createElement('small');
+      heading.textContent = 'Project files changed';
+      changed.append(heading);
+      message.changes.forEach((change) => {
+        const row = document.createElement('div');
+        row.className = 'project-change-row';
+        const label = document.createElement('span');
+        label.textContent = `${change.path}${change.created ? ' · created' : ' · updated'}${change.undone ? ' · undone' : ''}`;
+        row.append(label);
+        if (change.undoToken && !change.undone) {
+          const undo = document.createElement('button');
+          undo.type = 'button';
+          undo.className = 'context-action';
+          undo.textContent = 'Undo';
+          undo.addEventListener('click', async () => {
+            undo.disabled = true;
+            try {
+              await window.obavenus.undoProjectChange(change.undoToken);
+              change.undone = true;
+              saveConversations();
+              if (selectedProject) renderProject(await window.obavenus.getLastProject());
+              renderMessages();
+            } catch (error) {
+              undo.disabled = false;
+              runStatus.hidden = false;
+              runStatus.textContent = error.message || 'Could not undo this project change.';
+            }
+          });
+          row.append(undo);
+        }
+        changed.append(row);
+      });
       rendered.append(changed);
     }
   });
