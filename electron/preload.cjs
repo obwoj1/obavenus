@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('obavenus', {
   openResearchPage: (url) => ipcRenderer.invoke('browser:open', url),
   importResearchPage: () => ipcRenderer.invoke('browser:import-page'),
   clearResearchBrowserSession: () => ipcRenderer.invoke('browser:clear-session'),
+  getChromeBridgeStatus: () => ipcRenderer.invoke('chrome-bridge:status'),
+  openChromeExtensionFolder: () => ipcRenderer.invoke('chrome-bridge:extension-folder'),
   listScheduledTasks: () => ipcRenderer.invoke('tasks:list'),
   scheduleLocalTask: (task) => ipcRenderer.invoke('tasks:schedule', task),
   cancelScheduledTask: (id) => ipcRenderer.invoke('tasks:cancel', id),
@@ -36,7 +38,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   },
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
   runLocalAgent: (provider, messages, writeAccess = false) => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess }),
-  runTeam: (messages, runId, writeAccess = false, agentIds = [], browserAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess, agentIds, browserAccess }),
+  runTeam: (messages, runId, writeAccess = false, agentIds = [], browserAccess = false, chromeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess, agentIds, browserAccess, chromeAccess }),
   onAgentProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
     ipcRenderer.on('agents:progress', listener);

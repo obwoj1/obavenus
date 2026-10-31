@@ -478,11 +478,12 @@ form.addEventListener('submit', async (event) => {
   form.querySelector('.send').textContent = 'Sending…';
   runMode.disabled = true;
   const teamMode = runMode.value.startsWith('team');
-  const browserAccess = runMode.value === 'team-browser';
+  const browserAccess = runMode.value === 'team-browser' || runMode.value === 'team-chrome';
+  const chromeAccess = runMode.value === 'team-chrome';
   const localProvider = localMode?.[1] || null;
   const writeAccess = runMode.value === 'team-write' || localWriteAccess;
   runStatus.hidden = !teamMode && !localProvider;
-  runStatus.textContent = teamMode ? (browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
+  runStatus.textContent = teamMode ? (chromeAccess ? 'Preparing a research team for your paired Chrome tab…' : browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
   const teamRunId = crypto.randomUUID();
   activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
@@ -527,7 +528,7 @@ form.addEventListener('submit', async (event) => {
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
       if (teamMode) {
-        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, getSelectedAgentIds(), browserAccess);
+        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, getSelectedAgentIds(), browserAccess && !chromeAccess, chromeAccess);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
@@ -767,6 +768,13 @@ document.querySelector('#research-clear-session').addEventListener('click', asyn
     const result = await window.obavenus.clearResearchBrowserSession();
     status.textContent = result.cleared ? 'Research Browser sign-ins cleared.' : 'Sign-ins were kept.';
   } catch (error) { status.textContent = error.message || 'Could not clear browser sign-ins.'; }
+});
+document.querySelector('#chrome-extension-open').addEventListener('click', async () => {
+  const status = document.querySelector('#research-status');
+  try {
+    const { folder } = await window.obavenus.openChromeExtensionFolder();
+    status.textContent = `Folder opened. In Chrome, visit chrome://extensions, enable Developer mode, choose Load unpacked, and select ${folder}. Then click the extension and Connect.`;
+  } catch (error) { status.textContent = error.message || 'Could not open the Chrome extension folder.'; }
 });
 const tasksDialog = document.querySelector('#tasks-dialog');
 const taskList = document.querySelector('#scheduled-task-list');

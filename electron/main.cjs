@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell, session } = require('electron');
-const { readFile, writeFile, mkdir, unlink } = require('node:fs/promises');
+const { readFile, writeFile, mkdir, unlink, cp } = require('node:fs/promises');
+const { WebSocketServer } = require('ws');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { describeProject, readProjectFile, collectProjectContext } = require('./project.cjs');
@@ -22,6 +23,7 @@ const { createProjectMemoryStore } = require('./project-memory.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
+const { createChromeBridge } = require('./chrome-bridge.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -42,6 +44,7 @@ let usaJobsClient;
 let projectMemoryStore;
 let scheduledTaskRunner;
 let workspaceStore;
+let chromeBridge;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -100,6 +103,33 @@ function getResearchBrowser() {
     },
   });
   return researchBrowser;
+}
+
+function getChromeBridge() {
+  if (!chromeBridge) chromeBridge = createChromeBridge({
+    WebSocketServer,
+    confirmPairing: async () => {
+      const result = await dialog.showMessageBox({
+        type: 'question', title: 'Pair Chrome with Obavenus?',
+        message: 'The Obavenus Chrome extension wants to connect to your active Chrome tab.',
+        detail: 'While connected, the agent can read page text and navigate. Activating a page control always needs a separate approval. Pairing lasts until Obavenus closes.',
+        buttons: ['Cancel', 'Pair extension'], defaultId: 0, cancelId: 0,
+      });
+      return result.response === 1;
+    },
+    confirmAction: async (control) => {
+      let host = 'this page';
+      try { host = new URL(control.pageUrl).hostname; } catch {}
+      const result = await dialog.showMessageBox({
+        type: 'warning', title: 'Approve Chrome page action?',
+        message: `The agent wants to activate “${control.label}” on ${host}.`,
+        detail: `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
+        buttons: ['Cancel', 'Approve action'], defaultId: 0, cancelId: 0,
+      });
+      return result.response === 1;
+    },
+  });
+  return chromeBridge;
 }
 
 function broadcastTask(task) {
@@ -308,6 +338,15 @@ ipcMain.handle('browser:clear-session', async () => {
   if (result.response !== 1) return { cleared: false };
   return getResearchBrowser().clearSession();
 });
+ipcMain.handle('chrome-bridge:status', () => getChromeBridge().status());
+ipcMain.handle('chrome-bridge:extension-folder', async () => {
+  const folder = path.join(app.getPath('userData'), 'chrome-extension');
+  const source = app.isPackaged ? path.join(process.resourcesPath, 'chrome-extension') : path.join(__dirname, 'chrome-extension');
+  await mkdir(folder, { recursive: true });
+  await cp(source, folder, { recursive: true });
+  await shell.openPath(folder);
+  return { folder };
+});
 ipcMain.handle('tasks:list', () => getTaskStore().list());
 ipcMain.handle('tasks:schedule', async (_event, task) => {
   if (task?.provider === 'configured-ai') {
@@ -394,7 +433,7 @@ async function dispatchProviderMessages(messages, { tools } = {}) {
 
 ipcMain.handle('provider:send', (_event, messages) => dispatchProviderMessages(messages));
 
-ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentIds = [], browserAccess = false }) => {
+ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess = false, agentIds = [], browserAccess = false, chromeAccess = false }) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) throw new TypeError('Invalid team-run ID.');
   const preparedMessages = messages.map((message) => ({ ...message }));
   const task = [...preparedMessages].reverse().find((message) => message.role === 'user');
@@ -415,8 +454,8 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
   const executeTool = createAgentToolExecutor({
     projectPath,
     writeAccess: writeAccess === true && Boolean(projectPath),
-    browserAccess: browserAccess === true,
-    browser: getResearchBrowser(),
+    browserAccess: browserAccess === true || chromeAccess === true,
+    browser: chromeAccess === true ? getChromeBridge() : getResearchBrowser(),
     getProfile: () => getProfileStore().get(),
     projectMemory: getProjectMemoryStore(),
     searchGmail: (query) => getGmailConnector().search(query),
@@ -429,7 +468,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     dispatch: dispatchProviderMessages,
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
-    browserAccess: browserAccess === true,
+    browserAccess: browserAccess === true || chromeAccess === true,
     specialists: selectedAgents.map(({ name, instructions }) => ({ name, instructions })),
     onProgress: (progress) => {
       if (!event.sender.isDestroyed()) event.sender.send('agents:progress', { runId, ...progress });
@@ -502,6 +541,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  await getChromeBridge().start().catch((error) => console.warn('Chrome bridge unavailable:', error.message));
   await recoverInterruptedTasks();
   scheduleNextTask().catch(() => {});
   createWindow();
@@ -509,6 +549,8 @@ app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on('before-quit', () => { chromeBridge?.close().catch(() => {}); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

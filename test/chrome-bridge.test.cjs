@@ -18,11 +18,12 @@ test('the packaged extension key is pinned to the bridge origin', () => {
 
 test('Chrome bridge pairs with the pinned extension and requires approval before a control click', async () => {
   const commands = [];
+  let allowAction = false;
   const bridge = createChromeBridge({
     WebSocketServer,
     port: 0,
     confirmPairing: async () => true,
-    confirmAction: async () => false,
+    confirmAction: async () => allowAction,
   });
   try {
     const status = await bridge.start();
@@ -39,7 +40,10 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
         if (message.type === 'paired') { clearTimeout(timer); assert.equal(message.accepted, true); resolve(); }
         else {
           commands.push(message.command);
-          client.send(JSON.stringify({ id: message.id, result: { found: true, label: 'Continue', pageUrl: 'https://example.com/form' } }));
+          const result = message.command === 'findControl'
+            ? { found: true, label: 'Continue', pageUrl: 'https://example.com/form' }
+            : { clicked: true, label: 'Continue' };
+          client.send(JSON.stringify({ id: message.id, result }));
         }
       });
     });
@@ -47,6 +51,9 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
     const result = await bridge.clickControl('Continue');
     assert.equal(result.approved, false);
     assert.deepEqual(commands, ['findControl']);
+    allowAction = true;
+    assert.deepEqual(await bridge.clickControl('Continue'), { clicked: true, label: 'Continue' });
+    assert.deepEqual(commands, ['findControl', 'findControl', 'clickControl']);
     client.close();
   } finally { await bridge.close(); }
 });
