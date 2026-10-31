@@ -221,7 +221,7 @@ async function openProjectFile(fileName) {
   preview.className = 'file-preview';
   preview.textContent = result.content;
   const note = document.createElement('small');
-  note.textContent = `${result.size.toLocaleString()} bytes · opened on request · not sent anywhere`;
+  note.textContent = `${result.size.toLocaleString()} bytes · opened on request · not sent anywhere${result.truncated ? ' · preview shortened to 60,000 characters' : ''}`;
   const attachButton = document.createElement('button');
   attachButton.type = 'button';
   attachButton.className = 'context-action';

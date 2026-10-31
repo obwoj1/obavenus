@@ -26,7 +26,7 @@ const MEMORY_TOOLS = [
 const TOOL_DEFINITIONS = [
   {
     name: 'list_project_files',
-    description: 'List text files in the user-selected project folder. Hidden directories, dependencies, build outputs, and symlinks are excluded.',
+    description: 'List readable text files plus Word, Excel, and PowerPoint files in the user-selected project folder. Hidden directories, dependencies, build outputs, and symlinks are excluded.',
     parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
   },
   {
@@ -36,7 +36,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'read_project_file',
-    description: 'Read one small text file by its relative path within the selected project folder. This tool cannot modify files.',
+    description: 'Read a small text file or extract bounded text from a Word, Excel, or PowerPoint file by its relative path within the selected project folder. This tool cannot modify files.',
     parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative path, such as src/app.js.' } }, required: ['path'], additionalProperties: false },
   },
   {
