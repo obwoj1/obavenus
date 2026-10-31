@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   removeRemoteMachine: (id) => ipcRenderer.invoke('remote-machines:remove', id),
   runRemoteAgent: (provider, machineId, remotePath, messages, writeAccess = false) => ipcRenderer.invoke('remote-agent:run', { provider, machineId, remotePath, messages, writeAccess }),
   listRemoteJobs: () => ipcRenderer.invoke('remote-jobs:list'),
-  startRemoteJob: (provider, machineId, remotePath, messages, writeAccess = false) => ipcRenderer.invoke('remote-jobs:start', { provider, machineId, remotePath, messages, writeAccess }),
+  startRemoteJob: (provider, machineId, remotePath, messages, writeAccess = false, executeAt = 0) => ipcRenderer.invoke('remote-jobs:start', { provider, machineId, remotePath, messages, writeAccess, executeAt }),
   refreshRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:refresh', id),
   cancelRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:cancel', id),
   removeRemoteJob: (id) => ipcRenderer.invoke('remote-jobs:remove', id),

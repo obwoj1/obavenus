@@ -37,3 +37,15 @@ test('remote job storage rejects invalid providers, status, and oversized output
   const store = createRemoteJobStore({ filePath: '/tmp/unused-remote-jobs.enc', safeStorage: storage() });
   await assert.rejects(store.create({ id: '123e4567-e89b-12d3-a456-426614174000', machineId: 'm', provider: 'openai', title: 'x' }), /supported remote CLI/);
 });
+
+test('scheduled remote tasks persist their start time and can be stopped before running', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-remote-scheduled-'));
+  const store = createRemoteJobStore({ filePath: path.join(directory, 'jobs.enc'), safeStorage: storage(), now: () => 1_800_000_000_000 });
+  try {
+    const task = await store.create({ id: '123e4567-e89b-12d3-a456-426614174001', machineId: 'machine-1', machineHost: 'buildbox', machineLabel: 'Build server', provider: 'codex', title: 'Scheduled review', executeAt: 1_800_000_060_000 });
+    assert.equal(task.status, 'scheduled');
+    assert.equal(task.executeAt, 1_800_000_060_000);
+    await store.update(task.id, { status: 'cancelled' });
+    assert.equal((await store.get(task.id)).status, 'cancelled');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

@@ -403,16 +403,16 @@ ipcMain.handle('remote-machines:probe', (_event, target) => remoteAgent.probe(ta
 ipcMain.handle('remote-machines:save', (_event, machine) => getRemoteMachineStore().save(machine));
 ipcMain.handle('remote-machines:remove', (_event, id) => getRemoteMachineStore().remove(id));
 ipcMain.handle('remote-jobs:list', () => getRemoteJobStore().list());
-ipcMain.handle('remote-jobs:start', async (_event, { provider, machineId, remotePath = '', messages, writeAccess = false }) => {
+ipcMain.handle('remote-jobs:start', async (_event, { provider, machineId, remotePath = '', messages, writeAccess = false, executeAt = 0 }) => {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('OS credential encryption is unavailable; remote jobs cannot be tracked locally.');
   if (!Array.isArray(messages)) throw new TypeError('Remote task conversation is invalid.');
   const machine = await getRemoteMachineStore().get(machineId);
   if (!machine) throw new Error('Choose a saved remote machine first.');
   const latestUserText = [...messages].reverse().find((message) => message.role === 'user')?.text || '';
   const id = require('node:crypto').randomUUID();
-  await getRemoteJobStore().create({ id, machineId, machineHost: machine.host, machineLabel: machine.label, provider, title: latestUserText.slice(0, 120), writeAccess });
+  await getRemoteJobStore().create({ id, machineId, machineHost: machine.host, machineLabel: machine.label, provider, title: latestUserText.slice(0, 120), writeAccess, executeAt });
   try {
-    await remoteAgent.start({ jobId: id, provider, target: machine.host, remotePath, messages, writeAccess: writeAccess === true });
+    await remoteAgent.start({ jobId: id, provider, target: machine.host, remotePath, messages, writeAccess: writeAccess === true, executeAt });
     return getRemoteJobStore().get(id);
   } catch (error) {
     await getRemoteJobStore().update(id, { status: 'error', error: (error.message || 'Remote task could not start.').slice(0, 200_000) });
@@ -429,7 +429,7 @@ ipcMain.handle('remote-jobs:refresh', async (_event, id) => {
 ipcMain.handle('remote-jobs:cancel', async (_event, id) => {
   const job = await getRemoteJobStore().get(id);
   if (!job) throw new Error('Remote task was removed from local history.');
-  if (job.status !== 'running') return job;
+  if (!['running', 'scheduled'].includes(job.status)) return job;
   const machine = await getRemoteMachineStore().get(job.machineId);
   const result = await remoteAgent.cancel(machine?.host || job.machineHost, job.id);
   if (result.cancelled) return getRemoteJobStore().update(job.id, { status: 'cancelled' });
@@ -441,7 +441,7 @@ ipcMain.handle('remote-jobs:cancel', async (_event, id) => {
 });
 ipcMain.handle('remote-jobs:remove', async (_event, id) => {
   const job = await getRemoteJobStore().get(id);
-  if (job?.status === 'running') throw new Error('Stop or finish the remote task before removing its history.');
+  if (job && ['running', 'scheduled'].includes(job.status)) throw new Error('Stop or finish the remote task before removing its history.');
   if (!job) return false;
   const machine = await getRemoteMachineStore().get(job.machineId);
   await remoteAgent.removeJob(machine?.host || job.machineHost, job.id);
