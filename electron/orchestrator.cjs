@@ -56,7 +56,12 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
   }
 
   onProgress({ stage: 'planner', label: ROLES.planner.label });
-  const plan = await send('planner');
+  let plan;
+  try { plan = await send('planner'); }
+  catch (error) {
+    plan = `The planning step failed (${error.message || 'unknown error'}). Continue independently from the user request and available evidence.`;
+    onProgress({ stage: 'warning', label: 'Planner failed · specialists will continue independently' });
+  }
   onProgress({ stage: 'specialists', label: 'Specialists · working in parallel' });
   const custom = Array.isArray(specialists) ? specialists.slice(0, 5) : [];
   const jobs = [
@@ -67,8 +72,14 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
       return { key, role: key, label: `Specialist · ${agent.name}`, run: () => send(key, `Lead plan:\n${plan}`, agent) };
     }),
   ];
-  const results = await Promise.all(jobs.map((job) => job.run()));
-  const findings = Object.fromEntries(jobs.map((job, index) => [job.key, results[index]]));
+  const outcomes = await Promise.allSettled(jobs.map((job) => job.run()));
+  const findings = Object.fromEntries(jobs.map((job, index) => {
+    const outcome = outcomes[index];
+    if (outcome.status === 'fulfilled') return [job.key, outcome.value];
+    const reason = outcome.reason?.message || 'unknown error';
+    onProgress({ stage: 'warning', label: `${job.label} failed · retaining other findings` });
+    return [job.key, `This specialist could not finish: ${reason}.`];
+  }));
   const specialistNotes = jobs.map((job) => `${job.label}:\n${findings[job.key]}`).join('\n\n');
   onProgress({ stage: 'synthesis', label: ROLES.synthesis.label });
   const answer = await send('synthesis', `Lead plan:\n${plan}\n\nSpecialist findings and review:\n${specialistNotes}`);

@@ -48,6 +48,27 @@ test('team workflow rejects a conversation without a user message', async () => 
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });
 
+test('team workflow preserves review findings when planning and one specialist fail', async () => {
+  const warnings = [];
+  const result = await runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Assess this proposal.' }],
+    onProgress: (event) => { if (event.stage === 'warning') warnings.push(event.label); },
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      if (prompt.includes('You are the lead agent.')) throw new Error('planner timed out');
+      if (prompt.includes('You are an independent specialist agent.')) throw new Error('analysis provider failed');
+      if (prompt.includes('You are an independent reviewer.')) return 'Review: the proposal needs a cost estimate.';
+      assert.match(prompt, /planning step failed \(planner timed out\)/);
+      assert.match(prompt, /could not finish: analysis provider failed/);
+      assert.match(prompt, /needs a cost estimate/);
+      return 'The review found a missing cost estimate; detailed analysis was unavailable.';
+    },
+  });
+  assert.equal(result.text, 'The review found a missing cost estimate; detailed analysis was unavailable.');
+  assert.equal(result.agents.length, 3);
+  assert.equal(warnings.length, 2);
+});
+
 test('selected custom specialist profile spawns an independent specialist', async () => {
   const prompts = [];
   await runTeamWorkflow({
