@@ -1,4 +1,4 @@
-function createScheduledTaskRunner({ localAgent, dispatchProviderMessages, runTeamWorkflow, createAgentToolExecutor, getProfile, searchGmail, collectProjectContext, readProjectMemory, userDataPath }) {
+function createScheduledTaskRunner({ localAgent, dispatchProviderMessages, runTeamWorkflow, createAgentToolExecutor, getProfile, searchGmail, collectProjectContext, readProjectMemory, ocrImage, userDataPath }) {
   return {
     async run(task) {
       if (task.provider !== 'configured-ai') {
@@ -18,6 +18,7 @@ function createScheduledTaskRunner({ localAgent, dispatchProviderMessages, runTe
         projectPath: task.projectPath || undefined,
         getProfile,
         searchGmail,
+        ocrImage,
       });
       const result = await runTeamWorkflow({
         messages: [{ role: 'user', text: prompt, context }],

@@ -26,7 +26,7 @@ const MEMORY_TOOLS = [
 const TOOL_DEFINITIONS = [
   {
     name: 'list_project_files',
-    description: 'List readable text files plus PDF, Word, Excel, and PowerPoint files in the user-selected project folder. Hidden directories, dependencies, build outputs, and symlinks are excluded.',
+    description: 'List readable text, image, PDF, Word, Excel, and PowerPoint files in the user-selected project folder. Hidden directories, dependencies, build outputs, and symlinks are excluded.',
     parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
   },
   {
@@ -36,7 +36,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'read_project_file',
-    description: 'Read a small text file or extract bounded selectable text from PDF, Word, Excel, or PowerPoint files by relative path within the selected project folder. Scanned PDFs need OCR. This tool cannot modify files.',
+    description: 'Read a small text file or extract bounded text from PDF, Word, Excel, PowerPoint, and image files by relative path within the selected project folder. Scanned PDF pages and image text use bundled on-device OCR. This tool cannot modify files.',
     parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative path, such as src/app.js.' } }, required: ['path'], additionalProperties: false },
   },
   {
@@ -56,7 +56,7 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
   const changes = [];
   async function writeWithUndo(relativePath, content, write) {
     const snapshot = await snapshotProjectFile(projectPath, relativePath, Math.max(MAX_AGENT_WRITE_BYTES, Buffer.byteLength(content)));
@@ -86,7 +86,7 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
     if (name === 'read_project_file') {
       if (!projectPath) return { error: 'No project folder is open.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Project file path must be 500 characters or fewer.');
-      return readProjectRelativeFile(projectPath, args.path);
+      return readProjectRelativeFile(projectPath, args.path, { ocrImage });
     }
     if (name === 'read_project_memory') {
       if (!projectPath || !projectMemory) return { memory: '', note: 'No project memory is available.' };

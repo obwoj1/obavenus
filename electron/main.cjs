@@ -24,6 +24,7 @@ const { createResearchBrowser } = require('./research-browser.cjs');
 const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
 const { createProjectUndoStore } = require('./project-undo.cjs');
+const { createLocalOcr } = require('./local-ocr.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
@@ -48,6 +49,7 @@ let usaJobsStore;
 let usaJobsClient;
 let projectMemoryStore;
 let projectUndoStore;
+let localOcr;
 let scheduledTaskRunner;
 let workspaceStore;
 let chromeBridge;
@@ -79,6 +81,17 @@ function getProjectUndoStore() {
   return projectUndoStore;
 }
 
+function getLocalOcr() {
+  if (!localOcr) {
+    const unpackedModules = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules');
+    localOcr = createLocalOcr(app.isPackaged ? {
+      workerPath: path.join(unpackedModules, 'tesseract.js', 'src', 'worker-script', 'node', 'index.js'),
+      langPath: path.join(unpackedModules, '@tesseract.js-data', 'eng', '4.0.0'),
+    } : {});
+  }
+  return localOcr;
+}
+
 function getScheduledTaskRunner() {
   if (!scheduledTaskRunner) scheduledTaskRunner = createScheduledTaskRunner({
     localAgent: scheduledLocalAgent,
@@ -89,6 +102,7 @@ function getScheduledTaskRunner() {
     searchGmail: (query) => getGmailConnector().search(query),
     collectProjectContext,
     readProjectMemory: (projectPath) => getProjectMemoryStore().read(projectPath),
+    ocrImage: getLocalOcr(),
     userDataPath: app.getPath('userData'),
   });
   return scheduledTaskRunner;
@@ -299,7 +313,7 @@ ipcMain.handle('project:close', () => getWorkspaceStore().close());
 
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
-  return readProjectFile(saved.projectPath, fileName);
+  return readProjectFile(saved.projectPath, fileName, { ocrImage: getLocalOcr() });
 });
 ipcMain.handle('project:undo-change', async (_event, undoToken) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
@@ -550,6 +564,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     getProfile: () => getProfileStore().get(),
     projectMemory: getProjectMemoryStore(),
     projectUndo: getProjectUndoStore(),
+    ocrImage: getLocalOcr(),
     searchGmail: (query) => getGmailConnector().search(query),
   });
   const customAgents = await getAgentStore().list();
@@ -644,7 +659,7 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => { chromeBridge?.close().catch(() => {}); });
+app.on('before-quit', () => { chromeBridge?.close().catch(() => {}); localOcr?.close().catch(() => {}); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

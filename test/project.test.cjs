@@ -108,6 +108,24 @@ test('PDF previews extract selectable text locally and reject malformed PDFs', a
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('scanned PDF pages and project images use a bounded local OCR adapter', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-ocr-'));
+  let calls = 0;
+  const ocrImage = async (bytes) => { assert.ok(Buffer.isBuffer(bytes)); calls++; return 'Recognized local scan text'; };
+  try {
+    await writeFile(path.join(root, 'scan.pdf'), makeTextPdf(''));
+    await writeFile(path.join(root, 'scan.png'), Buffer.from('image bytes'));
+    const pdf = await readProjectFile(root, 'scan.pdf', { ocrImage });
+    assert.match(pdf.content, /Recognized local scan text/);
+    const image = await readProjectFile(root, 'scan.png', { ocrImage });
+    assert.match(image.content, /Image text \(recognized on this Mac\)/);
+    assert.match(image.content, /Recognized local scan text/);
+    assert.equal(calls, 2);
+    assert.ok((await listProjectFiles(root)).files.includes('scan.png'));
+    await assert.rejects(readProjectFile(root, 'scan.png'), /OCR is unavailable/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('team context deterministically selects relevant nested text files and skips dependencies and symlinks', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-context-'));
   const projectPath = path.join(root, 'project');

@@ -16,6 +16,8 @@ const MAX_AGENT_WRITE_BYTES = 256 * 1024;
 const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.csv', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.tsv', '.yaml', '.yml']);
 const OFFICE_READ_EXTENSIONS = new Set(['.docx', '.pptx', '.xlsx']);
 const PDF_EXTENSION = '.pdf';
+const IMAGE_EXTENSIONS = new Set(['.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']);
+const MAX_OCR_PAGES = 20;
 const MAX_OFFICE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_OFFICE_UNCOMPRESSED_BYTES = 40 * 1024 * 1024;
 const MAX_EXTRACTED_TEXT_CHARACTERS = 60_000;
@@ -83,7 +85,18 @@ async function readOfficeText(bytes, extension) {
   return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: content.length > MAX_EXTRACTED_TEXT_CHARACTERS };
 }
 
-async function readPdfText(bytes) {
+async function renderPdfPage(page) {
+  const { createCanvas } = require('@napi-rs/canvas');
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(1.6, 1800 / base.width, 1800 / base.height);
+  const viewport = page.getViewport({ scale });
+  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+  const context = canvas.getContext('2d');
+  await page.render({ canvasContext: context, canvas, viewport }).promise;
+  return canvas.toBuffer('image/png');
+}
+
+async function readPdfText(bytes, { ocrImage } = {}) {
   if (bytes.length > MAX_OFFICE_FILE_BYTES) throw new RangeError('PDF files must be 10 MB or smaller.');
   const { getDocument } = await getPdfjs();
   const loadingTask = getDocument({ data: Uint8Array.from(bytes), isEvalSupported: false, useSystemFonts: false, stopAtErrors: true, verbosity: 0 });
@@ -92,21 +105,30 @@ async function readPdfText(bytes) {
     document = await loadingTask.promise;
     const pageLimit = Math.min(document.numPages, 200);
     let text = '';
+    let ocrPages = 0;
+    let ocrTruncated = false;
     for (let number = 1; number <= pageLimit && text.length < MAX_EXTRACTED_TEXT_CHARACTERS; number += 1) {
       const page = await document.getPage(number);
       try {
         const content = await page.getTextContent();
-        const pageText = content.items.map((item) => item && typeof item.str === 'string' ? item.str : '').filter(Boolean).join(' ');
+        let pageText = content.items.map((item) => item && typeof item.str === 'string' ? item.str : '').filter(Boolean).join(' ').trim();
+        if (!pageText && ocrImage && ocrPages < MAX_OCR_PAGES) {
+          const image = await renderPdfPage(page);
+          pageText = await ocrImage(image);
+          ocrPages += 1;
+        } else if (!pageText && ocrImage) {
+          ocrTruncated = true;
+        }
         text += `${text ? '\n\n' : ''}Page ${number}\n${pageText}`;
       } finally { page.cleanup(); }
     }
     const content = text.trim();
-    if (!content) throw new TypeError('No selectable text was found in this PDF. Scanned pages need OCR before Obavenus can read them.');
-    return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: document.numPages > pageLimit || content.length > MAX_EXTRACTED_TEXT_CHARACTERS };
+    if (!content || !content.replace(/Page \d+\s*/g, '').trim()) throw new TypeError(ocrImage ? 'No readable text was found in this PDF, even after on-device OCR.' : 'No selectable text was found. Scanned pages need on-device OCR, which is unavailable in this build.');
+    return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: document.numPages > pageLimit || content.length > MAX_EXTRACTED_TEXT_CHARACTERS || ocrTruncated };
   } finally { await loadingTask.destroy(); }
 }
 
-async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false } = {}) {
+async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false, ocrImage } = {}) {
   if (typeof relativeName !== 'string' || !relativeName || (topLevelOnly && (path.basename(relativeName) !== relativeName || ['.', '..'].includes(relativeName))) || path.isAbsolute(relativeName)
     || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
     throw new TypeError(topLevelOnly ? 'Only a top-level file name can be opened' : 'Use a relative project file path without traversal segments.');
@@ -125,11 +147,18 @@ async function readProjectBytes(projectPath, relativeName, { topLevelOnly = fals
   const extension = path.extname(target).toLowerCase();
   const office = OFFICE_READ_EXTENSIONS.has(extension);
   const pdf = extension === PDF_EXTENSION;
-  const limit = office || pdf ? MAX_OFFICE_FILE_BYTES : MAX_PROJECT_FILE_BYTES;
-  if (details.size > limit) throw new RangeError(office || pdf ? `${pdf ? 'PDF' : 'Office'} files must be 10 MB or smaller.` : 'File is larger than 64 KB');
+  const image = IMAGE_EXTENSIONS.has(extension);
+  const limit = office || pdf || image ? MAX_OFFICE_FILE_BYTES : MAX_PROJECT_FILE_BYTES;
+  if (details.size > limit) throw new RangeError(office || pdf || image ? `${pdf ? 'PDF' : image ? 'Image' : 'Office'} files must be 10 MB or smaller.` : 'File is larger than 64 KB');
   const bytes = await readFile(target);
   if (office) return { name: parts.join(path.sep), size: bytes.length, ...(await readOfficeText(bytes, extension)) };
-  if (pdf) return { name: parts.join(path.sep), size: bytes.length, ...(await readPdfText(bytes)) };
+  if (pdf) return { name: parts.join(path.sep), size: bytes.length, ...(await readPdfText(bytes, { ocrImage })) };
+  if (image) {
+    if (typeof ocrImage !== 'function') throw new TypeError('On-device image OCR is unavailable in this build.');
+    const content = await ocrImage(bytes);
+    if (!content) throw new TypeError('No readable text was found in this image.');
+    return { name: parts.join(path.sep), size: bytes.length, content: `Image text (recognized on this Mac)\n${content}`, truncated: false };
+  }
   if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
   return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length, truncated: false };
 }
@@ -154,8 +183,8 @@ async function describeProject(selectedPath) {
   };
 }
 
-async function readProjectFile(projectPath, fileName) {
-  return readProjectBytes(projectPath, fileName, { topLevelOnly: true });
+async function readProjectFile(projectPath, fileName, options) {
+  return readProjectBytes(projectPath, fileName, { ...options, topLevelOnly: true });
 }
 
 function queryTerms(query) {
@@ -218,12 +247,12 @@ async function collectProjectContext(projectPath, query) {
   return selected;
 }
 
-async function readProjectRelativeFile(projectPath, relativeName) {
+async function readProjectRelativeFile(projectPath, relativeName, options) {
   if (typeof relativeName !== 'string' || !relativeName || path.isAbsolute(relativeName)
     || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
     throw new TypeError('Use a relative project file path without traversal segments.');
   }
-  return readProjectBytes(projectPath, relativeName);
+  return readProjectBytes(projectPath, relativeName, options);
 }
 
 function validateWritableRelativePath(relativeName) {
@@ -339,7 +368,7 @@ async function listProjectFiles(projectPath, limit = 500) {
       const name = path.join(relative, entry.name);
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.') && !IGNORED_DIRECTORIES.has(entry.name)) await walk(name);
-      } else if (entry.isFile() && (TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || OFFICE_READ_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || path.extname(entry.name).toLowerCase() === PDF_EXTENSION)) {
+      } else if (entry.isFile() && (TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || OFFICE_READ_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || path.extname(entry.name).toLowerCase() === PDF_EXTENSION || IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
         files.push(name);
       }
     }
@@ -348,4 +377,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES };
+module.exports = { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_AGENT_WRITE_BYTES, MAX_OCR_PAGES, IMAGE_EXTENSIONS };
