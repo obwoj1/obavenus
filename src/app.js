@@ -442,9 +442,16 @@ form.addEventListener('submit', async (event) => {
   if (!prompt || sending) return;
   const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
   const localWriteAccess = Boolean(localMode?.[2]);
+  const remoteMode = /^remote-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
+  const remoteWriteAccess = Boolean(remoteMode?.[2]);
   if ((runMode.value === 'team-write' || localWriteAccess) && !selectedProject) {
     runStatus.hidden = false;
     runStatus.textContent = 'Choose a project folder before enabling project edits.';
+    return;
+  }
+  if (remoteMode && (!document.querySelector('#ssh-target').value.trim() || (remoteWriteAccess && !document.querySelector('#remote-project-path').value.trim()))) {
+    runStatus.hidden = false;
+    runStatus.textContent = remoteWriteAccess ? 'Enter your SSH host alias and an absolute remote project path before running edits.' : 'Enter your SSH host alias before running a remote agent.';
     return;
   }
 
@@ -481,9 +488,10 @@ form.addEventListener('submit', async (event) => {
   const browserAccess = runMode.value === 'team-browser' || runMode.value === 'team-chrome';
   const chromeAccess = runMode.value === 'team-chrome';
   const localProvider = localMode?.[1] || null;
-  const writeAccess = runMode.value === 'team-write' || localWriteAccess;
-  runStatus.hidden = !teamMode && !localProvider;
-  runStatus.textContent = teamMode ? (chromeAccess ? 'Preparing a research team for your paired Chrome tab…' : browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : '';
+  const remoteProvider = remoteMode?.[1] || null;
+  const writeAccess = runMode.value === 'team-write' || localWriteAccess || remoteWriteAccess;
+  runStatus.hidden = !teamMode && !localProvider && !remoteProvider;
+  runStatus.textContent = teamMode ? (chromeAccess ? 'Preparing a research team for your paired Chrome tab…' : browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : remoteProvider ? (remoteWriteAccess ? 'Connecting to the remote project for an edit run…' : `Connecting to the SSH host for remote ${remoteProvider} analysis…`) : '';
   const teamRunId = crypto.randomUUID();
   activeTeamRunId = teamMode ? teamRunId : null;
   saveConversations();
@@ -505,6 +513,24 @@ form.addEventListener('submit', async (event) => {
       const status = await window.obavenus.getLocalAgentStatus();
       if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
       pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess);
+      pendingReply.status = 'complete';
+      return;
+    }
+    if (remoteProvider) {
+      const messages = current.messages
+        .filter((message) => message.status !== 'pending' && message.status !== 'error')
+        .map(({ role, text, context }) => ({ role, text, context }));
+      if (selectedSkill) {
+        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
+      }
+      pendingReply.text = await window.obavenus.runRemoteAgent(
+        remoteProvider,
+        document.querySelector('#ssh-target').value.trim(),
+        document.querySelector('#remote-project-path').value.trim(),
+        messages,
+        remoteWriteAccess,
+      );
       pendingReply.status = 'complete';
       return;
     }
@@ -746,6 +772,12 @@ document.querySelector('#federal-jobs-live').addEventListener('click', async () 
 document.querySelector('#open-project').addEventListener('click', chooseProject);
 document.querySelector('#projects-nav').addEventListener('click', chooseProject);
 document.querySelector('#new-chat').addEventListener('click', startConversation);
+runMode.addEventListener('change', () => {
+  const remoteModeSelected = runMode.value.startsWith('remote-');
+  document.querySelector('#remote-controls').hidden = !remoteModeSelected;
+  document.querySelector('#schedule-toggle').disabled = remoteModeSelected;
+  if (remoteModeSelected) document.querySelector('#schedule-panel').hidden = true;
+});
 document.querySelector('#research-open').addEventListener('click', async () => {
   const status = document.querySelector('#research-status');
   try {

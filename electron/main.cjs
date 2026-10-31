@@ -13,6 +13,7 @@ const { createProfileStore } = require('./profile.cjs');
 const { createSearchPlan } = require('./job-search.cjs');
 const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 const { createLocalAgent } = require('./local-agent.cjs');
+const { createRemoteAgent } = require('./remote-agent.cjs');
 const { SKILLS } = require('./skills.cjs');
 const { createTaskStore } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
@@ -27,6 +28,7 @@ const { createChromeBridge } = require('./chrome-bridge.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
+const remoteAgent = createRemoteAgent();
 const scheduledLocalAgent = createLocalAgent({ timeoutMs: 2 * 60 * 60 * 1000, maxOutputBytes: 8 * 1024 * 1024 });
 let taskStore;
 let taskTimer;
@@ -379,6 +381,7 @@ ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAcce
   if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
   return localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true });
 });
+ipcMain.handle('remote-agent:run', (_event, { provider, target, remotePath = '', messages, writeAccess = false }) => remoteAgent.run({ provider, target, remotePath, messages, writeAccess: writeAccess === true }));
 
 async function dispatchProviderMessages(messages, { tools } = {}) {
   const prepared = Array.isArray(messages) ? messages.map((message) => ({ ...message })) : messages;

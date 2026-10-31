@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   },
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
   runLocalAgent: (provider, messages, writeAccess = false) => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess }),
+  runRemoteAgent: (provider, target, remotePath, messages, writeAccess = false) => ipcRenderer.invoke('remote-agent:run', { provider, target, remotePath, messages, writeAccess }),
   runTeam: (messages, runId, writeAccess = false, agentIds = [], browserAccess = false, chromeAccess = false) => ipcRenderer.invoke('agents:run-team', { messages, runId, writeAccess, agentIds, browserAccess, chromeAccess }),
   onAgentProgress: (callback) => {
     const listener = (_event, progress) => callback(progress);
