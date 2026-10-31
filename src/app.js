@@ -792,6 +792,7 @@ runMode.addEventListener('change', () => {
   if (remoteModeSelected) document.querySelector('#schedule-panel').hidden = true;
   if (remoteModeSelected) refreshRemoteMachineChoices().catch(() => {});
 });
+runMode.dispatchEvent(new Event('change'));
 let remoteMachines = [];
 async function refreshRemoteMachineChoices() {
   const select = document.querySelector('#remote-machine-choice');
