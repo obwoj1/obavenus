@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Obavenus Chrome Bridge",
+  "version": "1.0.0",
+  "description": "Connect your active Chrome tab to Obavenus when you explicitly choose to.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2PeAhTYyCaB/Elw1FMX1esTsibOKwoejeRawB40N6C1Uqg8RgvveSQsjFYYZ1nhLsLvtx7d/q1TnsAtjclcamWsVRQh5nZPm+WOz2Vqo/k8oYlBnde1Jp1O8d0kXNegERGa5CcPgnH0rU75nAPmYh6g4a0FAbKHDX++Y89tkv6YhKytbOt2Y18xAI4QKoTlKl1NeA91vgtVBHF3viKj7+EyI+UYRLF5wXwkJ6juHQzNIYCz7JL84lBfUSvRs22BaS7bSWlZ9/2ZjmqsKEAAjWbBj7iBn8C6HFpM2RMPCWRxZ26+oslx0M0EZitdUA4/C9yQD/mK5xrHTijvyyF5apQIDAQAB",
+  "permissions": ["activeTab", "scripting", "tabs", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Obavenus Chrome Bridge" }
+}

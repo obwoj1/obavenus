@@ -23,7 +23,8 @@
     "@siwc/local": "0.1.0",
     "docx": "^9.15.0",
     "exceljs": "^4.4.0",
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "ws": "^8.22.1"
   },
   "workspaces": [
     "vendor/sign-in-with-chatgpt-devkit/packages/local"
@@ -40,6 +41,9 @@
       "src/**/*",
       "vendor/sign-in-with-chatgpt-devkit/packages/local/dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      { "from": "electron/chrome-extension", "to": "chrome-extension" }
     ],
     "mac": {
       "category": "public.app-category.productivity",
