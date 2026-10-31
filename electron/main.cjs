@@ -14,6 +14,7 @@ const { createSearchPlan } = require('./job-search.cjs');
 const { createUSAJobsStore, createUSAJobsClient } = require('./usajobs.cjs');
 const { createLocalAgent } = require('./local-agent.cjs');
 const { createRemoteAgent } = require('./remote-agent.cjs');
+const { createRemoteMachineStore } = require('./remote-machines.cjs');
 const { SKILLS } = require('./skills.cjs');
 const { createTaskStore } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
@@ -47,10 +48,16 @@ let projectMemoryStore;
 let scheduledTaskRunner;
 let workspaceStore;
 let chromeBridge;
+let remoteMachineStore;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
   return workspaceStore;
+}
+
+function getRemoteMachineStore() {
+  if (!remoteMachineStore) remoteMachineStore = createRemoteMachineStore({ filePath: path.join(app.getPath('userData'), 'remote-machines.enc'), safeStorage });
+  return remoteMachineStore;
 }
 
 function getProjectMemoryStore() {
@@ -381,7 +388,15 @@ ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAcce
   if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
   return localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true });
 });
-ipcMain.handle('remote-agent:run', (_event, { provider, target, remotePath = '', messages, writeAccess = false }) => remoteAgent.run({ provider, target, remotePath, messages, writeAccess: writeAccess === true }));
+ipcMain.handle('remote-machines:list', () => getRemoteMachineStore().list());
+ipcMain.handle('remote-machines:probe', (_event, target) => remoteAgent.probe(target));
+ipcMain.handle('remote-machines:save', (_event, machine) => getRemoteMachineStore().save(machine));
+ipcMain.handle('remote-machines:remove', (_event, id) => getRemoteMachineStore().remove(id));
+ipcMain.handle('remote-agent:run', async (_event, { provider, machineId, remotePath = '', messages, writeAccess = false }) => {
+  const machine = await getRemoteMachineStore().get(machineId);
+  if (!machine) throw new Error('Choose a saved remote machine first.');
+  return remoteAgent.run({ provider, target: machine.host, remotePath, messages, writeAccess: writeAccess === true });
+});
 
 async function dispatchProviderMessages(messages, { tools } = {}) {
   const prepared = Array.isArray(messages) ? messages.map((message) => ({ ...message })) : messages;

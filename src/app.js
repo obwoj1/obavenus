@@ -449,9 +449,9 @@ form.addEventListener('submit', async (event) => {
     runStatus.textContent = 'Choose a project folder before enabling project edits.';
     return;
   }
-  if (remoteMode && (!document.querySelector('#ssh-target').value.trim() || (remoteWriteAccess && !document.querySelector('#remote-project-path').value.trim()))) {
+  if (remoteMode && (!document.querySelector('#remote-machine-choice').value || (remoteWriteAccess && !document.querySelector('#remote-project-path').value.trim()))) {
     runStatus.hidden = false;
-    runStatus.textContent = remoteWriteAccess ? 'Enter your SSH host alias and an absolute remote project path before running edits.' : 'Enter your SSH host alias before running a remote agent.';
+    runStatus.textContent = remoteWriteAccess ? 'Choose a saved SSH machine and enter an absolute remote project path before running edits.' : 'Choose a saved SSH machine before running a remote agent.';
     return;
   }
 
@@ -526,7 +526,7 @@ form.addEventListener('submit', async (event) => {
       }
       pendingReply.text = await window.obavenus.runRemoteAgent(
         remoteProvider,
-        document.querySelector('#ssh-target').value.trim(),
+        document.querySelector('#remote-machine-choice').value,
         document.querySelector('#remote-project-path').value.trim(),
         messages,
         remoteWriteAccess,
@@ -777,6 +777,75 @@ runMode.addEventListener('change', () => {
   document.querySelector('#remote-controls').hidden = !remoteModeSelected;
   document.querySelector('#schedule-toggle').disabled = remoteModeSelected;
   if (remoteModeSelected) document.querySelector('#schedule-panel').hidden = true;
+  if (remoteModeSelected) refreshRemoteMachineChoices().catch(() => {});
+});
+let remoteMachines = [];
+async function refreshRemoteMachineChoices() {
+  const select = document.querySelector('#remote-machine-choice');
+  const selected = select.value;
+  remoteMachines = await window.obavenus.listRemoteMachines();
+  select.replaceChildren(new Option('Choose a linked machine', ''));
+  for (const machine of remoteMachines) select.add(new Option(`${machine.label} · ${machine.host}`, machine.id));
+  if (remoteMachines.some((machine) => machine.id === selected)) select.value = selected;
+}
+const remoteMachinesDialog = document.querySelector('#remote-machines-dialog');
+const remoteMachineForm = document.querySelector('#remote-machine-form');
+const remoteMachineStatus = document.querySelector('#remote-machine-status');
+async function renderRemoteMachineList() {
+  const list = document.querySelector('#remote-machine-list');
+  list.replaceChildren();
+  remoteMachines = await window.obavenus.listRemoteMachines();
+  for (const machine of remoteMachines) {
+    const row = document.createElement('div');
+    row.className = 'gmail-item';
+    const label = document.createElement('span');
+    label.textContent = `${machine.label} · ${machine.host}`;
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.textContent = 'Edit';
+    edit.addEventListener('click', () => {
+      document.querySelector('#remote-machine-id').value = machine.id;
+      document.querySelector('#remote-machine-name').value = machine.label;
+      document.querySelector('#remote-machine-host').value = machine.host;
+      remoteMachineStatus.textContent = '';
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.textContent = 'Remove';
+    remove.addEventListener('click', async () => {
+      await window.obavenus.removeRemoteMachine(machine.id);
+      await renderRemoteMachineList(); await refreshRemoteMachineChoices();
+    });
+    row.append(label, edit, remove); list.append(row);
+  }
+  await refreshRemoteMachineChoices();
+}
+document.querySelector('#remote-machines-open').addEventListener('click', async () => {
+  try { await renderRemoteMachineList(); remoteMachinesDialog.showModal(); }
+  catch (error) { remoteMachineStatus.textContent = error.message || 'Could not load remote machines.'; }
+});
+document.querySelector('#remote-machines-close').addEventListener('click', () => remoteMachinesDialog.close());
+document.querySelector('#remote-machine-test').addEventListener('click', async () => {
+  remoteMachineStatus.textContent = 'Checking SSH connection…';
+  try {
+    await window.obavenus.probeRemoteMachine(document.querySelector('#remote-machine-host').value.trim());
+    remoteMachineStatus.textContent = 'Connected. The SSH alias and trusted host are ready.';
+  } catch (error) { remoteMachineStatus.textContent = error.message || 'Could not connect. Check SSH configuration and host trust.'; }
+});
+remoteMachineForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  remoteMachineStatus.textContent = 'Checking SSH connection before saving…';
+  const machine = {
+    id: document.querySelector('#remote-machine-id').value || undefined,
+    label: document.querySelector('#remote-machine-name').value,
+    host: document.querySelector('#remote-machine-host').value.trim(),
+  };
+  try {
+    await window.obavenus.probeRemoteMachine(machine.host);
+    await window.obavenus.saveRemoteMachine(machine);
+    remoteMachineForm.reset();
+    document.querySelector('#remote-machine-id').value = '';
+    remoteMachineStatus.textContent = 'Machine saved with OS-backed local encryption.';
+    await renderRemoteMachineList();
+  } catch (error) { remoteMachineStatus.textContent = error.message || 'Could not save that machine.'; }
 });
 document.querySelector('#research-open').addEventListener('click', async () => {
   const status = document.querySelector('#research-status');
