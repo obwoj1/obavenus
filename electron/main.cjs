@@ -19,6 +19,7 @@ const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
 const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
+const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -37,10 +38,26 @@ let profileStore;
 let usaJobsStore;
 let usaJobsClient;
 let projectMemoryStore;
+let scheduledTaskRunner;
 
 function getProjectMemoryStore() {
   if (!projectMemoryStore) projectMemoryStore = createProjectMemoryStore({ directory: path.join(app.getPath('userData'), 'project-memory'), safeStorage });
   return projectMemoryStore;
+}
+
+function getScheduledTaskRunner() {
+  if (!scheduledTaskRunner) scheduledTaskRunner = createScheduledTaskRunner({
+    localAgent: scheduledLocalAgent,
+    dispatchProviderMessages,
+    runTeamWorkflow,
+    createAgentToolExecutor,
+    getProfile: () => getProfileStore().get(),
+    searchGmail: (query) => getGmailConnector().search(query),
+    collectProjectContext,
+    readProjectMemory: (projectPath) => getProjectMemoryStore().read(projectPath),
+    userDataPath: app.getPath('userData'),
+  });
+  return scheduledTaskRunner;
 }
 
 function getTaskStore() {
@@ -92,9 +109,7 @@ async function runScheduledTasks() {
       await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
       broadcastTask({ id: task.id, status: 'running' });
       try {
-        const result = task.provider === 'configured-ai'
-          ? await dispatchProviderMessages([{ role: 'user', text: task.prompt }])
-          : await scheduledLocalAgent.run({ provider: task.provider, projectPath: task.projectPath || app.getPath('userData'), messages: [{ role: 'user', text: task.prompt }] });
+        const result = await getScheduledTaskRunner().run(task);
         const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
         broadcastTask({ id: task.id, status: completed.status, result: completed.result });
         if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
