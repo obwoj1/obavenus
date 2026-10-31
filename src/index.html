@@ -249,7 +249,7 @@
       aside, .context { background: color-mix(in srgb, var(--sage-rail) 88%, transparent); border-color: var(--sage-line); backdrop-filter: blur(18px); }
       header { background: color-mix(in srgb, var(--sage-panel) 76%, transparent); border-color: var(--sage-line); backdrop-filter: blur(18px); }
       .brand-mark { position: relative; background: linear-gradient(145deg, #a6d4ad, #517c60); box-shadow: 0 0 22px #68bd7a45; }
-      .brand-mark::after { position: absolute; inset: -4px; border: 1px solid #7bc28a70; border-radius: 14px; content: ''; animation: mark-pulse 4s ease-in-out infinite; }
+      .brand-mark::after { position: absolute; inset: -4px; border: 1px solid #7bc28a55; border-radius: 14px; content: ''; animation: mark-pulse 7s ease-in-out infinite; }
       .workspace, .new-chat, .composer, .context-card, .status, .suggestions button, .message, dialog { border-color: var(--sage-line); }
       .composer { background: color-mix(in srgb, var(--sage-panel) 90%, transparent); box-shadow: 0 20px 70px #27483216, 0 0 0 1px #ffffffa8 inset; backdrop-filter: blur(22px); }
       .composer:focus-within { border-color: var(--sage-accent); box-shadow: 0 0 0 3px #72a4802d, 0 20px 70px #2748321a; }
@@ -259,6 +259,15 @@
       .suggestions button:hover { transform: translateY(-3px); border-color: var(--sage-accent); box-shadow: 0 14px 34px #2d61441c, 0 0 0 1px #9ac6a033 inset; }
       .nav-item, .recent-item, .workspace, .context-card, .composer, .status, .message { transition: background-color .3s ease, color .3s ease, border-color .3s ease, box-shadow .3s ease; }
       .welcome { animation: rise-in .65s cubic-bezier(.2,.8,.2,1) both; }
+      button, select, input, textarea, summary, a { transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s cubic-bezier(.2,.8,.2,1); }
+      button:not(:disabled):active { transform: translateY(1px) scale(.985); }
+      button:disabled { cursor: not-allowed; }
+      .nav-item, .recent-item { transition: background-color .2s ease, color .2s ease, border-color .2s ease, transform .2s ease; }
+      .nav-item:hover, .recent-item:hover { transform: translateX(2px); }
+      .composer, .workspace, .context-card, .status { transition: background-color .28s ease, color .28s ease, border-color .28s ease, box-shadow .28s ease; }
+      dialog[open] { animation: dialog-in .2s cubic-bezier(.2,.8,.2,1) both; }
+      dialog[open]::backdrop { animation: backdrop-in .2s ease both; }
+      .research-tools[open] .research-toolbar, #remote-controls:not([hidden]), #schedule-panel:not([hidden]) { animation: reveal-soft .18s cubic-bezier(.2,.8,.2,1) both; }
       .theme-choice { padding: 7px 9px; border: 1px solid var(--sage-line); border-radius: 9px; background: var(--sage-panel); color: var(--sage-ink); font: inherit; font-size: 11px; }
       .profile-open { margin-left: 8px; padding: 8px 11px; border: 1px solid var(--sage-line); border-radius: 99px; background: var(--sage-panel); color: var(--sage-ink); cursor: pointer; }
       .profile-form { padding: 24px; }
@@ -282,8 +291,11 @@
       body[data-theme="dusk"] dialog { background: #17231b; color: var(--sage-ink); border-color: var(--sage-line); }
       body[data-theme="dusk"] .profile-form p, body[data-theme="dusk"] .profile-form small { color: var(--sage-muted); }
       body[data-theme="mist"] { --sage-bg: #f5f7f2; --sage-panel: #fff; --sage-rail: #eff3eb; --sage-ink: #34443a; --sage-muted: #78877b; --sage-line: #e1e8de; --sage-accent: #8cab91; --sage-glow: #9dc5a1; background: radial-gradient(ellipse at 70% 4%, #e6f0e4 0, transparent 36%), var(--sage-bg); }
-      @keyframes rise-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes mark-pulse { 0%, 100% { opacity: .35; transform: scale(.95); } 50% { opacity: .9; transform: scale(1.08); } }
+      @keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes reveal-soft { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes dialog-in { from { opacity: 0; transform: translateY(7px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+      @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes mark-pulse { 0%, 100% { opacity: .2; transform: scale(.98); } 50% { opacity: .48; transform: scale(1.025); } }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
     </style>
   </head>
