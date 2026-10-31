@@ -150,7 +150,7 @@ function renderEmptyWorkspace() {
   contextCard.replaceChildren();
   const contextTitle = document.createElement('strong');
   contextTitle.textContent = 'Nothing connected yet';
-  contextCard.append(contextTitle, 'Choose a project folder to see its top-level file names. Obavenus does not read their contents yet.');
+  contextCard.append(contextTitle, 'Choose a project folder to see its files. Team runs can send relevant text and saved project memory to your selected provider. Project edits require explicit write mode.');
 }
 
 function renderProject(project) {
