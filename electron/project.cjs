@@ -2,6 +2,8 @@ const { readFile, readdir, realpath, stat, lstat, mkdir, open } = require('node:
 const path = require('node:path');
 const ExcelJS = require('exceljs');
 const JSZip = require('jszip');
+let pdfjsPromise;
+function getPdfjs() { pdfjsPromise ||= import('pdfjs-dist/legacy/build/pdf.mjs'); return pdfjsPromise; }
 
 const MAX_PROJECT_FILE_BYTES = 64 * 1024;
 const MAX_CONTEXT_FILES = 3;
@@ -12,6 +14,7 @@ const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', '
 const MAX_AGENT_WRITE_BYTES = 256 * 1024;
 const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.csv', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.tsv', '.yaml', '.yml']);
 const OFFICE_READ_EXTENSIONS = new Set(['.docx', '.pptx', '.xlsx']);
+const PDF_EXTENSION = '.pdf';
 const MAX_OFFICE_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_OFFICE_UNCOMPRESSED_BYTES = 40 * 1024 * 1024;
 const MAX_EXTRACTED_TEXT_CHARACTERS = 60_000;
@@ -79,6 +82,29 @@ async function readOfficeText(bytes, extension) {
   return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: content.length > MAX_EXTRACTED_TEXT_CHARACTERS };
 }
 
+async function readPdfText(bytes) {
+  if (bytes.length > MAX_OFFICE_FILE_BYTES) throw new RangeError('PDF files must be 10 MB or smaller.');
+  const { getDocument } = await getPdfjs();
+  const loadingTask = getDocument({ data: Uint8Array.from(bytes), isEvalSupported: false, useSystemFonts: false, stopAtErrors: true, verbosity: 0 });
+  let document;
+  try {
+    document = await loadingTask.promise;
+    const pageLimit = Math.min(document.numPages, 200);
+    let text = '';
+    for (let number = 1; number <= pageLimit && text.length < MAX_EXTRACTED_TEXT_CHARACTERS; number += 1) {
+      const page = await document.getPage(number);
+      try {
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item) => item && typeof item.str === 'string' ? item.str : '').filter(Boolean).join(' ');
+        text += `${text ? '\n\n' : ''}Page ${number}\n${pageText}`;
+      } finally { page.cleanup(); }
+    }
+    const content = text.trim();
+    if (!content) throw new TypeError('No selectable text was found in this PDF. Scanned pages need OCR before Obavenus can read them.');
+    return { content: content.slice(0, MAX_EXTRACTED_TEXT_CHARACTERS), truncated: document.numPages > pageLimit || content.length > MAX_EXTRACTED_TEXT_CHARACTERS };
+  } finally { await loadingTask.destroy(); }
+}
+
 async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false } = {}) {
   if (typeof relativeName !== 'string' || !relativeName || (topLevelOnly && (path.basename(relativeName) !== relativeName || ['.', '..'].includes(relativeName))) || path.isAbsolute(relativeName)
     || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
@@ -97,10 +123,12 @@ async function readProjectBytes(projectPath, relativeName, { topLevelOnly = fals
   const details = await lstat(target);
   const extension = path.extname(target).toLowerCase();
   const office = OFFICE_READ_EXTENSIONS.has(extension);
-  const limit = office ? MAX_OFFICE_FILE_BYTES : MAX_PROJECT_FILE_BYTES;
-  if (details.size > limit) throw new RangeError(office ? 'Office files must be 10 MB or smaller.' : 'File is larger than 64 KB');
+  const pdf = extension === PDF_EXTENSION;
+  const limit = office || pdf ? MAX_OFFICE_FILE_BYTES : MAX_PROJECT_FILE_BYTES;
+  if (details.size > limit) throw new RangeError(office || pdf ? `${pdf ? 'PDF' : 'Office'} files must be 10 MB or smaller.` : 'File is larger than 64 KB');
   const bytes = await readFile(target);
   if (office) return { name: parts.join(path.sep), size: bytes.length, ...(await readOfficeText(bytes, extension)) };
+  if (pdf) return { name: parts.join(path.sep), size: bytes.length, ...(await readPdfText(bytes)) };
   if (bytes.includes(0)) throw new TypeError('This file does not look like plain text');
   return { name: parts.join(path.sep), content: bytes.toString('utf8'), size: bytes.length, truncated: false };
 }
@@ -255,7 +283,7 @@ async function listProjectFiles(projectPath, limit = 500) {
       const name = path.join(relative, entry.name);
       if (entry.isDirectory()) {
         if (!entry.name.startsWith('.') && !IGNORED_DIRECTORIES.has(entry.name)) await walk(name);
-      } else if (entry.isFile() && (TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || OFFICE_READ_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+      } else if (entry.isFile() && (TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || OFFICE_READ_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) || path.extname(entry.name).toLowerCase() === PDF_EXTENSION)) {
         files.push(name);
       }
     }

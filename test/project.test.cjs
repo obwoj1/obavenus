@@ -4,6 +4,26 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { buildSpreadsheet, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
+
+function makeTextPdf(text) {
+  const stream = `BT /F1 18 Tf 50 700 Td (${text.replace(/[()\\]/g, '\\$&')}) Tj ET`;
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf, 'latin1');
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1');
+}
 const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
@@ -72,6 +92,19 @@ test('Office previews cap extracted text and reject malformed document archives'
     assert.equal(preview.content.length, 60_000);
     assert.equal(preview.truncated, true);
     await assert.rejects(readProjectFile(root, 'bad.docx'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('PDF previews extract selectable text locally and reject malformed PDFs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-pdf-read-'));
+  try {
+    await writeFile(path.join(root, 'brief.pdf'), makeTextPdf('Obavenus PDF preview'));
+    await writeFile(path.join(root, 'broken.pdf'), 'not a PDF');
+    const preview = await readProjectFile(root, 'brief.pdf');
+    assert.match(preview.content, /Page 1[\s\S]*Obavenus PDF preview/);
+    assert.equal(preview.truncated, false);
+    assert.ok((await listProjectFiles(root)).files.includes('brief.pdf'));
+    await assert.rejects(readProjectFile(root, 'broken.pdf'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
