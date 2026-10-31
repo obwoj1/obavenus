@@ -3,7 +3,7 @@ const test = require('node:test');
 const { mkdtemp, mkdir, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { TOOL_DEFINITIONS, createAgentToolExecutor } = require('../electron/agent-tools.cjs');
+const { TOOL_DEFINITIONS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
 
 test('career and code tools are available and GitHub inspection requires explicit profile sharing', async () => {
   assert.ok(TOOL_DEFINITIONS.some((tool) => tool.name === 'inspect_github_profile'));
@@ -65,6 +65,22 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });
   assert.deepEqual(visited, ['https://example.com']);
+});
+
+test('browser form filling is exposed only for paired Chrome and enforces text bounds', async () => {
+  const browser = { fillField: async (label, value) => ({ approved: true, label, value, submitted: false }) };
+  const researchTools = [];
+  await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, dispatch: async (_messages, options) => { researchTools.push(...options.tools); return 'Done'; } });
+  assert.equal(researchTools.some((tool) => tool.name === 'browser_fill_field'), false);
+  const chromeTools = [];
+  await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, browserFillAccess: true, dispatch: async (_messages, options) => { chromeTools.push(...options.tools); return 'Done'; } });
+  assert.equal(chromeTools.some((tool) => tool.name === 'browser_fill_field'), true);
+
+  const denied = createAgentToolExecutor({ browserAccess: true, browser, browserFillAccess: false });
+  assert.match((await denied('browser_fill_field', { label: 'Email', value: 'a@example.com' })).error, /paired Chrome/);
+  const allowed = createAgentToolExecutor({ browserAccess: true, browserFillAccess: true, browser });
+  assert.deepEqual(await allowed('browser_fill_field', { label: 'Email', value: 'a@example.com' }), { approved: true, label: 'Email', value: 'a@example.com', submitted: false });
+  await assert.rejects(allowed('browser_fill_field', { label: 'Email', value: 'x'.repeat(2001) }), /2,000/);
 });
 
 test('native spreadsheet tool is gated behind project-write mode and reports its project artifact', async () => {

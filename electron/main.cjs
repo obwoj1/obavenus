@@ -136,11 +136,14 @@ function getChromeBridge() {
     confirmAction: async (control) => {
       let host = 'this page';
       try { host = new URL(control.pageUrl).hostname; } catch {}
+      const filling = control.action === 'fill';
       const result = await dialog.showMessageBox({
-        type: 'warning', title: 'Approve Chrome page action?',
-        message: `The agent wants to activate “${control.label}” on ${host}.`,
-        detail: `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
-        buttons: ['Cancel', 'Approve action'], defaultId: 0, cancelId: 0,
+        type: 'warning', title: filling ? 'Approve Chrome field entry?' : 'Approve Chrome page action?',
+        message: filling ? `The agent wants to fill “${control.label}” on ${host}.` : `The agent wants to activate “${control.label}” on ${host}.`,
+        detail: filling
+          ? `${control.pageUrl}\n\nField text to enter:\n${control.value || '(clear this field)'}\n\nThis fills the field only. It does not submit the form.`
+          : `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
+        buttons: ['Cancel', filling ? 'Fill field' : 'Approve action'], defaultId: 0, cancelId: 0,
       });
       return result.response === 1;
     },
@@ -525,6 +528,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     projectPath,
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true || chromeAccess === true,
+    browserFillAccess: chromeAccess === true,
     browser: chromeAccess === true ? getChromeBridge() : getResearchBrowser(),
     getProfile: () => getProfileStore().get(),
     projectMemory: getProjectMemoryStore(),
@@ -539,6 +543,7 @@ ipcMain.handle('agents:run-team', async (event, { messages, runId, writeAccess =
     executeTool,
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true || chromeAccess === true,
+    browserFillAccess: chromeAccess === true,
     specialists: selectedAgents.map(({ id, name, instructions }) => ({ id, name, instructions })),
     autoSelectSpecialists: requestedIds.length === 0 && customAgents.length > 0,
     onProgress: (progress) => {

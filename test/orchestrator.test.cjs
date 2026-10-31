@@ -188,11 +188,12 @@ test('multiple custom specialists run in parallel and their reports reach synthe
   assert.deepEqual(started.sort(), ['Accessibility reviewer', 'Security reviewer']);
 });
 
-test('browser tools are passed only to the analysis specialist in browser mode', async () => {
+test('browser tools and approved form filling are restricted to paired Chrome and the analysis specialist', async () => {
   const options = [];
   await runTeamWorkflow({
     messages: [{ role: 'user', text: 'Research this topic.' }],
     browserAccess: true,
+    browserFillAccess: true,
     dispatch: async (messages, config) => {
       options.push({ text: messages[0].text, tools: config.tools.map((tool) => tool.name) });
       if (messages[0].text.includes('You are the lead agent.')) return 'Plan.';
@@ -204,7 +205,9 @@ test('browser tools are passed only to the analysis specialist in browser mode',
   const analyst = options.find((item) => item.text.includes('You are an independent specialist agent.'));
   const reviewer = options.find((item) => item.text.includes('You are an independent reviewer.'));
   assert.ok(analyst.tools.includes('browser_open_page'));
+  assert.ok(analyst.tools.includes('browser_fill_field'));
   assert.ok(!reviewer.tools.includes('browser_open_page'));
+  assert.ok(!reviewer.tools.includes('browser_fill_field'));
   assert.match(analyst.text, /unless the user approves the native Obavenus confirmation/);
 });
 
