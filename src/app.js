@@ -1816,10 +1816,44 @@ document.querySelector('#study-nav').addEventListener('click', async () => {
     studyData = await window.obavenus.loadStudySpace();
     renderStudySpace();
     refreshCanvasStatus().catch(() => {});
+    refreshMcpServers().catch(() => {});
     studyDialog.showModal();
   } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
 });
 document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+async function refreshMcpServers(message = '') {
+  const list = document.querySelector('#study-mcp-list'); list.replaceChildren();
+  const servers = await window.obavenus.listMcpServers();
+  for (const server of servers) {
+    const row = document.createElement('article'); row.className = 'study-mcp-item';
+    const details = document.createElement('div');
+    const name = document.createElement('strong'); name.textContent = server.name;
+    const tools = document.createElement('small'); tools.textContent = `${server.url} · ${server.readOnlyTools.length} read-only tools available to the assistant`;
+    details.append(name, tools);
+    const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeMcp = server.id; remove.textContent = 'Disconnect';
+    row.append(details, remove); list.append(row);
+  }
+  document.querySelector('#study-mcp-status').textContent = message || (servers.length ? `${servers.length} learning service${servers.length === 1 ? '' : 's'} connected. Tools are discovered when a chat starts.` : 'No MCP learning service connected.');
+}
+document.querySelector('#study-mcp-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#study-mcp-status'); status.textContent = 'Checking server and discovering read-only tools…';
+  try {
+    const server = await window.obavenus.addMcpServer({
+      name: document.querySelector('#study-mcp-name').value,
+      url: document.querySelector('#study-mcp-url').value,
+      token: document.querySelector('#study-mcp-token').value,
+    });
+    document.querySelector('#study-mcp-token').value = '';
+    event.currentTarget.reset();
+    await refreshMcpServers(server.readOnlyTools.length ? `Connected ${server.name} · ${server.readOnlyTools.length} read-only tools available.` : `Connected ${server.name}, but its tools are not marked read-only so the assistant cannot call them.`);
+  } catch (error) { status.textContent = error.message || 'Could not connect this MCP service.'; }
+});
+document.querySelector('#study-mcp-list').addEventListener('click', async (event) => {
+  const id = event.target.closest('[data-remove-mcp]')?.dataset.removeMcp; if (!id) return;
+  try { await window.obavenus.removeMcpServer(id); await refreshMcpServers('MCP service disconnected.'); }
+  catch (error) { document.querySelector('#study-mcp-status').textContent = error.message || 'Could not disconnect this service.'; }
+});
 document.querySelector('#study-import-button').addEventListener('click', async () => {
   const status = document.querySelector('#study-material-status');
   status.textContent = 'Choose a file to extract locally…';
