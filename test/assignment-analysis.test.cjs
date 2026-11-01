@@ -20,5 +20,16 @@ test('assignment requirement scan stays transparent on absent or oversized input
   const result = analyzeAssignment({ title: 'Reading', instructions: 'Complete the assignment.' });
   assert.deepEqual(result.deliverables, []);
   assert.deepEqual(result.evidence, []);
+  assert.deepEqual(result.gradingCriteria, []);
+  assert.deepEqual(result.skills, []);
+  assert.ok(result.instructorQuestions.length > 0);
   assert.throws(() => analyzeAssignment({ instructions: 'x'.repeat(20_001) }), /local analysis limit/);
+});
+
+test('assignment scan separates explicitly named grading criteria, skills, and suggested questions', () => {
+  const result = analyzeAssignment({ title: 'Data report', instructions: 'Use data analysis and critical thinking. The rubric awards 20 points for evidence quality. Cite sources.' });
+  assert.deepEqual(result.skills, ['Critical thinking', 'Data analysis']);
+  assert.deepEqual(result.gradingCriteria, ['The rubric awards 20 points for evidence quality.']);
+  assert.ok(result.instructorQuestions.some((question) => question.includes('citation style')));
+  assert.ok(result.instructorQuestions.some((question) => question.includes('format')));
 });

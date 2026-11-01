@@ -1819,12 +1819,19 @@ function renderStudySpace() {
       const details = [
         ['Deliverables', analysis.deliverables], ['Quantity', analysis.quantityRequirements],
         ['Format', analysis.formatRequirements], ['Citation style', analysis.citations], ['Explicit requirements', analysis.evidence],
+        ['Grading criteria found', analysis.gradingCriteria || []], ['Skills named', analysis.skills || []],
       ];
       for (const [heading, values] of details) {
         if (!values.length) continue;
         const line = document.createElement('p'); line.textContent = `${heading}: ${values.join(' · ')}`; panel.append(line);
       }
       if (analysis.dueDate) { const dueText = document.createElement('p'); dueText.textContent = `Due: ${new Date(analysis.dueDate).toLocaleString()}`; panel.append(dueText); }
+      if (analysis.instructorQuestions?.length) {
+        const heading = document.createElement('small'); heading.textContent = 'Suggested instructor questions · verify before asking'; panel.append(heading);
+        const questions = document.createElement('ul');
+        for (const question of analysis.instructorQuestions) { const item = document.createElement('li'); item.textContent = question; questions.append(item); }
+        panel.append(questions);
+      }
       if (details.every(([, values]) => !values.length) && !analysis.dueDate) { const empty = document.createElement('p'); empty.textContent = 'No explicit deliverable, quantity, format, or citation requirement was detected.'; panel.append(empty); }
       card.append(panel);
     }
