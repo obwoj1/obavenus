@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.97: Updated the Chrome bridge popup and setup guide for multi-tab research and explicit site-access behavior.
 - 0.1.96: Paired Chrome runs can list up to 40 regular web tabs and switch to a unique exact-URL match, allowing research across already-open signed-in pages. Tab operations are restricted to explicit Chrome mode.
 - 0.1.95: Refined navigation, cards, controls, and dialogs with consistent sage-green transitions, visible keyboard focus, and reduced-motion support.
 - 0.1.94: Added offline SVG diagram creation from structured nodes and connections. Diagram generation is available only during project-write runs, escapes labels, validates references and size limits, and produces a self-contained file that can be previewed or opened locally.
