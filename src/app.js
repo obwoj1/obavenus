@@ -1677,6 +1677,10 @@ function setStudyStatus(message = '') {
   document.querySelector('#study-status').textContent = message;
 }
 
+function studyDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function makeStudyOption(label, value = '') {
   return new Option(label, value);
 }
@@ -1775,7 +1779,8 @@ function renderStudySpace() {
       const label = document.createElement('label');
       const check = document.createElement('input'); check.type = 'checkbox'; check.checked = step.done; check.dataset.stepId = step.id;
       const text = document.createElement('span'); text.textContent = step.text;
-      label.append(check, text); card.append(label);
+      const planned = document.createElement('button'); planned.type = 'button'; planned.dataset.planStep = step.id; planned.textContent = step.planDate === studyDateKey() ? 'Remove from today' : 'Plan today';
+      label.append(check, text); card.append(label, planned);
     }
     const stepForm = document.createElement('form'); stepForm.className = 'study-row'; stepForm.dataset.addStep = 'true';
     const stepInput = document.createElement('input'); stepInput.maxLength = 300; stepInput.required = true; stepInput.placeholder = 'Add a plan step'; stepInput.setAttribute('aria-label', 'Add an assignment plan step');
@@ -1783,6 +1788,21 @@ function renderStudySpace() {
     stepForm.append(stepInput, addStep);
     const completion = document.createElement('button'); completion.type = 'button'; completion.dataset.toggleDone = 'true'; completion.textContent = assignment.status === 'done' ? 'Reopen' : 'Mark complete';
     card.append(stepForm, completion); assignmentList.append(card);
+  }
+
+  const planList = document.querySelector('#study-today-plan'); planList.replaceChildren();
+  const todayPlan = studyData.assignments.flatMap((assignment) => assignment.steps.filter((step) => step.planDate === studyDateKey()).map((step) => ({ assignment, step })));
+  document.querySelector('#study-today-plan-count').textContent = String(todayPlan.length);
+  if (!todayPlan.length) {
+    const empty = document.createElement('small'); empty.textContent = 'Pin checklist steps from an assignment to build today’s focus list.'; planList.append(empty);
+  }
+  for (const { assignment, step } of todayPlan) {
+    const item = document.createElement('article'); item.className = 'study-item';
+    const label = document.createElement('label');
+    const check = document.createElement('input'); check.type = 'checkbox'; check.checked = step.done; check.dataset.todayStep = step.id; check.dataset.assignmentId = assignment.id;
+    const text = document.createElement('span'); text.textContent = step.text;
+    const assignmentTitle = document.createElement('small'); assignmentTitle.textContent = assignment.title;
+    label.append(check, text); item.append(label, assignmentTitle); planList.append(item);
   }
 
   const noteList = document.querySelector('#study-note-list'); noteList.replaceChildren();
@@ -2084,6 +2104,14 @@ document.querySelector('#study-assignment-form').addEventListener('submit', asyn
   } catch (error) { setStudyStatus(error.message || 'Could not save this assignment.'); }
 });
 document.querySelector('#study-assignment-list').addEventListener('change', async (event) => {
+  if (event.target.matches('input[type="checkbox"][data-today-step]')) {
+    const assignment = studyData.assignments.find((item) => item.id === event.target.dataset.assignmentId);
+    const step = assignment?.steps.find((item) => item.id === event.target.dataset.todayStep);
+    if (!step) return;
+    step.done = event.target.checked;
+    try { await persistStudySpace(); } catch (error) { setStudyStatus(error.message || 'Could not save today’s plan.'); }
+    return;
+  }
   if (!event.target.matches('input[type="checkbox"][data-step-id]')) return;
   const card = event.target.closest('[data-assignment-id]');
   const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId);
@@ -2091,6 +2119,14 @@ document.querySelector('#study-assignment-list').addEventListener('change', asyn
   if (!step) return;
   step.done = event.target.checked;
   try { await persistStudySpace(); } catch (error) { setStudyStatus(error.message || 'Could not save this plan step.'); }
+});
+document.querySelector('#study-today-plan').addEventListener('change', async (event) => {
+  if (!event.target.matches('input[type="checkbox"][data-today-step]')) return;
+  const assignment = studyData.assignments.find((item) => item.id === event.target.dataset.assignmentId);
+  const step = assignment?.steps.find((item) => item.id === event.target.dataset.todayStep);
+  if (!step) return;
+  step.done = event.target.checked;
+  try { await persistStudySpace(); } catch (error) { setStudyStatus(error.message || 'Could not save today’s plan.'); }
 });
 document.querySelector('#study-assignment-list').addEventListener('click', async (event) => {
   const card = event.target.closest('[data-assignment-id]'); if (!card) return;
@@ -2100,6 +2136,15 @@ document.querySelector('#study-assignment-list').addEventListener('click', async
       studyAssignmentAnalysis.set(assignment.id, await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt }));
       renderStudySpace();
     } catch (error) { setStudyStatus(error.message || 'Could not check assignment requirements.'); }
+    return;
+  }
+  const planStepId = event.target.closest('[data-plan-step]')?.dataset.planStep;
+  if (planStepId) {
+    const step = assignment.steps.find((item) => item.id === planStepId);
+    if (!step) return;
+    step.planDate = step.planDate === studyDateKey() ? '' : studyDateKey();
+    try { await persistStudySpace(); setStudyStatus(step.planDate ? 'Added checklist step to today’s plan.' : 'Removed checklist step from today’s plan.'); }
+    catch (error) { setStudyStatus(error.message || 'Could not update today’s plan.'); }
     return;
   }
   if (event.target.closest('[data-open-assignment-workspace]')) {
