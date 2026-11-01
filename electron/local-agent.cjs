@@ -43,7 +43,18 @@ function findExecutable(bin, env = process.env) {
   }) || null;
 }
 
-function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutableImpl = findExecutable, findExecutableCandidatesImpl = executableCandidates, timeoutMs = 180_000, maxOutputBytes = 2_000_000 } = {}) {
+function findExistingExecutables(bin, env = process.env) {
+  const fs = require('node:fs');
+  return executableCandidates(bin, env).filter((candidate) => {
+    try {
+      if (!fs.statSync(candidate).isFile()) return false;
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return true;
+    } catch { return false; }
+  });
+}
+
+function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutableImpl = findExecutable, findExecutableCandidatesImpl = findExistingExecutables, timeoutMs = 180_000, maxOutputBytes = 2_000_000 } = {}) {
   let grokExecutable = null;
   function runClaudeAuthCommand(args, { timeout = 600_000, maxBytes = 32_000 } = {}) {
     const executable = findExecutableImpl('claude', env);

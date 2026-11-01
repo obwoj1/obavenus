@@ -66,7 +66,7 @@ test('Claude account sign-in uses the supported Claude Code auth command and ret
 
 test('Claude account controls report an absent CLI without attempting auth commands', async () => {
   let spawned = false;
-  const agent = createLocalAgent({ env: { PATH: '' }, findExecutableImpl: () => null, spawnImpl: () => { spawned = true; } });
+  const agent = createLocalAgent({ env: { PATH: '' }, findExecutableImpl: () => null, findExecutableCandidatesImpl: () => [], spawnImpl: () => { spawned = true; } });
   assert.deepEqual(await agent.claudeAuthStatus(), { installed: false, loggedIn: false, authMethod: '', error: 'Claude Code CLI was not found. Install Claude Code before connecting your Claude account.' });
   await assert.rejects(agent.signInClaude(), /Claude Code CLI was not found/);
   assert.equal(spawned, false);
@@ -92,6 +92,16 @@ test('Grok account sign-in refuses an unrelated command named grok', async () =>
   assert.deepEqual(await agent.grokAuthStatus(), { installed: true, compatible: false, loggedIn: false, error: 'A different grok command is installed. Install the official Grok Build CLI from x.ai to use account sign-in.' });
   await assert.rejects(agent.signInGrok(), /different grok command is installed/);
   assert.equal(calls.length, 2);
+});
+
+test('Grok account status reports a missing CLI without probing nonexistent paths', async () => {
+  let spawned = false;
+  const agent = createLocalAgent({ env: { PATH: '' }, findExecutableImpl: () => null, findExecutableCandidatesImpl: () => [], spawnImpl: () => { spawned = true; } });
+  const status = await agent.grokAuthStatus();
+  assert.equal(status.installed, false);
+  assert.equal(status.compatible, false);
+  assert.equal(status.loggedIn, false);
+  assert.equal(spawned, false);
 });
 
 test('Grok Build discovery skips a conflicting grok executable earlier on PATH', async () => {
