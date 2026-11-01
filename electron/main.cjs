@@ -27,6 +27,7 @@ const { createProjectUndoStore } = require('./project-undo.cjs');
 const { createLocalOcr } = require('./local-ocr.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
+const { createConversationStore } = require('./conversations.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
 
@@ -64,6 +65,7 @@ let projectUndoStore;
 let localOcr;
 let scheduledTaskRunner;
 let workspaceStore;
+let conversationStore;
 let chromeBridge;
 let remoteMachineStore;
 let remoteJobStore;
@@ -71,6 +73,10 @@ let remoteJobStore;
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
   return workspaceStore;
+}
+function getConversationStore() {
+  if (!conversationStore) conversationStore = createConversationStore({ filePath: path.join(app.getPath('userData'), 'conversations.json'), safeStorage });
+  return conversationStore;
 }
 
 function getRemoteMachineStore() {
@@ -337,6 +343,8 @@ ipcMain.handle('project:undo-change', async (_event, undoToken) => {
   await getProjectUndoStore().remove(undoToken);
   return result;
 });
+ipcMain.handle('conversations:load', () => getConversationStore().load());
+ipcMain.handle('conversations:save', (_event, conversations) => getConversationStore().save(conversations));
 ipcMain.handle('conversation:export', async (_event, conversation) => {
   const markdown = formatConversationMarkdown(conversation);
   const result = await dialog.showSaveDialog({

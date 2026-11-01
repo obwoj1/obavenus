@@ -8,8 +8,11 @@ const contextCard = document.querySelector('#context-card');
 let selectedProject = null;
 const CONVERSATIONS_KEY = 'obavenus.conversations.v1';
 const LOCAL_PLACEHOLDER = 'This is the local UI prototype. Connect an AI provider in a later build step to get an assistant response.';
-let conversations = loadConversations();
-let activeConversationId = conversations.at(-1)?.id ?? null;
+let conversations = [];
+let activeConversationId = null;
+let conversationReady = false;
+let conversationStorageMode = 'secure';
+let conversationSaveQueue = Promise.resolve();
 let sending = false;
 let pendingContext = [];
 let activeRunId = null;
@@ -95,48 +98,84 @@ document.querySelector('#profile-skip').addEventListener('click', async () => {
   catch (error) { document.querySelector('#profile-form-status').textContent = error.message || 'Could not save this choice.'; }
 });
 
-function loadConversations() {
+function normalizeConversations(stored) {
+  if (!Array.isArray(stored)) return [];
+  return stored.filter((conversation) =>
+    typeof conversation.id === 'string'
+    && typeof conversation.title === 'string'
+    && Array.isArray(conversation.messages),
+  ).slice(-50).map((conversation) => ({
+    id: conversation.id,
+    title: conversation.title.slice(0, 120),
+    projectId: typeof conversation.projectId === 'string' ? conversation.projectId : '',
+    createdAt: typeof conversation.createdAt === 'string' ? conversation.createdAt : new Date(0).toISOString(),
+    messages: conversation.messages.filter((message) =>
+      (message.role === 'user' || message.role === 'assistant')
+      && typeof message.text === 'string'
+      && message.status !== 'pending',
+    ).slice(-300).map((message) => ({
+      role: message.role,
+      text: message.text,
+      localOnly: message.localOnly === true || message.text === LOCAL_PLACEHOLDER,
+      status: ['error', 'cancelled'].includes(message.status) ? message.status : 'complete',
+      context: Array.isArray(message.context) ? message.context.filter((file) =>
+        file && typeof file.name === 'string' && typeof file.content === 'string',
+      ).slice(0, 3) : [],
+      agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
+        agent && typeof agent.role === 'string' && typeof agent.text === 'string',
+      ).slice(0, 12).map((agent) => ({ ...agent, tools: Array.isArray(agent.tools) ? agent.tools.filter((tool) => typeof tool === 'string').slice(0, 20) : [] })) : [],
+      changes: Array.isArray(message.changes) ? message.changes.filter((change) => change && typeof change.path === 'string').slice(0, 50).map((change) => ({ path: change.path, bytes: Number(change.bytes) || 0, created: change.created === true, undoToken: typeof change.undoToken === 'string' && /^[0-9a-f-]{36}$/.test(change.undoToken) ? change.undoToken : null, undone: change.undone === true })) : [],
+    })),
+  }));
+}
+
+function loadLegacyConversations() {
   try {
     const stored = JSON.parse(localStorage.getItem(CONVERSATIONS_KEY) || '[]');
-    if (!Array.isArray(stored)) return [];
-    return stored.filter((conversation) =>
-      typeof conversation.id === 'string'
-      && typeof conversation.title === 'string'
-      && Array.isArray(conversation.messages),
-    ).map((conversation) => ({
-      id: conversation.id,
-      title: conversation.title,
-      projectId: typeof conversation.projectId === 'string' ? conversation.projectId : '',
-      createdAt: conversation.createdAt,
-      messages: conversation.messages.filter((message) =>
-        (message.role === 'user' || message.role === 'assistant')
-        && typeof message.text === 'string'
-        && message.status !== 'pending',
-      ).map((message) => ({
-        role: message.role,
-        text: message.text,
-        localOnly: message.localOnly === true || message.text === LOCAL_PLACEHOLDER,
-        status: ['error', 'cancelled'].includes(message.status) ? message.status : 'complete',
-        context: Array.isArray(message.context) ? message.context.filter((file) =>
-          file && typeof file.name === 'string' && typeof file.content === 'string',
-        ).slice(0, 3) : [],
-        agents: Array.isArray(message.agents) ? message.agents.filter((agent) =>
-          agent && typeof agent.role === 'string' && typeof agent.text === 'string',
-        ).slice(0, 4).map((agent) => ({ ...agent, tools: Array.isArray(agent.tools) ? agent.tools.filter((tool) => typeof tool === 'string').slice(0, 12) : [] })) : [],
-        changes: Array.isArray(message.changes) ? message.changes.filter((change) => change && typeof change.path === 'string').slice(0, 50).map((change) => ({ path: change.path, bytes: Number(change.bytes) || 0, created: change.created === true, undoToken: typeof change.undoToken === 'string' && /^[0-9a-f-]{36}$/.test(change.undoToken) ? change.undoToken : null, undone: change.undone === true })) : [],
-      })),
-    }));
+    return normalizeConversations(stored);
   } catch {
     return [];
   }
 }
 
 function saveConversations() {
+  if (!conversationReady) return;
+  const snapshot = JSON.stringify(normalizeConversations(conversations));
+  conversationSaveQueue = conversationSaveQueue.catch(() => {}).then(async () => {
+    if (conversationStorageMode === 'fallback') localStorage.setItem(CONVERSATIONS_KEY, snapshot);
+    else await window.obavenus.saveConversations(JSON.parse(snapshot));
+  }).catch((error) => {
+    conversationStorageMode = 'fallback';
+    try { localStorage.setItem(CONVERSATIONS_KEY, snapshot); } catch {}
+    runStatus.hidden = false;
+    runStatus.textContent = `Secure chat history could not be saved. The app is keeping this copy in local browser storage: ${error.message || 'unknown storage error'}`;
+  });
+}
+
+async function initializeConversations() {
+  const legacy = loadLegacyConversations();
+  const newChatButton = document.querySelector('#new-chat');
+  promptInput.disabled = true;
+  form.querySelector('.send').disabled = true;
+  newChatButton.disabled = true;
   try {
-    localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations.slice(-50)));
-  } catch {
-    // Keep the current conversation usable when local storage is unavailable.
+    const encrypted = await window.obavenus.loadConversations();
+    conversations = normalizeConversations(encrypted ?? legacy);
+    if (encrypted === null && legacy.length) await window.obavenus.saveConversations(conversations);
+    localStorage.removeItem(CONVERSATIONS_KEY);
+    conversationStorageMode = 'secure';
+  } catch (error) {
+    conversations = legacy;
+    conversationStorageMode = 'fallback';
+    runStatus.hidden = false;
+    runStatus.textContent = `Secure chat history is unavailable; this Mac will use local browser storage. ${error.message || ''}`;
   }
+  activeConversationId = conversations.at(-1)?.id ?? null;
+  conversationReady = true;
+  promptInput.disabled = false;
+  form.querySelector('.send').disabled = false;
+  newChatButton.disabled = false;
+  renderMessages();
 }
 
 function renderEmptyWorkspace() {
@@ -468,6 +507,7 @@ function renderRecentWork() {
 document.querySelector('#conversation-search').addEventListener('input', renderRecentWork);
 
 function startConversation() {
+  if (!conversationReady) return;
   const item = {
     id: crypto.randomUUID(),
     title: 'New conversation',
@@ -484,6 +524,7 @@ function startConversation() {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (!conversationReady) return;
   const prompt = promptInput.value.trim();
   if (!prompt || sending) return;
   const localMode = /^local-(claude|codex|gemini)(-write)?$/.exec(runMode.value);
@@ -1423,6 +1464,7 @@ removeProviderKeyButton.addEventListener('click', async () => {
 
 renderMessages();
 updateProviderBadge();
+initializeConversations();
 
 providerSelect.addEventListener('change', async () => {
   updateProviderFormLabels();
