@@ -1812,6 +1812,9 @@ function renderStudySpace() {
   const due = studyData.decks.flatMap((deck) => deck.cards).filter((card) => card.dueAt <= now).length;
   document.querySelector('#study-review-count').textContent = String(due);
   document.querySelector('#study-reminders-enabled').checked = studyData.remindersEnabled === true;
+  document.querySelector('#study-quiet-enabled').checked = studyData.quietHoursEnabled === true;
+  document.querySelector('#study-quiet-start').value = studyData.quietStart || '22:00';
+  document.querySelector('#study-quiet-end').value = studyData.quietEnd || '08:00';
   renderStudyQuiz();
   renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
 }
@@ -1924,6 +1927,17 @@ document.querySelector('#study-digest-copy').addEventListener('click', async () 
   const status = document.querySelector('#study-digest-status');
   try { await navigator.clipboard.writeText(document.querySelector('#study-digest-preview').value); status.textContent = 'Digest copied. Paste it into your email app and review before sending.'; }
   catch { status.textContent = 'Select the digest text and copy it into your email app.'; }
+});
+document.querySelector('#study-quiet-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const settings = { enabled: document.querySelector('#study-quiet-enabled').checked, start: document.querySelector('#study-quiet-start').value, end: document.querySelector('#study-quiet-end').value };
+  try {
+    const saved = await window.obavenus.setStudyQuietHours(settings);
+    studyData.quietHoursEnabled = saved.quietHoursEnabled;
+    studyData.quietStart = saved.quietStart;
+    studyData.quietEnd = saved.quietEnd;
+    setStudyStatus(saved.quietHoursEnabled ? `Quiet hours saved · ${saved.quietStart} to ${saved.quietEnd}. Deadlines close to the window are deferred until quiet hours end.` : 'Quiet hours are disabled.');
+  } catch (error) { setStudyStatus(error.message || 'Could not save quiet hours.'); }
 });
 async function refreshMcpServers(message = '') {
   const list = document.querySelector('#study-mcp-list'); list.replaceChildren();

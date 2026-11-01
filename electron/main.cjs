@@ -41,6 +41,7 @@ const { buildPracticeQuiz } = require('./study-generation.cjs');
 const { suggestAssignmentSteps } = require('./assignment-planner.cjs');
 const { analyzeAssignment } = require('./assignment-analysis.cjs');
 const { buildStudyDigest } = require('./study-digest.cjs');
+const { isWithinQuietHours } = require('./study-reminders.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -108,11 +109,13 @@ async function checkStudyReminders() {
     const data = await getStudyStore().load();
     if (!data.remindersEnabled) return 0;
     const now = Date.now();
-    const dueSoon = data.assignments.filter((item) => item.status !== 'done' && item.dueAt > now && item.dueAt <= now + 24 * 60 * 60 * 1000 && item.remindedDueAt !== item.dueAt);
+    if (isWithinQuietHours(data, new Date(now))) return 0;
+    const dueSoon = data.assignments.filter((item) => item.status !== 'done' && item.dueAt >= now - 12 * 60 * 60 * 1000 && item.dueAt <= now + 24 * 60 * 60 * 1000 && item.remindedDueAt !== item.dueAt);
     let sent = 0;
     for (const assignment of dueSoon) {
       try {
-        const notification = new Notification({ title: 'Assignment due within 24 hours', body: assignment.title });
+        const title = assignment.dueAt < now ? 'Assignment is past due' : 'Assignment due within 24 hours';
+        const notification = new Notification({ title, body: assignment.title });
         notification.show();
         await getStudyStore().markReminderSent(assignment.id, assignment.dueAt);
         sent += 1;
@@ -429,6 +432,7 @@ ipcMain.handle('study:set-reminders', async (_event, enabled) => {
   const remindersSent = enabled ? await checkStudyReminders() : 0;
   return { enabled: data.remindersEnabled, remindersSent, supported: Notification.isSupported() };
 });
+ipcMain.handle('study:set-quiet-hours', (_event, settings) => getStudyStore().setQuietHours(settings));
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
