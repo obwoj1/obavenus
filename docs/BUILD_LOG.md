@@ -52,6 +52,7 @@
 
 ## Next
 
+- 0.1.90: Selected project files can be opened with the Mac's default app from their local preview. Main-process path resolution blocks traversal and symlink targets.
 - 0.1.89: Scheduled local CLI and configured-provider runs can be stopped while active; recurring schedules are cancelled with the run. Task-state writes are serialized to preserve cancellation during concurrent updates.
 - 0.1.88: Remote Jobs now refresh active status and output every 10 seconds while the window is open; scheduled jobs are checked only after their start time.
 - 0.1.87: Added the missing macOS library-validation entitlement for the ad-hoc hardened-runtime build. The packaged app now includes the entitlement and passes a direct executable startup check; stable Developer ID signing is still required to avoid Keychain prompts across updates.
