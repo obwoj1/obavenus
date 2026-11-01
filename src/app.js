@@ -1669,7 +1669,7 @@ async function refreshChatGPTModels() {
 const studyDialog = document.querySelector('#study-dialog');
 let studyData = null;
 let studySaveQueue = Promise.resolve();
-const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [] });
+const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
 
 function setStudyStatus(message = '') {
   document.querySelector('#study-status').textContent = message;
@@ -1680,11 +1680,11 @@ function makeStudyOption(label, value = '') {
 }
 
 function refreshStudyCourseChoices() {
-  const courseSelects = ['#study-assignment-course', '#study-note-course', '#study-deck-course'];
+  const courseSelects = ['#study-assignment-course', '#study-note-course', '#study-deck-course', '#study-file-course'];
   for (const selector of courseSelects) {
     const select = document.querySelector(selector);
     const selected = select.value;
-    select.replaceChildren(makeStudyOption(selector === '#study-assignment-course' ? 'Choose course' : 'No course'));
+    select.replaceChildren(makeStudyOption(selector === '#study-assignment-course' ? 'Choose course' : selector === '#study-file-course' ? 'Personal study file' : 'No course'));
     studyData.courses.forEach((course) => select.add(makeStudyOption(course.name, course.id)));
     if (studyData.courses.some((course) => course.id === selected)) select.value = selected;
   }
@@ -1708,6 +1708,18 @@ function renderStudySpace() {
     const title = document.createElement('strong'); title.textContent = course.name;
     const term = document.createElement('small'); term.textContent = course.term || 'Local course';
     card.append(title, term); courseList.append(card);
+  }
+
+  const sourceList = document.querySelector('#study-source-list'); sourceList.replaceChildren();
+  for (const source of [...studyData.sources].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const row = document.createElement('article'); row.className = 'study-source-row';
+    const info = document.createElement('div');
+    const title = document.createElement('strong'); title.textContent = source.name;
+    const course = studyData.courses.find((item) => item.id === source.courseId);
+    const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal study file'} · imported ${new Date(source.updatedAt).toLocaleDateString()}`;
+    info.append(title, meta);
+    const ask = document.createElement('button'); ask.type = 'button'; ask.dataset.askSource = source.id; ask.textContent = 'Ask about file';
+    row.append(info, ask); sourceList.append(row);
   }
 
   const assignmentList = document.querySelector('#study-assignment-list');
@@ -1808,6 +1820,52 @@ document.querySelector('#study-nav').addEventListener('click', async () => {
   } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
 });
 document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+document.querySelector('#study-import-button').addEventListener('click', async () => {
+  const status = document.querySelector('#study-material-status');
+  status.textContent = 'Choose a file to extract locally…';
+  try {
+    const result = await window.obavenus.importStudyFile(document.querySelector('#study-file-course').value);
+    if (result.cancelled) { status.textContent = ''; return; }
+    studyData = result.data;
+    renderStudySpace();
+    status.textContent = `Imported ${result.name}. Text stays on this Mac until you attach a search result to a chat.`;
+  } catch (error) { status.textContent = error.message || 'Could not import this file.'; }
+});
+document.querySelector('#study-search-button').addEventListener('click', async () => {
+  const status = document.querySelector('#study-material-status');
+  const results = document.querySelector('#study-search-results'); results.replaceChildren();
+  try {
+    const matches = await window.obavenus.searchStudySources(document.querySelector('#study-search-query').value, '');
+    if (!matches.length) { status.textContent = 'No matching passages found in imported study files.'; return; }
+    status.textContent = `${matches.length} matching passages · ranked by deterministic term relevance.`;
+    for (const match of matches) {
+      const row = document.createElement('article'); row.className = 'study-source-row';
+      const title = document.createElement('strong'); title.textContent = `${match.fileName} · ${match.reference}`;
+      const meta = document.createElement('small'); meta.textContent = match.courseName;
+      const excerpt = document.createElement('p'); excerpt.textContent = match.excerpt;
+      const ask = document.createElement('button'); ask.type = 'button'; ask.dataset.askResult = match.sourceId; ask.dataset.reference = match.reference; ask.textContent = 'Ask about passage';
+      row.append(title, meta, excerpt, ask); results.append(row);
+    }
+  } catch (error) { status.textContent = error.message || 'Could not search study files.'; }
+});
+document.querySelector('#study-search-query').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); document.querySelector('#study-search-button').click(); }
+});
+document.querySelector('#study-source-list').addEventListener('click', (event) => {
+  const id = event.target.closest('[data-ask-source]')?.dataset.askSource; if (!id) return;
+  const source = studyData.sources.find((item) => item.id === id); if (!source) return;
+  promptInput.value = `Use this local course file as reference. Cite page or slide labels where present.\n\nFile: ${source.name}\n\n${source.content.slice(0, 16_000)}\n\nExplain the key ideas and quiz me on them.`;
+  studyDialog.close(); promptInput.focus();
+});
+document.querySelector('#study-search-results').addEventListener('click', (event) => {
+  const id = event.target.closest('[data-ask-result]')?.dataset.askResult; if (!id) return;
+  const source = studyData.sources.find((item) => item.id === id);
+  const result = event.target.closest('.study-source-row');
+  const excerpt = result?.querySelector('p')?.textContent || '';
+  const reference = event.target.dataset.reference || 'Document';
+  promptInput.value = `Use this excerpt from a local course file as evidence. Cite ${reference} in your answer. Ask clarifying questions if the excerpt is insufficient.\n\nFile: ${source?.name || 'Course material'} · ${reference}\n\n${excerpt}\n\nExplain this passage and help me study it.`;
+  studyDialog.close(); promptInput.focus();
+});
 async function refreshCanvasStatus(message = '') {
   const status = await window.obavenus.getCanvasStatus();
   const url = document.querySelector('#canvas-url');

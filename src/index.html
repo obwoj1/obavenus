@@ -272,6 +272,18 @@
       .canvas-connect-status { grid-column: 1 / -1; min-height: 14px; color: #54725a; font-size: 10px; }
       body[data-theme="dusk"] .canvas-connect { background: var(--sage-panel); border-color: var(--sage-line); }
       body[data-theme="dusk"] .canvas-connect input { background: #111b15; color: var(--sage-ink); border-color: var(--sage-line); }
+      .study-materials { margin: 12px 0; padding: 15px; border: 1px solid #dce5da; border-radius: 14px; background: #fff; }
+      .study-materials h3 { margin: 0 0 5px; color: #344b39; font-size: 13px; }
+      .study-materials > p { margin: 0 0 10px; color: #718074; font-size: 10px; line-height: 1.5; }
+      .study-material-tools { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(200px, 1fr) auto auto; gap: 8px; }
+      .study-material-tools input, .study-material-tools select { min-width: 0; padding: 9px 10px; border: 1px solid #dce5da; border-radius: 8px; background: #f8faf6; color: #344438; font: inherit; font-size: 11px; }
+      .study-material-tools button { padding: 8px 11px; border: 1px solid #d7e2d4; border-radius: 8px; background: #eef4eb; color: #405b46; font-size: 10px; font-weight: 650; }
+      .study-source-list, .study-search-results { display: grid; gap: 7px; margin-top: 10px; }
+      .study-source-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border: 1px solid #e2e9df; border-radius: 9px; background: #fbfcfa; }
+      .study-source-row strong { color: #344b39; font-size: 10px; }
+      .study-source-row small { display: block; margin-top: 3px; color: #738276; font-size: 9px; }
+      .study-source-row p { flex-basis: 100%; margin: 0; color: #526456; font-size: 10px; line-height: 1.5; white-space: pre-wrap; }
+      body[data-theme="dusk"] .study-materials, body[data-theme="dusk"] .study-source-row { background: var(--sage-panel); border-color: var(--sage-line); }
       .study-stat { padding: 12px 14px; border: 1px solid #dce5da; border-radius: 12px; background: #f8faf6; color: #65776a; font-size: 10px; }
       .study-stat strong { display: block; margin-bottom: 4px; color: #304936; font-size: 20px; }
       .study-grid { display: grid; grid-template-columns: minmax(230px, .75fr) minmax(0, 1.5fr); gap: 12px; align-items: start; }
@@ -301,7 +313,7 @@
       body[data-theme="dusk"] .study-item p, body[data-theme="dusk"] .study-item label, body[data-theme="dusk"] .study-review p { color: var(--sage-muted); }
       body[data-theme="dusk"] .study-review { background: #15221a; }
       body[data-theme="dusk"] .study-form input, body[data-theme="dusk"] .study-form select, body[data-theme="dusk"] .study-form textarea { background: #111b15; color: var(--sage-ink); border-color: var(--sage-line); }
-      @media (max-width: 700px) { .study-grid { grid-template-columns: minmax(0, 1fr); } .study-summary { grid-template-columns: minmax(0, 1fr); } .canvas-connect { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .canvas-connect p, .canvas-connect-status { grid-column: 1 / -1; } }
+      @media (max-width: 700px) { .study-grid { grid-template-columns: minmax(0, 1fr); } .study-summary { grid-template-columns: minmax(0, 1fr); } .canvas-connect { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .canvas-connect p, .canvas-connect-status { grid-column: 1 / -1; } .study-material-tools { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
       .message-context { color: #507456; }
       .project-changes { display: grid; gap: 5px; padding: 9px 11px; border: 1px solid #dce5da; border-radius: 10px; background: #f7faf5; }
       .project-changes > small { color: #627666; font-weight: 650; }
@@ -531,6 +543,7 @@
       <section class="study-shell">
         <div class="study-head"><div><h2 id="study-title">Study space</h2><p>Courses, assignments, notes and review cards. Canvas credentials are encrypted on this Mac.</p></div><button type="button" id="study-close">Close</button></div>
         <form class="canvas-connect" id="canvas-connect-form"><input id="canvas-url" type="url" required placeholder="https://your-school.instructure.com" aria-label="Canvas school URL" /><input id="canvas-token" type="password" required autocomplete="off" placeholder="Canvas access token" aria-label="Canvas access token" /><button type="submit" id="canvas-connect-button">Connect Canvas</button><button type="button" id="canvas-sync-button" hidden>Sync courses</button><button type="button" id="canvas-disconnect-button" hidden>Disconnect</button><p>Use your school’s Canvas URL and a personal access token from Canvas Account → Settings → Approved Integrations. The token stays encrypted locally and is never sent to an AI provider.</p><div id="canvas-connect-status" class="canvas-connect-status" role="status" aria-live="polite"></div></form>
+        <section class="study-materials" aria-labelledby="study-material-title"><h3 id="study-material-title">Course library</h3><p>Import a class file for on-device text extraction, then search it with page or slide references. Nothing is attached to an AI chat unless you choose a result.</p><div class="study-material-tools"><select id="study-file-course" aria-label="Course for imported file"><option value="">Personal study file</option></select><input id="study-search-query" type="search" maxlength="300" placeholder="Search course files…" aria-label="Search course files" /><button type="button" id="study-import-button">Import file</button><button type="button" id="study-search-button">Search</button></div><div id="study-material-status" class="study-status" role="status" aria-live="polite"></div><div id="study-source-list" class="study-source-list"></div><div id="study-search-results" class="study-search-results"></div></section>
         <div class="study-summary" aria-label="Study overview"><div class="study-stat"><strong id="study-due-count">0</strong>Assignments due soon</div><div class="study-stat"><strong id="study-overdue-count">0</strong>Past due</div><div class="study-stat"><strong id="study-review-count">0</strong>Cards ready to review</div></div>
         <p class="study-status" id="study-status" role="status" aria-live="polite"></p>
         <div class="study-grid">
