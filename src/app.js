@@ -150,6 +150,7 @@ function saveConversations() {
     runStatus.hidden = false;
     runStatus.textContent = `Secure chat history could not be saved. The app is keeping this copy in local browser storage: ${error.message || 'unknown storage error'}`;
   });
+  return conversationSaveQueue;
 }
 
 async function initializeConversations() {
@@ -496,6 +497,8 @@ function renderRecentWork() {
     list.append(empty);
   }
   visible.forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'recent-row';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `recent-item${item.id === activeConversationId ? ' active' : ''}`;
@@ -513,7 +516,26 @@ function renderRecentWork() {
       }
       renderMessages();
     });
-    list.append(button);
+    const actions = document.createElement('details');
+    actions.className = 'recent-actions';
+    const summary = document.createElement('summary');
+    summary.textContent = '···';
+    summary.setAttribute('aria-label', `Conversation options for ${item.title}`);
+    const menu = document.createElement('div');
+    menu.className = 'recent-actions-menu';
+    const rename = document.createElement('button');
+    rename.type = 'button'; rename.dataset.conversationRename = item.id; rename.textContent = 'Rename';
+    const remove = document.createElement('button');
+    remove.type = 'button'; remove.dataset.conversationDelete = item.id; remove.textContent = 'Delete';
+    remove.disabled = sending && activeReplyConversationId === item.id;
+    if (remove.disabled) remove.title = 'Wait for the current response to finish before deleting this chat.';
+    actions.addEventListener('toggle', () => {
+      if (!actions.open) return;
+      const bounds = summary.getBoundingClientRect();
+      menu.style.top = `${Math.min(bounds.bottom, Math.max(8, window.innerHeight - 82))}px`;
+      menu.style.right = `${Math.max(8, window.innerWidth - bounds.right)}px`;
+    });
+    menu.append(rename, remove); actions.append(summary, menu); row.append(button, actions); list.append(row);
   });
 }
 
@@ -552,6 +574,59 @@ async function saveAssistantResponseToAssignment(message, button) {
 }
 
 document.querySelector('#conversation-search').addEventListener('input', renderRecentWork);
+
+let conversationActionTargetId = null;
+const renameConversationDialog = document.querySelector('#conversation-rename-dialog');
+const renameConversationForm = document.querySelector('#conversation-rename-form');
+const renameConversationInput = document.querySelector('#conversation-rename-input');
+const deleteConversationDialog = document.querySelector('#conversation-delete-dialog');
+const recentWork = document.querySelector('#recent-work');
+
+recentWork.addEventListener('click', (event) => {
+  const rename = event.target.closest('[data-conversation-rename]');
+  const remove = event.target.closest('[data-conversation-delete]');
+  if (rename) {
+    const target = conversations.find((item) => item.id === rename.dataset.conversationRename);
+    if (!target) return;
+    conversationActionTargetId = target.id;
+    renameConversationInput.value = target.title;
+    document.querySelector('#conversation-rename-status').textContent = '';
+    renameConversationDialog.showModal();
+    renameConversationInput.focus();
+  } else if (remove && !remove.disabled) {
+    const target = conversations.find((item) => item.id === remove.dataset.conversationDelete);
+    if (!target) return;
+    conversationActionTargetId = target.id;
+    document.querySelector('#conversation-delete-copy').textContent = `“${target.title}” and its saved messages will be removed from this Mac.`;
+    deleteConversationDialog.showModal();
+  }
+});
+
+renameConversationForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const target = conversations.find((item) => item.id === conversationActionTargetId);
+  const title = renameConversationInput.value.trim();
+  if (!target || !title) {
+    document.querySelector('#conversation-rename-status').textContent = 'Enter a conversation name.';
+    return;
+  }
+  target.title = title.slice(0, 120);
+  await saveConversations();
+  renameConversationDialog.close();
+  renderMessages();
+});
+document.querySelector('#conversation-rename-cancel').addEventListener('click', () => renameConversationDialog.close());
+document.querySelector('#conversation-delete-cancel').addEventListener('click', () => deleteConversationDialog.close());
+document.querySelector('#conversation-delete-confirm').addEventListener('click', async () => {
+  const target = conversations.find((item) => item.id === conversationActionTargetId);
+  if (!target || (sending && activeReplyConversationId === target.id)) { deleteConversationDialog.close(); return; }
+  conversations = conversations.filter((item) => item.id !== target.id);
+  if (activeConversationId === target.id) activeConversationId = conversations.at(-1)?.id || null;
+  await saveConversations();
+  deleteConversationDialog.close();
+  renderMessages();
+  promptInput.focus();
+});
 
 function startConversation() {
   if (!conversationReady) return;
@@ -602,7 +677,7 @@ form.addEventListener('submit', async (event) => {
     activeConversationId = current.id;
   }
   if (!current.messages.length) current.projectId = selectedProject?.id || '';
-  if (current.messages.length === 0) current.title = prompt.slice(0, 48);
+  if (current.messages.length === 0 && current.title === 'New conversation') current.title = prompt.slice(0, 48);
   const submittedMessage = { role: 'user', text: prompt, status: 'complete', context: [...pendingContext] };
   current.messages.push(submittedMessage);
   pendingContext = [];
