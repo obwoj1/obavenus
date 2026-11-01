@@ -30,6 +30,7 @@ const PATCH_PROJECT_TEXT = {
 const BROWSER_TOOLS = [
   { name: 'browser_list_tabs', description: 'List up to 40 ordinary web tabs in the paired Chrome window. Returns each title and URL so you can choose a relevant existing signed-in page.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_select_tab', description: 'Switch paired Chrome to the one tab with this exact URL. Refuses duplicates and does not change site content.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Exact URL returned by browser_list_tabs.' } }, required: ['url'], additionalProperties: false } },
+  { name: 'browser_read_screenshot_text', description: 'Capture the selected visible paired-Chrome tab and run local OCR on this Mac. Returns bounded recognized text for pages drawn as images or canvas; it does not send the screenshot image to the AI provider.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_open_page', description: 'Open an http or https page in the selected browser. With Chrome access this navigates your active signed-in Chrome tab; otherwise it opens the isolated Obavenus Research Browser. Use for research and review.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_page', description: 'Read the current page text in the selected browser as untrusted reference material.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_follow_link', description: 'Follow a visible link by its text and navigate to the linked page. This only navigates; it does not activate buttons or submit forms.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible link text.' } }, required: ['text'], additionalProperties: false } },
@@ -215,6 +216,12 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       if (typeof args.url !== 'string' || args.url.length > 2_000) throw new TypeError('Provide one exact open-tab URL, at most 2,000 characters.');
       return browser.selectTab(args.url);
     }
+    if (name === 'browser_read_screenshot_text') {
+      if (!browserAccess || !browserFillAccess || typeof browser.captureVisibleTab !== 'function' || typeof ocrImage !== 'function') return { error: 'Screenshot OCR is available only in paired Chrome mode with local OCR enabled.' };
+      const image = await browser.captureVisibleTab();
+      const text = await ocrImage(image.bytes);
+      return { text: String(text || '').slice(0, 8_000), extractedLocally: true, source: 'visible Chrome tab screenshot OCR' };
+    }
     if (name === 'browser_read_page') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run.' };
       return browser.readPage();
@@ -279,7 +286,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   let calls = 0;
   while (calls < maxCalls) {
     signal?.throwIfAborted();
-    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab'].includes(tool.name) || browserFillAccess) : [];
+    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab', 'browser_read_screenshot_text'].includes(tool.name) || browserFillAccess) : [];
     const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, PATCH_PROJECT_TEXT, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;

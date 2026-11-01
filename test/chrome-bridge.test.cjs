@@ -46,6 +46,8 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
           commands.push(message.command);
           const result = message.command === 'listTabs'
             ? { tabs: [{ url: 'https://example.com/form', title: 'Example form', active: true }] }
+            : message.command === 'captureVisibleTab'
+              ? { mimeType: 'image/jpeg', data: Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(80 * 1024, 1), Buffer.from([0xff, 0xd9])]).toString('base64') }
             : message.command === 'selectTab'
               ? { selected: true, url: message.args.url, title: 'Example form' }
             : message.command === 'findControl'
@@ -63,15 +65,23 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
                     : message.command === 'setChoice'
                       ? { checked: true, label: 'Email updates', type: 'checkbox', pageUrl: 'https://example.com/form' }
                 : { clicked: true, label: 'Continue' };
-          client.send(JSON.stringify({ id: message.id, result }));
+          if (message.command === 'captureVisibleTab') {
+            const size = 40 * 1024;
+            const count = Math.ceil(result.data.length / size);
+            for (let chunkIndex = 0; chunkIndex < count; chunkIndex += 1) client.send(JSON.stringify({ id: message.id, chunkIndex, chunkCount: count, data: result.data.slice(chunkIndex * size, (chunkIndex + 1) * size) }));
+          } else client.send(JSON.stringify({ id: message.id, result }));
         }
       });
     });
     assert.equal((await bridge.status()).connected, true);
     assert.deepEqual(await bridge.listTabs(), { tabs: [{ url: 'https://example.com/form', title: 'Example form', active: true }] });
+    const screenshot = await bridge.captureVisibleTab();
+    assert.equal(screenshot.mimeType, 'image/jpeg');
+    assert.equal(screenshot.bytes.length, 80 * 1024 + 4);
+    assert.equal(screenshot.bytes.subarray(0, 2).toString('hex'), 'ffd8');
     assert.deepEqual(await bridge.selectTab('https://example.com/form'), { selected: true, url: 'https://example.com/form', title: 'Example form' });
     await assert.rejects(bridge.selectTab('file:///etc/passwd'));
-    assert.deepEqual(commands.slice(0, 2), ['listTabs', 'selectTab']);
+    assert.deepEqual(commands.slice(0, 3), ['listTabs', 'captureVisibleTab', 'selectTab']);
     commands.length = 0;
     const result = await bridge.clickControl('Continue');
     assert.equal(result.approved, false);

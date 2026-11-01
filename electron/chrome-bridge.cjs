@@ -1,6 +1,8 @@
 const crypto = require('node:crypto');
 
 const EXTENSION_ORIGIN = 'chrome-extension://cpogkkipbbelalhaiabnjgamgbamnngl';
+const MAX_SCREENSHOT_CHUNKS = 128;
+const SCREENSHOT_CHUNK_CHARS = 40 * 1024;
 
 function safeUrl(value) {
   const url = new URL(value);
@@ -32,9 +34,20 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
           return;
         }
         if (!paired || typeof message.id !== 'string' || !pending.has(message.id)) return;
-        const resolve = pending.get(message.id);
+        const entry = pending.get(message.id);
+        if (message.chunkIndex !== undefined) {
+          if (entry.command !== 'captureVisibleTab' || !Number.isInteger(message.chunkIndex) || !Number.isInteger(message.chunkCount) || message.chunkCount < 1 || message.chunkCount > MAX_SCREENSHOT_CHUNKS || message.chunkIndex < 0 || message.chunkIndex >= message.chunkCount || typeof message.data !== 'string' || message.data.length > SCREENSHOT_CHUNK_CHARS) return;
+          if (!entry.chunks) { entry.chunks = Array(message.chunkCount); entry.chunkCount = message.chunkCount; }
+          if (entry.chunkCount !== message.chunkCount || entry.chunks[message.chunkIndex] !== undefined) return;
+          entry.chunks[message.chunkIndex] = message.data;
+          if (entry.chunks.filter((chunk) => typeof chunk === 'string').length === entry.chunkCount) {
+            pending.delete(message.id);
+            entry.resolve({ mimeType: 'image/jpeg', data: entry.chunks.join('') });
+          }
+          return;
+        }
         pending.delete(message.id);
-        resolve(message.result);
+        entry.resolve(message.result);
       });
       client.on('close', () => { if (socket === client) { socket = null; paired = false; } });
       client.on('error', () => {});
@@ -48,7 +61,7 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
     const id = crypto.randomUUID();
     const result = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => { pending.delete(id); reject(new Error('Chrome did not respond in time.')); }, timeoutMs);
-      pending.set(id, (value) => { clearTimeout(timer); resolve(value); });
+      pending.set(id, { command, resolve: (value) => { clearTimeout(timer); resolve(value); }, chunks: null, chunkCount: 0 });
       socket.send(JSON.stringify({ id, command, args }));
     });
     if (!result || result.error) throw new Error(result?.error || 'Chrome could not complete that request.');
@@ -58,6 +71,13 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
     start, status,
     open: async (rawUrl) => { const url = safeUrl(rawUrl); return request('navigate', { url }); },
     listTabs: async () => request('listTabs'),
+    captureVisibleTab: async () => {
+      const result = await request('captureVisibleTab');
+      if (result.mimeType !== 'image/jpeg' || typeof result.data !== 'string' || result.data.length > 5 * 1024 * 1024 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(result.data)) throw new Error('Chrome returned an invalid or oversized screenshot.');
+      const bytes = Buffer.from(result.data, 'base64');
+      if (bytes.length < 4 || bytes.length > 4 * 1024 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error('Chrome screenshot is not a bounded JPEG image.');
+      return { mimeType: result.mimeType, bytes };
+    },
     selectTab: async (rawUrl) => {
       if (typeof rawUrl !== 'string' || rawUrl.length > 2_000) throw new TypeError('Provide the exact URL of an open Chrome tab.');
       const url = safeUrl(rawUrl);
@@ -103,7 +123,7 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       return request('setChoice', { pageUrl: field.pageUrl, fieldLabel: field.label, type: field.type, checked });
     },
     close: async () => {
-      for (const resolve of pending.values()) resolve({ error: 'Obavenus is closing.' });
+      for (const entry of pending.values()) entry.resolve({ error: 'Obavenus is closing.' });
       pending.clear(); socket?.close(); socket = null; paired = false;
       if (server) await new Promise((resolve) => server.close(resolve));
       server = null;

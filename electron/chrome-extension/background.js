@@ -23,7 +23,12 @@ function connect() {
     if (!message.id) return;
     try {
       const result = await execute(message.command, message.args || {});
-      socket.send(JSON.stringify({ id: message.id, result }));
+      if (message.command === 'captureVisibleTab' && typeof result?.data === 'string' && result.data.length > 40 * 1024) {
+        const size = 40 * 1024;
+        const count = Math.ceil(result.data.length / size);
+        if (count > 128) throw new Error('The visible tab screenshot exceeds the 4 MB transfer limit.');
+        for (let chunkIndex = 0; chunkIndex < count; chunkIndex += 1) socket.send(JSON.stringify({ id: message.id, chunkIndex, chunkCount: count, data: result.data.slice(chunkIndex * size, (chunkIndex + 1) * size) }));
+      } else socket.send(JSON.stringify({ id: message.id, result }));
     } catch (error) {
       socket.send(JSON.stringify({ id: message.id, result: { error: error.message || 'Page action failed.' } }));
     }
@@ -161,6 +166,15 @@ async function execute(command, args) {
     if (matches.length !== 1) throw new Error(matches.length ? 'More than one open tab has that exact URL; close duplicates and retry.' : 'No open tab has that exact URL.');
     await chrome.tabs.update(matches[0].id, { active: true });
     return { selected: true, url: matches[0].url, title: (matches[0].title || '').slice(0, 200) };
+  }
+  if (command === 'captureVisibleTab') {
+    const tab = await activeTab();
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'jpeg', quality: 68 });
+    const comma = dataUrl.indexOf(',');
+    if (!dataUrl.startsWith('data:image/jpeg;base64,') || comma < 0) throw new Error('Chrome could not capture the visible tab as JPEG.');
+    const data = dataUrl.slice(comma + 1);
+    if (data.length > 5 * 1024 * 1024) throw new Error('The visible tab screenshot exceeds the 4 MB transfer limit.');
+    return { mimeType: 'image/jpeg', data };
   }
   if (command === 'navigate') {
     const url = new URL(args.url);

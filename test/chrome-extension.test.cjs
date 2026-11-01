@@ -76,6 +76,7 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null) {
         tab.id = selected.id; tab.url = selected.url; location.href = selected.url;
         return selected;
       },
+      captureVisibleTab: async () => `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64')}`,
     },
     scripting: { executeScript: async ({ func, args }) => [{ result: func(...args) }] },
   };
@@ -142,6 +143,14 @@ test('Chrome extension lists ordinary web tabs and selects one exact URL', async
   assert.equal(tabs[1].active, true);
   assert.equal(tabs[0].active, false);
   assert.match((await bridge.send({ id: 'unsafe', command: 'selectTab', args: { url: 'javascript:alert(1)' } })).error, /Only ordinary/);
+});
+
+test('Chrome extension captures only the active ordinary tab as a bounded JPEG', async () => {
+  const bridge = makeBridge([]);
+  await bridge.connect();
+  const result = await bridge.send({ id: 'capture', command: 'captureVisibleTab' });
+  assert.equal(result.mimeType, 'image/jpeg');
+  assert.equal(Buffer.from(result.data, 'base64').subarray(0, 2).toString('hex'), 'ffd8');
 });
 
 test('Chrome extension fills one approved ordinary labelled field without submitting', async () => {
