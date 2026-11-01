@@ -2,6 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { mkdir, readFile, rename, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 const { scheduleReview } = require('./study-review.cjs');
+const { generateStudyAids } = require('./study-generation.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
 const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
@@ -159,6 +160,17 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
         const data = await read();
         data.sources.push({ id: randomUUID(), courseId, name, content, updatedAt: now() });
         return write(data);
+      });
+    },
+    async generateAids(sourceId) {
+      return serialize(async () => {
+        const data = await read();
+        const source = data.sources.find((item) => item.id === sourceId);
+        if (!source) throw new Error('That imported study file is no longer available.');
+        const result = generateStudyAids(source, { now, id: randomUUID });
+        data.notes.push(result.note);
+        data.decks.push(result.deck);
+        return { data: await write(data), generated: { noteId: result.note.id, deckId: result.deck.id, cards: result.deck.cards.length } };
       });
     },
     async reviewCard(deckId, cardId, rating, reviewedAt = now()) {

@@ -372,6 +372,7 @@ ipcMain.handle('conversations:save', (_event, conversations) => getConversationS
 ipcMain.handle('study:load', () => getStudyStore().load());
 ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
 ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
+ipcMain.handle('study:generate-aids', (_event, sourceId) => getStudyStore().generateAids(sourceId));
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
