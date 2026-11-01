@@ -58,15 +58,18 @@ async function readOfficeText(bytes, extension) {
       for (let rowNumber = 1; rowNumber <= lastRow; rowNumber += 1) {
         const row = sheet.getRow(rowNumber);
         if (!row.hasValues) continue;
-        const values = Array.from({ length: Math.min(row.cellCount, 200) }, (_, index) => row.getCell(index + 1).value).map((value) => {
+        const values = Array.from({ length: Math.min(row.cellCount, 200) }, (_, index) => {
+          const cell = row.getCell(index + 1);
+          let value = cell.value;
           if (value && typeof value === 'object') {
-            if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || '').join('');
-            if ('result' in value) return value.result ?? '';
-            if ('text' in value) return value.text;
+            if (Array.isArray(value.richText)) value = value.richText.map((part) => part.text || '').join('');
+            else if ('result' in value) value = value.result ?? '';
+            else if ('text' in value) value = value.text;
           }
-          return value instanceof Date ? value.toISOString() : value ?? '';
+          if (value instanceof Date) value = value.toISOString();
+          return `${cell.address}: ${String(value ?? '').replace(/[\r\n]+/g, ' ')}`;
         });
-        lines.push(values.map((value) => String(value).replace(/[\r\n]+/g, ' ')).join('\t'));
+        lines.push(values.join(' | '));
       }
       blocks.push(lines.join('\n'));
     }

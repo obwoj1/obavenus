@@ -75,7 +75,7 @@ test('project previews and read tools extract bounded text from local Word, Exce
     const spreadsheet = await readProjectFile(root, 'summary.xlsx');
     const document = await readProjectRelativeFile(root, 'brief.docx');
     const presentation = await readProjectRelativeFile(root, 'deck.pptx');
-    assert.match(spreadsheet.content, /Sheet: Offers[\s\S]*Treasury\t153000/);
+    assert.match(spreadsheet.content, /Sheet: Offers[\s\S]*A2: Treasury \| B2: 153000/);
     assert.match(document.content, /Hiring plan[\s\S]*Next step[\s\S]*Apply through USAJOBS/);
     assert.match(presentation.content, /Slide 1[\s\S]*Targets[\s\S]*Treasury[\s\S]*Energy/);
     assert.equal(spreadsheet.truncated, false);
