@@ -98,6 +98,8 @@ function normalizeStudyData(value) {
       id: uniqueId(source.id, 'Study file'), courseId,
       name: cleanText(source.name, 'Study file name', 240),
       content: cleanText(source.content, 'Study file text', 200_000),
+      canvasId: cleanText(source.canvasId, 'Canvas file ID', 40, { optional: true }),
+      remoteUpdatedAt: cleanText(source.remoteUpdatedAt, 'Canvas file revision', 80, { optional: true }),
       updatedAt: Number.isFinite(source.updatedAt) ? source.updatedAt : Date.now(),
     };
   });
@@ -112,6 +114,7 @@ function normalizeStudyData(value) {
       position: Number.isInteger(module.position) ? Math.max(0, module.position) : 0,
       items: module.items.map((item) => ({
         canvasId: cleanText(String(item.canvasId ?? ''), 'Canvas module item ID', 40),
+        contentId: cleanText(String(item.contentId ?? ''), 'Canvas module item content ID', 40, { optional: true }),
         title: cleanText(item.title, 'Canvas module item title', 240),
         type: cleanText(item.type, 'Canvas module item type', 40),
         position: Number.isInteger(item.position) ? Math.max(0, item.position) : 0,
@@ -178,7 +181,7 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
     async addSource({ courseId = '', name, content }) {
       return serialize(async () => {
         const data = await read();
-        data.sources.push({ id: randomUUID(), courseId, name, content, updatedAt: now() });
+        data.sources.push({ id: randomUUID(), courseId, name, content, canvasId: '', remoteUpdatedAt: '', updatedAt: now() });
         return write(data);
       });
     },

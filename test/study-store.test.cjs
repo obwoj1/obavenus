@@ -32,7 +32,7 @@ test('study space is encrypted, persists courses, plans, notes, and cards', asyn
     assignments: [{ id: assignmentId, courseId, title: 'Problem set', dueAt: 200, steps: [{ id: stepId, text: 'Read the prompt', done: false }] }],
     notes: [{ id: noteId, courseId, title: 'Variance', body: 'E[X²] − E[X]²' }],
     decks: [{ id: deckId, courseId, title: 'Definitions', cards: [{ id: cardId, front: 'Variance?', back: 'Expected squared deviation.' }] }],
-    modules: [{ id: moduleId, courseId, canvasId: '51', title: 'Week one', position: 1, items: [{ canvasId: '52', title: 'Lecture slides', type: 'File', position: 1, locked: false }] }],
+    modules: [{ id: moduleId, courseId, canvasId: '51', title: 'Week one', position: 1, items: [{ canvasId: '52', contentId: '53', title: 'Lecture slides', type: 'File', position: 1, locked: false }] }],
   });
   const onDisk = await readFile(filePath, 'utf8');
   assert.equal(onDisk.includes('Statistics'), false);
