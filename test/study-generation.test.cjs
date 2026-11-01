@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { generateStudyAids } = require('../electron/study-generation.cjs');
+const { buildPracticeQuiz, generateStudyAids } = require('../electron/study-generation.cjs');
 
 test('local study generation creates a cited extractive outline and definition cards deterministically', () => {
   const source = {
@@ -21,4 +21,18 @@ test('local study generation creates a cited extractive outline and definition c
 test('local study generation reports unreadable or oversized source text', () => {
   assert.throws(() => generateStudyAids({ name: 'Blank.txt', content: 'tiny' }), /not enough readable text/);
   assert.throws(() => generateStudyAids({ name: 'Large.txt', content: 'x'.repeat(200_001) }), /too large/);
+});
+
+test('practice quiz has deterministic distinct answer choices and requires enough cards', () => {
+  const deck = { cards: [
+    { id: 'a', front: 'What is ATP?', back: 'Adenosine triphosphate' },
+    { id: 'b', front: 'What is DNA?', back: 'Deoxyribonucleic acid' },
+    { id: 'c', front: 'What is RNA?', back: 'Ribonucleic acid' },
+  ] };
+  const quiz = buildPracticeQuiz(deck);
+  assert.equal(quiz.length, 3);
+  assert.equal(quiz[0].options[quiz[0].correctIndex], deck.cards[0].back);
+  assert.notEqual(quiz[1].correctIndex, 0);
+  assert.equal(new Set(quiz[0].options).size, quiz[0].options.length);
+  assert.throws(() => buildPracticeQuiz({ cards: [deck.cards[0]] }), /at least two cards/);
 });

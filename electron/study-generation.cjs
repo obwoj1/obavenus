@@ -58,4 +58,18 @@ function generateStudyAids(source, { now = Date.now, id = randomUUID } = {}) {
   };
 }
 
-module.exports = { generateStudyAids, splitSentences };
+function buildPracticeQuiz(deck, { limit = 10 } = {}) {
+  if (!deck || !Array.isArray(deck.cards)) throw new TypeError('Choose a flashcard deck first.');
+  const cards = deck.cards.filter((card) => card.front && card.back).slice(0, Math.max(1, Math.min(20, limit)));
+  if (cards.length < 2) throw new Error('Add at least two cards to this deck before starting a quiz.');
+  return cards.map((card, index) => {
+    const distractors = cards.filter((item) => item.id !== card.id).map((item) => item.back).filter((answer) => answer !== card.back).slice(0, 3);
+    if (distractors.length < 1) return null;
+    const options = distractors.slice(0, 3);
+    const correctIndex = index % (options.length + 1);
+    options.splice(correctIndex, 0, card.back);
+    return { prompt: card.front, options, correctIndex, explanation: card.back };
+  }).filter(Boolean);
+}
+
+module.exports = { generateStudyAids, splitSentences, buildPracticeQuiz };
