@@ -35,6 +35,7 @@ const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
 const { createStudyStore } = require('./study-store.cjs');
 const { createStudyArtifactStore, MAX_ARTIFACT_BYTES } = require('./study-artifacts.cjs');
+const { createStudyMcpServer } = require('./study-mcp-server.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
@@ -87,6 +88,7 @@ let remoteMachineStore;
 let remoteJobStore;
 let studyStore;
 let studyArtifactStore;
+let studyMcpServer;
 let canvasConnector;
 let mcpConnector;
 let studyReminderTimer;
@@ -110,6 +112,15 @@ function getStudyStore() {
 function getStudyArtifactStore() {
   if (!studyArtifactStore) studyArtifactStore = createStudyArtifactStore({ directory: path.join(app.getPath('userData'), 'study-artifacts'), safeStorage });
   return studyArtifactStore;
+}
+
+function getStudyMcpServer() {
+  if (!studyMcpServer) studyMcpServer = createStudyMcpServer({
+    filePath: path.join(app.getPath('userData'), 'study-mcp-server.enc'),
+    safeStorage,
+    loadStudy: () => getStudyStore().load(),
+  });
+  return studyMcpServer;
 }
 
 function getStudyDigestScheduler() {
@@ -514,6 +525,11 @@ ipcMain.handle('study:build-quiz', async (_event, deckId) => {
 ipcMain.handle('study:suggest-assignment-steps', (_event, instructions) => suggestAssignmentSteps(instructions));
 ipcMain.handle('study:analyze-assignment', (_event, assignment) => analyzeAssignment(assignment));
 ipcMain.handle('study:assignment-review-checklist', (_event, analysis) => buildAssignmentReviewChecklist(analysis));
+ipcMain.handle('study:mcp-server:status', () => getStudyMcpServer().status());
+ipcMain.handle('study:mcp-server:enable', () => getStudyMcpServer().enable());
+ipcMain.handle('study:mcp-server:disable', () => getStudyMcpServer().disable());
+ipcMain.handle('study:mcp-server:credentials', () => getStudyMcpServer().credentials());
+ipcMain.handle('study:mcp-server:rotate', () => getStudyMcpServer().rotateToken());
 ipcMain.handle('study:build-digest', async () => buildStudyDigest(await getStudyStore().load()));
 ipcMain.handle('study:export-note', async (_event, { title, body }) => {
   if (typeof title !== 'string' || title.length > 180 || typeof body !== 'string' || body.length > 20_000) throw new TypeError('Study note export requires a title and text under 20,000 characters.');
@@ -893,6 +909,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   await cleanStaleStudyExtractionTemps();
+  await getStudyMcpServer().startIfEnabled().catch((error) => console.warn('Local Study MCP server could not start:', error.message));
   await getChromeBridge().start().catch((error) => console.warn('Chrome bridge unavailable:', error.message));
   await recoverInterruptedTasks();
   scheduleNextTask().catch(() => {});
@@ -909,7 +926,7 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => { clearInterval(studyReminderTimer); chromeBridge?.close().catch(() => {}); localOcr?.close().catch(() => {}); });
+app.on('before-quit', () => { clearInterval(studyReminderTimer); chromeBridge?.close().catch(() => {}); studyMcpServer?.close().catch(() => {}); localOcr?.close().catch(() => {}); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
