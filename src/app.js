@@ -1748,6 +1748,8 @@ function renderStudySpace() {
     meta.textContent = `${course?.name || 'Course'} · ${assignment.dueAt ? `Due ${new Date(assignment.dueAt).toLocaleString()}` : 'No due date'} · ${assignment.status === 'done' ? 'Complete' : `${assignment.steps.filter((step) => step.done).length}/${assignment.steps.length} steps`}`;
     card.append(title, meta);
     if (assignment.instructions) { const instructions = document.createElement('p'); instructions.textContent = assignment.instructions; card.append(instructions); }
+    const suggest = document.createElement('button'); suggest.type = 'button'; suggest.dataset.suggestSteps = 'true'; suggest.textContent = assignment.instructions ? 'Draft checklist from instructions' : 'Draft a starter checklist';
+    card.append(suggest);
     for (const step of assignment.steps) {
       const label = document.createElement('label');
       const check = document.createElement('input'); check.type = 'checkbox'; check.checked = step.done; check.dataset.stepId = step.id;
@@ -2022,6 +2024,18 @@ document.querySelector('#study-assignment-list').addEventListener('change', asyn
 document.querySelector('#study-assignment-list').addEventListener('click', async (event) => {
   const card = event.target.closest('[data-assignment-id]'); if (!card) return;
   const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId); if (!assignment) return;
+  if (event.target.closest('[data-suggest-steps]')) {
+    try {
+      const suggestion = await window.obavenus.suggestAssignmentSteps(assignment.instructions || '');
+      const existing = new Set(assignment.steps.map((step) => step.text.toLowerCase()));
+      const additions = suggestion.steps.filter((text) => !existing.has(text.toLowerCase())).map((text) => ({ id: crypto.randomUUID(), text, done: false }));
+      if (!additions.length) { setStudyStatus('This assignment already has those checklist steps.'); return; }
+      assignment.steps.push(...additions);
+      await persistStudySpace();
+      setStudyStatus(`Added ${additions.length} ${suggestion.source === 'instructions' ? 'instruction-based' : 'starter'} checklist steps. Review and edit them before you begin.`);
+    } catch (error) { setStudyStatus(error.message || 'Could not draft assignment steps.'); }
+    return;
+  }
   if (!event.target.closest('[data-toggle-done]')) return;
   assignment.status = assignment.status === 'done' ? 'todo' : 'done';
   try { await persistStudySpace(); setStudyStatus(assignment.status === 'done' ? 'Assignment marked complete.' : 'Assignment reopened.'); }
