@@ -1749,6 +1749,8 @@ function renderStudySpace() {
     meta.textContent = `${course?.name || 'Course'} · ${assignment.dueAt ? `Due ${new Date(assignment.dueAt).toLocaleString()}` : 'No due date'} · ${assignment.status === 'done' ? 'Complete' : `${assignment.steps.filter((step) => step.done).length}/${assignment.steps.length} steps`}`;
     card.append(title, meta);
     if (assignment.instructions) { const instructions = document.createElement('p'); instructions.textContent = assignment.instructions; card.append(instructions); }
+    const workspace = document.createElement('button'); workspace.type = 'button'; workspace.dataset.openAssignmentWorkspace = 'true'; workspace.textContent = 'Open assignment workspace';
+    card.append(workspace);
     const analyze = document.createElement('button'); analyze.type = 'button'; analyze.dataset.analyzeAssignment = 'true'; analyze.textContent = studyAssignmentAnalysis.has(assignment.id) ? 'Refresh requirement check' : 'Check requirements';
     card.append(analyze);
     const analysis = studyAssignmentAnalysis.get(assignment.id);
@@ -2067,6 +2069,28 @@ document.querySelector('#study-assignment-list').addEventListener('click', async
       studyAssignmentAnalysis.set(assignment.id, await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt }));
       renderStudySpace();
     } catch (error) { setStudyStatus(error.message || 'Could not check assignment requirements.'); }
+    return;
+  }
+  if (event.target.closest('[data-open-assignment-workspace]')) {
+    try {
+      const query = `${assignment.title} ${assignment.instructions}`.slice(0, 300).trim();
+      const matches = query ? await window.obavenus.searchStudySources(query, assignment.courseId) : [];
+      const references = matches.slice(0, 6).map((match) => `### ${match.fileName} · ${match.reference}\n${match.excerpt}`).join('\n\n');
+      const course = studyData.courses.find((item) => item.id === assignment.courseId);
+      const steps = assignment.steps.map((step) => `- [${step.done ? 'x' : ' '}] ${step.text}`).join('\n');
+      promptInput.value = [
+        `Help me work through this assignment in an editable, step-by-step way. Do not submit anything.`,
+        `Course: ${course?.name || 'Course'}`, `Assignment: ${assignment.title}`,
+        assignment.dueAt ? `Due: ${new Date(assignment.dueAt).toLocaleString()}` : '',
+        assignment.instructions ? `\n## Instructions\n${assignment.instructions}` : '',
+        steps ? `\n## My checklist\n${steps}` : '',
+        references ? `\n## Relevant local course-file excerpts\nUse these as evidence and cite the file and page/slide. If they do not support a claim, say so.\n\n${references}` : '\nNo relevant local course-file excerpts matched; do not imply the course files were checked.',
+        '\nFirst identify deliverables, constraints, and any ambiguity. Then propose a clear outline and the next manageable step. Keep factual claims tied to the supplied materials and mark anything I need to verify.',
+      ].filter(Boolean).join('\n');
+      studyDialog.close();
+      promptInput.focus();
+      runStatus.textContent = 'Assignment workspace prompt is ready to review and edit before you send it.';
+    } catch (error) { setStudyStatus(error.message || 'Could not prepare the assignment workspace.'); }
     return;
   }
   if (event.target.closest('[data-suggest-steps]')) {
