@@ -1790,6 +1790,7 @@ function renderStudySpace() {
   document.querySelector('#study-overdue-count').textContent = String(studyData.assignments.filter((item) => item.status !== 'done' && item.dueAt && item.dueAt < now).length);
   const due = studyData.decks.flatMap((deck) => deck.cards).filter((card) => card.dueAt <= now).length;
   document.querySelector('#study-review-count').textContent = String(due);
+  document.querySelector('#study-reminders-enabled').checked = studyData.remindersEnabled === true;
   renderStudyQuiz();
   renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
 }
@@ -1868,6 +1869,24 @@ document.querySelector('#study-nav').addEventListener('click', async () => {
   } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
 });
 document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+document.querySelector('#study-reminders-enabled').addEventListener('change', async (event) => {
+  const enabled = event.currentTarget.checked;
+  try {
+    const result = await window.obavenus.setStudyReminders(enabled);
+    studyData.remindersEnabled = result.enabled;
+    if (!result.supported) {
+      event.currentTarget.checked = false;
+      await window.obavenus.setStudyReminders(false);
+      studyData.remindersEnabled = false;
+      setStudyStatus('Desktop notifications are unavailable on this Mac.');
+      return;
+    }
+    setStudyStatus(enabled ? `Due-date reminders enabled${result.remindersSent ? ` · ${result.remindersSent} reminder${result.remindersSent === 1 ? '' : 's'} sent` : ''}.` : 'Due-date reminders disabled.');
+  } catch (error) {
+    event.currentTarget.checked = !enabled;
+    setStudyStatus(error.message || 'Could not update due-date reminders.');
+  }
+});
 async function refreshMcpServers(message = '') {
   const list = document.querySelector('#study-mcp-list'); list.replaceChildren();
   const servers = await window.obavenus.listMcpServers();
