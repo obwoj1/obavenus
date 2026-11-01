@@ -1,6 +1,6 @@
 # Build log
 
-- 0.1.85: Custom workflows can be marked always-on (up to five) and are attached to provider, team, CLI, remote, and scheduled runs; recurring tasks read the current defaults when each occurrence runs.
+- 0.1.85: Custom workflows can be marked always-on (up to five) and are attached to provider, team, CLI, remote, and scheduled runs; recurring tasks read the current defaults when each occurrence runs. The arm64 DMG passed checksum verification, was installed, and is the only release DMG retained.
 - 0.1.84: Grok Build discovery now probes only executable candidates, while retaining the PATH-conflict fallback. The arm64 DMG passed checksum verification, was installed, and is the only release DMG retained.
 - 0.1.83: Grok account discovery now checks all known executable locations, skips unrelated commands named `grok`, and uses the validated Grok Build executable for status, browser sign-in, and account-backed chats. The arm64 DMG passed checksum verification, was installed, and is the only release DMG retained.
 - 0.1.82: Built and installed the verified Apple Silicon DMG. `release/` contains only the current 0.1.82 DMG and blockmap.
