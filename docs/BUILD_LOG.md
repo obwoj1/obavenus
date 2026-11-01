@@ -1,6 +1,6 @@
 # Build log
 
-- 0.1.83: Grok account discovery now checks all known executable locations, skips unrelated commands named `grok`, and uses the validated Grok Build executable for status, browser sign-in, and account-backed chats.
+- 0.1.83: Grok account discovery now checks all known executable locations, skips unrelated commands named `grok`, and uses the validated Grok Build executable for status, browser sign-in, and account-backed chats. The arm64 DMG passed checksum verification, was installed, and is the only release DMG retained.
 - 0.1.82: Built and installed the verified Apple Silicon DMG. `release/` contains only the current 0.1.82 DMG and blockmap.
 - Grok Build browser sign-in: local one-response chats use the official CLI. Obavenus verifies that the installed `grok` executable is the official CLI, strips `XAI_API_KEY` from account-backed subprocesses, and limits account chats to read-only tools; API keys remain available for hosted team/API calls. This Mac currently has a different `grok` command installed, so the account connection asks for the official Grok Build CLI.
 - 0.1.81: Packaged the Claude Code account connection and installed the verified arm64 DMG; older DMGs and blockmaps were removed.
