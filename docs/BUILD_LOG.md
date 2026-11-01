@@ -37,6 +37,7 @@
 
 ## Next
 
+- 0.1.73: The composer can select up to three saved workflows at once and remembers the selection locally. Their instructions travel with the task for provider, CLI, remote, and team runs; every team agent receives the shared workflow context.
 - 0.1.72: Scheduled local tasks can repeat daily or on weekdays at a chosen local time. Each occurrence retains bounded retries, missed runs resume when Obavenus is available, and recurring schedules remain cancellable.
 - 0.1.71: Added per-conversation rename and delete actions to Recent Work. Deletion is confirmed, active responses are protected, and changes persist in encrypted local history.
 - 0.1.70: Added an opt-in, bearer-authenticated localhost MCP server for read-only Study course, assignment, file-search, resource, and flashcard access. The token is encrypted with OS-backed storage, the service binds to loopback, and assignment drafts and submission actions are excluded.
