@@ -52,6 +52,7 @@
 
 ## Next
 
+- 0.1.88: Remote Jobs now refresh active status and output every 10 seconds while the window is open; scheduled jobs are checked only after their start time.
 - 0.1.87: Added the missing macOS library-validation entitlement for the ad-hoc hardened-runtime build. The packaged app now includes the entitlement and passes a direct executable startup check; stable Developer ID signing is still required to avoid Keychain prompts across updates.
 - 0.1.86: Project-write mode can create editable Mermaid diagram source files (`.mmd`) alongside existing text and Office artifacts. The files keep the existing folder-boundary, size, and undo protections.
 - 0.1.73: The composer can select up to three saved workflows at once and remembers the selection locally. Their instructions travel with the task for provider, CLI, remote, and team runs; every team agent receives the shared workflow context.
