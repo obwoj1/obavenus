@@ -1,11 +1,22 @@
 const { collectProjectContext, searchProjectText, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
 const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
+const { buildDiagram } = require('./diagrams.cjs');
 const { getGitStatus, getGitDiff, getGitHistory } = require('./git-tools.cjs');
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
   description: 'Create or replace a supported text artifact inside the selected project folder, including Markdown reports, Mermaid diagrams (.mmd), CSV spreadsheets, HTML presentations, and code. Only available when the user explicitly enables project writes for this run. Never write outside the selected folder or into hidden, dependency, build, or release paths.',
   parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative path inside the project, for example reports/plan.md.' }, content: { type: 'string', description: 'Complete new file contents.' } }, required: ['path', 'content'], additionalProperties: false },
+};
+const DIAGRAM_TOOL = {
+  name: 'create_diagram',
+  description: 'Create a self-contained offline SVG flow diagram in the selected project folder. It uses fixed safe shapes and escaped text; it cannot load scripts, remote resources, or embedded HTML. Available only when project-write mode is enabled.',
+  parameters: { type: 'object', properties: {
+    path: { type: 'string', description: 'Relative .svg path inside the selected project, for example architecture.svg.' },
+    title: { type: 'string', description: 'Diagram title, up to 160 characters.' },
+    nodes: { type: 'array', description: '2–30 diagram nodes with unique short IDs and labels.', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' } }, required: ['id', 'label'], additionalProperties: false } },
+    edges: { type: 'array', description: '1–60 connections between node IDs; optional short labels.', items: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string' } }, required: ['from', 'to'], additionalProperties: false } },
+  }, required: ['path', 'title', 'nodes', 'edges'], additionalProperties: false },
 };
 const BROWSER_TOOLS = [
   { name: 'browser_open_page', description: 'Open an http or https page in the selected browser. With Chrome access this navigates your active signed-in Chrome tab; otherwise it opens the isolated Obavenus Research Browser. Use for research and review.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
@@ -136,6 +147,13 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const result = await writeWithUndo(args.path, args.content, (options) => writeProjectFile(projectPath, args.path, args.content, options));
       return { ...result, saved: true };
     }
+    if (name === 'create_diagram') {
+      if (!projectPath || !writeAccess) return { error: 'Diagram creation is disabled for this run. Select a project and enable project-write mode.' };
+      if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative .svg diagram path.');
+      const artifact = buildDiagram(args);
+      const result = await writeWithUndo(args.path, artifact, (options) => writeProjectBinaryArtifact(projectPath, args.path, artifact, ['.svg'], 256 * 1024, options));
+      return { ...result, saved: true, format: 'offline SVG diagram' };
+    }
     if (['create_spreadsheet', 'create_document', 'create_presentation'].includes(name)) {
       if (!projectPath || !writeAccess) return { error: 'Office artifact creation is disabled for this run. Select a project and enable project-write mode.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative artifact path.');
@@ -214,7 +232,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   while (calls < maxCalls) {
     signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked'].includes(tool.name) || browserFillAccess) : [];
-    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';

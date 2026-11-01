@@ -91,11 +91,22 @@ test('project file writes require per-run authorization and report the exact fil
   try {
     const denied = createAgentToolExecutor({ projectPath: root });
     assert.match((await denied('write_project_file', { path: 'docs/plan.md', content: '# no' })).error, /disabled/);
+    assert.match((await denied('create_diagram', { path: 'architecture.svg' })).error, /disabled/);
     const allowed = createAgentToolExecutor({ projectPath: root, writeAccess: true });
     const result = await allowed('write_project_file', { path: 'docs/plan.md', content: '# approved for this run' });
     assert.equal(result.saved, true);
     assert.equal(await readFile(path.join(root, 'docs', 'plan.md'), 'utf8'), '# approved for this run');
-    assert.deepEqual(allowed.getChanges(), [{ path: path.join('docs', 'plan.md'), bytes: 23, created: true }]);
+    const diagram = await allowed('create_diagram', {
+      path: 'architecture.svg', title: 'Research & delivery',
+      nodes: [{ id: 'search', label: 'Read <source>' }, { id: 'deliver', label: 'Write report' }],
+      edges: [{ from: 'search', to: 'deliver', label: 'verified' }],
+    });
+    assert.equal(diagram.format, 'offline SVG diagram');
+    assert.match(await readFile(path.join(root, 'architecture.svg'), 'utf8'), /Read &lt;source&gt;/);
+    assert.deepEqual(allowed.getChanges(), [
+      { path: path.join('docs', 'plan.md'), bytes: 23, created: true },
+      { path: 'architecture.svg', bytes: (await readFile(path.join(root, 'architecture.svg'))).length, created: true },
+    ]);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

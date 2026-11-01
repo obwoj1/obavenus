@@ -257,7 +257,7 @@ test('combined browser and write mode exposes both capabilities only to the anal
     executeTool,
     dispatch: async (messages, { tools }) => {
       const role = messages[0].text;
-      toolAvailability.push({ role, canWrite: tools.some((tool) => tool.name === 'write_project_file'), canBrowse: tools.some((tool) => tool.name === 'browser_open_page'), canSelect: tools.some((tool) => tool.name === 'browser_select_option'), text: messages[0].text });
+      toolAvailability.push({ role, canWrite: tools.some((tool) => tool.name === 'write_project_file'), canDiagram: tools.some((tool) => tool.name === 'create_diagram'), canBrowse: tools.some((tool) => tool.name === 'browser_open_page'), canSelect: tools.some((tool) => tool.name === 'browser_select_option'), text: messages[0].text });
       if (role.includes('You are the lead agent.')) return 'Plan.';
       if (role.includes('You are an independent specialist agent.')) return 'Analysis.';
       if (role.includes('You are an independent reviewer.')) return 'Review.';
@@ -266,12 +266,14 @@ test('combined browser and write mode exposes both capabilities only to the anal
   });
   const analyst = toolAvailability.find((item) => item.role.includes('You are an independent specialist agent.'));
   assert.equal(analyst.canWrite, true);
+  assert.equal(analyst.canDiagram, true);
   assert.equal(analyst.canBrowse, true);
   assert.equal(analyst.canSelect, true);
   assert.match(analyst.text, /Project-file writes are permitted only inside the user-selected project folder/);
   assert.match(analyst.text, /native confirmation showing the exact change/);
   for (const agent of toolAvailability.filter((item) => !item.role.includes('You are an independent specialist agent.'))) {
     assert.equal(agent.canWrite, false);
+    assert.equal(agent.canDiagram, false);
     assert.equal(agent.canBrowse, false);
   }
   assert.deepEqual(result.changes, [{ path: 'notes.md', bytes: 5, created: true }]);
