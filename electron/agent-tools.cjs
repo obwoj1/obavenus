@@ -18,6 +18,15 @@ const DIAGRAM_TOOL = {
     edges: { type: 'array', description: '1–60 connections between node IDs; optional short labels.', items: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, label: { type: 'string' } }, required: ['from', 'to'], additionalProperties: false } },
   }, required: ['path', 'title', 'nodes', 'edges'], additionalProperties: false },
 };
+const PATCH_PROJECT_TEXT = {
+  name: 'replace_project_text',
+  description: 'Replace one exact, unique text passage in a regular project text file. Requires project-write mode and supports undo. The path must stay within the selected project; hidden/protected paths and binary files are rejected.',
+  parameters: { type: 'object', properties: {
+    path: { type: 'string', description: 'Relative text-file path inside the selected project.' },
+    oldText: { type: 'string', description: 'Exact non-empty text that must occur once, up to 20,000 characters.' },
+    newText: { type: 'string', description: 'Replacement text, up to 20,000 characters.' },
+  }, required: ['path', 'oldText', 'newText'], additionalProperties: false },
+};
 const BROWSER_TOOLS = [
   { name: 'browser_list_tabs', description: 'List up to 40 ordinary web tabs in the paired Chrome window. Returns each title and URL so you can choose a relevant existing signed-in page.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_select_tab', description: 'Switch paired Chrome to the one tab with this exact URL. Refuses duplicates and does not change site content.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Exact URL returned by browser_list_tabs.' } }, required: ['url'], additionalProperties: false } },
@@ -151,6 +160,23 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const result = await writeWithUndo(args.path, args.content, (options) => writeProjectFile(projectPath, args.path, args.content, options));
       return { ...result, saved: true };
     }
+    if (name === 'replace_project_text') {
+      if (!projectPath || !writeAccess) return { error: 'Project text edits are disabled for this run. Select a project and enable project-write mode.' };
+      if (typeof args.path !== 'string' || args.path.length > 500 || typeof args.oldText !== 'string' || !args.oldText || args.oldText.length > 20_000 || typeof args.newText !== 'string' || args.newText.length > 20_000 || args.newText.includes('\0')) throw new TypeError('Provide a relative path, a unique non-empty passage, and replacement text up to 20,000 characters.');
+      const snapshot = await snapshotProjectFile(projectPath, args.path, MAX_AGENT_WRITE_BYTES);
+      if (snapshot.created) throw new Error('That project text file does not exist. Read the file and retry with an existing path.');
+      let content;
+      try { content = new TextDecoder('utf-8', { fatal: true }).decode(snapshot.beforeBytes); } catch { throw new TypeError('This tool only edits valid UTF-8 text files.'); }
+      if (content.includes('\0')) throw new TypeError('This tool only edits plain-text files.');
+      const first = content.indexOf(args.oldText);
+      if (first < 0) throw new Error('The exact text to replace was not found. Read the current file and retry.');
+      if (content.indexOf(args.oldText, first + 1) >= 0) throw new Error('The exact text occurs more than once. Include more surrounding text so the target is unique.');
+      if (args.oldText === args.newText) throw new Error('The replacement is identical to the existing text.');
+      const updated = content.slice(0, first) + args.newText + content.slice(first + args.oldText.length);
+      if (Buffer.byteLength(updated, 'utf8') > MAX_AGENT_WRITE_BYTES) throw new RangeError('The edited text file would exceed the 256 KB limit.');
+      const result = await writeWithUndo(args.path, updated, (options) => writeProjectFile(projectPath, args.path, updated, options), snapshot.beforeHash);
+      return { ...result, saved: true, replacements: 1 };
+    }
     if (name === 'create_diagram') {
       if (!projectPath || !writeAccess) return { error: 'Diagram creation is disabled for this run. Select a project and enable project-write mode.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative .svg diagram path.');
@@ -254,7 +280,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   while (calls < maxCalls) {
     signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab'].includes(tool.name) || browserFillAccess) : [];
-    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, PATCH_PROJECT_TEXT, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';

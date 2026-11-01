@@ -112,6 +112,27 @@ test('project file writes require per-run authorization and report the exact fil
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('exact project text replacement is unique, write-gated, and undoable', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-text-replace-'));
+  try {
+    const target = path.join(root, 'src.js');
+    await writeFile(target, 'const mode = "safe";\nstart();\n');
+    const denied = createAgentToolExecutor({ projectPath: root });
+    assert.match((await denied('replace_project_text', { path: 'src.js', oldText: 'safe', newText: 'reviewed' })).error, /disabled/);
+    let undoSnapshot;
+    const allowed = createAgentToolExecutor({ projectPath: root, writeAccess: true, projectUndo: { record: async (entry) => { undoSnapshot = entry; return 'undo-token'; } } });
+    const result = await allowed('replace_project_text', { path: 'src.js', oldText: '"safe"', newText: '"reviewed"' });
+    assert.equal(result.replacements, 1);
+    assert.equal(result.undoToken, 'undo-token');
+    assert.equal(await readFile(target, 'utf8'), 'const mode = "reviewed";\nstart();\n');
+    assert.equal(undoSnapshot.beforeBytes.toString(), 'const mode = "safe";\nstart();\n');
+    await assert.rejects(allowed('replace_project_text', { path: 'src.js', oldText: 'absent', newText: 'stop' }), /not found/);
+    await writeFile(target, 'same same');
+    await assert.rejects(allowed('replace_project_text', { path: 'src.js', oldText: 'same', newText: 'unique' }), /more than once/);
+    assert.equal(await readFile(target, 'utf8'), 'same same');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('updating an existing workbook is gated, undoable, and returns saved cell values', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-spreadsheet-edit-'));
   try {
