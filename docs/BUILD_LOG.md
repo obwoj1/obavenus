@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.102: Added local screenshot OCR to the isolated Research Browser as well as paired Chrome; screenshots stay on-device and only bounded recognized text enters agent context.
 - 0.1.101: Paired Chrome can capture a bounded JPEG of its active ordinary web tab in 40 KB chunks; Obavenus performs local OCR and provides only the recognized text to the agent.
 - 0.1.100: Added unique exact-text replacement for UTF-8 project files, gated by project-write mode with undo and concurrency checking.
 - 0.1.99: Spreadsheet previews now show cell addresses beside values, giving the agent a grounded coordinate for precise workbook edits.
@@ -84,3 +85,5 @@
 - Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.
 - Verify the Gemini OAuth consent setup and a first request against a user-configured Google Cloud project.
 - Add streaming responses and cancellation for long-running model requests.
+# 0.1.102
+- Added local screenshot OCR in the isolated Research Browser as well as paired Chrome; screenshots stay on-device and only bounded recognized text enters the agent context.
