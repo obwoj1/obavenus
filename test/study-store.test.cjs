@@ -73,3 +73,20 @@ test('study storage refuses plaintext fallback and rejects oversized data', asyn
   }));
   await assert.rejects(store.save({ version: 1, courses: [], notes }), /5 MB/);
 });
+
+test('due reminder preference and sent timestamp persist only in encrypted study state', async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-study-reminder-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const filePath = path.join(root, 'study.enc');
+  const store = createStudyStore({ filePath, safeStorage: encryptedMock(), now: () => 100 });
+  const course = await store.createCourse({ name: 'Biology' });
+  const assignmentId = '40000000-0000-4000-8000-000000000001';
+  const dueAt = 200;
+  await store.save({ ...course, assignments: [{ id: assignmentId, courseId: course.courses[0].id, title: 'Lab report', dueAt }] });
+  await store.setRemindersEnabled(true);
+  const saved = await store.markReminderSent(assignmentId, dueAt);
+  assert.equal(saved.remindersEnabled, true);
+  assert.equal(saved.assignments[0].remindedDueAt, dueAt);
+  assert.equal((await readFile(filePath, 'utf8')).includes('Lab report'), false);
+  await assert.rejects(store.setRemindersEnabled('yes'), /must be enabled or disabled/);
+});

@@ -5,7 +5,7 @@ const { scheduleReview } = require('./study-review.cjs');
 const { generateStudyAids } = require('./study-generation.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
-const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [] });
+const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [], remindersEnabled: false });
 
 function cleanText(value, label, max, { optional = false } = {}) {
   if (optional && (value === undefined || value === null)) return '';
@@ -56,6 +56,7 @@ function normalizeStudyData(value) {
       instructions: cleanText(assignment.instructions, 'Assignment instructions', 20_000, { optional: true }),
       dueAt: assignment.dueAt === null || assignment.dueAt === undefined || assignment.dueAt === '' ? null : Number(assignment.dueAt),
       status: ['todo', 'in-progress', 'done'].includes(assignment.status) ? assignment.status : 'todo',
+      remindedDueAt: Number.isFinite(assignment.remindedDueAt) ? assignment.remindedDueAt : null,
       steps: steps.map((step) => ({ id: uniqueId(step.id, 'Plan step'), text: cleanText(step.text, 'Plan step', 300), done: step.done === true })),
       createdAt: Number.isFinite(assignment.createdAt) ? assignment.createdAt : Date.now(),
     };
@@ -124,7 +125,7 @@ function normalizeStudyData(value) {
     };
   });
   if (normalizedSources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) > 4 * 1024 * 1024) throw new RangeError('Imported study text is over its 4 MB local limit.');
-  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules };
+  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules, remindersEnabled: value.remindersEnabled === true };
 }
 
 function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
@@ -194,6 +195,23 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
         data.notes.push(result.note);
         data.decks.push(result.deck);
         return { data: await write(data), generated: { noteId: result.note.id, deckId: result.deck.id, cards: result.deck.cards.length } };
+      });
+    },
+    async setRemindersEnabled(enabled) {
+      if (typeof enabled !== 'boolean') throw new TypeError('Reminder preference must be enabled or disabled.');
+      return serialize(async () => {
+        const data = await read();
+        data.remindersEnabled = enabled;
+        return write(data);
+      });
+    },
+    async markReminderSent(assignmentId, dueAt) {
+      return serialize(async () => {
+        const data = await read();
+        const assignment = data.assignments.find((item) => item.id === assignmentId);
+        if (!assignment || assignment.dueAt !== dueAt) return data;
+        assignment.remindedDueAt = dueAt;
+        return write(data);
       });
     },
     async reviewCard(deckId, cardId, rating, reviewedAt = now()) {
