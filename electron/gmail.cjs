@@ -3,7 +3,28 @@ const http = require('node:http');
 const { mkdir, readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 
-const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose';
+
+function createRawMessage({ to, subject, body }) {
+  const recipient = String(to || '').trim();
+  const title = String(subject || '').trim();
+  const content = String(body || '').trim();
+  if (!/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(recipient) || recipient.length > 254) throw new TypeError('Enter one valid email address for the draft.');
+  if (!title || title.length > 200) throw new TypeError('The draft subject must be between 1 and 200 characters.');
+  if (!content || content.length > 20_000) throw new TypeError('The draft body must be between 1 and 20,000 characters.');
+  if (/[\r\n]/.test(recipient)) throw new TypeError('The recipient address is invalid.');
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(title, 'utf8').toString('base64')}?=`;
+  const message = [
+    `To: ${recipient}`,
+    `Subject: ${encodedSubject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from(content, 'utf8').toString('base64').replace(/.{1,76}/g, '$&\r\n').trim(),
+  ].join('\r\n');
+  return Buffer.from(message, 'utf8').toString('base64url');
+}
 
 function createGmailConnector({ filePath, safeStorage, fetchImpl = globalThis.fetch }) {
   async function readSaved() {
@@ -133,7 +154,19 @@ function createGmailConnector({ filePath, safeStorage, fetchImpl = globalThis.fe
         return { id, from: headers.from || '', subject: headers.subject || '(no subject)', date: headers.date || '', snippet: message.snippet || '' };
       }));
     },
+    async createDraft({ to, subject, body } = {}) {
+      const raw = createRawMessage({ to, subject, body });
+      const token = await accessToken();
+      const response = await fetchImpl('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { raw } }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error?.message || 'Could not save the Gmail draft. Reconnect Gmail and allow draft access.');
+      return { id: result.id, messageId: result.message?.id };
+    },
   };
 }
 
-module.exports = { SCOPE, createGmailConnector };
+module.exports = { SCOPE, createGmailConnector, createRawMessage };

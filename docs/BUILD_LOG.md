@@ -37,6 +37,8 @@
 
 ## Next
 
+- 0.1.64: Study digests can be saved as Gmail drafts; the integration creates drafts only and never sends mail. Gmail OAuth now requests draft permission in addition to message metadata access.
+
 - Added explicit local project-edit modes for the provider CLIs with provider-specific sandbox and permission flags; edits require a selected folder and scheduled work remains read-only.
 
 - Test Sign in with ChatGPT against an eligible account and confirm whether OpenAI accepts the private app client.

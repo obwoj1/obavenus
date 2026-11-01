@@ -1343,7 +1343,7 @@ document.querySelector('#gmail-connect').addEventListener('click', async () => {
     });
     document.querySelector('#gmail-client-id').value = '';
     document.querySelector('#gmail-client-secret').value = '';
-    status.textContent = 'Gmail connected with read-only access.';
+    status.textContent = 'Gmail connected. Draft creation may require approving the expanded permission.';
     await updateGmailStatus();
     await searchGmail();
   } catch (error) { status.textContent = error.message || 'Could not connect Gmail.'; }
@@ -1361,7 +1361,7 @@ document.querySelector('#gmail-search').addEventListener('keydown', (event) => {
 async function updateGmailStatus() {
   const status = await window.obavenus.getGmailStatus();
   document.querySelector('#gmail-status').textContent = status.connected
-    ? `Connected${status.email ? ` as ${status.email}` : ''} · Gmail read-only`
+    ? `Connected${status.email ? ` as ${status.email}` : ''} · message metadata and draft creation`
     : 'Not connected. Create a Desktop app OAuth client and enable Gmail API in Google Cloud.';
   document.querySelector('#gmail-disconnect').hidden = !status.connected;
   document.querySelector('#gmail-inbox').hidden = !status.connected;
@@ -1967,8 +1967,29 @@ document.querySelector('#study-digest-generate').addEventListener('click', async
     preview.value = `Subject: ${digest.subject}\n\n${digest.body}`;
     preview.hidden = false;
     document.querySelector('#study-digest-copy').hidden = false;
+    document.querySelector('#study-digest-gmail').hidden = false;
+    document.querySelector('#study-digest-recipient-wrap').hidden = false;
+    const recipient = document.querySelector('#study-digest-recipient');
+    recipient.hidden = false;
+    const gmail = await window.obavenus.getGmailStatus();
+    if (gmail.connected && !recipient.value) recipient.value = gmail.email || '';
     status.textContent = 'Digest ready to review and copy.';
   } catch (error) { status.textContent = error.message || 'Could not prepare a study digest.'; }
+});
+document.querySelector('#study-digest-gmail').addEventListener('click', async () => {
+  const status = document.querySelector('#study-digest-status');
+  const value = document.querySelector('#study-digest-preview').value;
+  const separator = value.indexOf('\n\n');
+  if (separator < 0) { status.textContent = 'Generate the digest first.'; return; }
+  const recipient = document.querySelector('#study-digest-recipient').value.trim();
+  if (!recipient) { status.textContent = 'Enter a recipient email address.'; return; }
+  status.textContent = 'Saving a draft in Gmail…';
+  try {
+    const result = await window.obavenus.createGmailDraft({ to: recipient, subject: value.slice('Subject: '.length, separator), body: value.slice(separator + 2) });
+    status.textContent = `Gmail draft saved${result.id ? ` · ${result.id}` : ''}. Open Gmail to review and send it.`;
+  } catch (error) {
+    status.textContent = error.message || 'Could not save the Gmail draft. Reconnect Gmail to grant draft access.';
+  }
 });
 document.querySelector('#study-digest-copy').addEventListener('click', async () => {
   const status = document.querySelector('#study-digest-status');

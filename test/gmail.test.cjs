@@ -3,7 +3,7 @@ const { mkdtemp, rm, writeFile } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { createGmailConnector, SCOPE } = require('../electron/gmail.cjs');
+const { createGmailConnector, createRawMessage, SCOPE } = require('../electron/gmail.cjs');
 
 test('Gmail connector is read-only and lists only message metadata and snippets', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-gmail-'));
@@ -36,7 +36,7 @@ test('Gmail connector is read-only and lists only message metadata and snippets'
 
   try {
     assert.deepEqual(await connector.status(), { connected: true, email: 'user@example.com' });
-    assert.equal(SCOPE, 'https://www.googleapis.com/auth/gmail.readonly');
+    assert.equal(SCOPE, 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose');
     const messages = await connector.search('from:sender@example.com');
     assert.deepEqual(messages, [{ id: 'message-id', from: 'sender@example.com', subject: 'Hello', date: 'Today', snippet: 'Preview only' }]);
     assert.match(calls[0].url, /q=from%3Asender/);
@@ -45,7 +45,7 @@ test('Gmail connector is read-only and lists only message metadata and snippets'
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('Gmail OAuth asks for read-only access and validates its loopback state', async () => {
+test('Gmail OAuth requests inbox read and draft creation and validates its loopback state', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-gmail-oauth-'));
   const filePath = path.join(root, 'gmail.json');
   const safeStorage = {
@@ -76,5 +76,42 @@ test('Gmail OAuth asks for read-only access and validates its loopback state', a
     assert.ok(tokenBody.get('code_verifier'));
     assert.equal((await connector.status()).email, 'test@example.com');
     assert.deepEqual(await connector.getOAuthClientCredentials(), { clientId: 'test.apps.googleusercontent.com', clientSecret: 'client-secret' });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Gmail draft encoding validates fields and only calls the drafts endpoint', async () => {
+  const raw = createRawMessage({ to: 'student@example.com', subject: 'Study digest · café', body: 'Review tomorrow’s lecture.' });
+  const decoded = Buffer.from(raw, 'base64url').toString('utf8');
+  assert.match(decoded, /To: student@example\.com/);
+  assert.match(decoded, /Subject: =\?UTF-8\?B\?/);
+  assert.equal(Buffer.from(decoded.split('\r\n\r\n').at(-1), 'base64').toString('utf8'), 'Review tomorrow’s lecture.');
+  assert.throws(() => createRawMessage({ to: 'not-an-email', subject: 'x', body: 'y' }), /valid email/);
+
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-gmail-draft-'));
+  const filePath = path.join(root, 'gmail.json');
+  const safeStorage = {
+    isAsyncEncryptionAvailable: async () => true,
+    encryptStringAsync: async (value) => Buffer.from(`enc:${value}`),
+    decryptStringAsync: async (value) => ({ result: value.toString().replace('enc:', '') }),
+  };
+  await writeFile(filePath, JSON.stringify({
+    clientId: 'client.apps.googleusercontent.com',
+    encryptedClientSecret: Buffer.from('enc:secret').toString('base64'),
+    encryptedRefreshToken: Buffer.from('enc:refresh').toString('base64'),
+    encryptedAccessToken: Buffer.from('enc:access').toString('base64'),
+    expiresAt: Date.now() + 60_000,
+  }));
+  const calls = [];
+  const connector = createGmailConnector({ filePath, safeStorage, fetchImpl: async (url, options = {}) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ id: 'draft-id', message: { id: 'message-id' } }) };
+  } });
+  try {
+    assert.deepEqual(await connector.createDraft({ to: 'student@example.com', subject: 'Study digest', body: 'Review tomorrow.' }), { id: 'draft-id', messageId: 'message-id' });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, 'https://gmail.googleapis.com/gmail/v1/users/me/drafts');
+    assert.equal(calls[0].options.method, 'POST');
+    assert.equal(JSON.parse(calls[0].options.body).message.raw, createRawMessage({ to: 'student@example.com', subject: 'Study digest', body: 'Review tomorrow.' }));
+    assert.doesNotMatch(calls[0].url, /messages\/send/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

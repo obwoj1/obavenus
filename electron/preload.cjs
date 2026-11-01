@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   connectGmail: (credentials) => ipcRenderer.invoke('gmail:connect', credentials),
   disconnectGmail: () => ipcRenderer.invoke('gmail:disconnect'),
   searchGmail: (query) => ipcRenderer.invoke('gmail:search', query),
+  createGmailDraft: (draft) => ipcRenderer.invoke('gmail:create-draft', draft),
   findFederalJobs: (text) => ipcRenderer.invoke('jobs:search-plan', text),
   getUSAJobsStatus: () => ipcRenderer.invoke('jobs:usajobs-status'),
   saveUSAJobsCredentials: (credentials) => ipcRenderer.invoke('jobs:usajobs-save', credentials),

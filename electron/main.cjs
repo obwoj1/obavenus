@@ -771,6 +771,7 @@ ipcMain.handle('gmail:connect', async (_event, credentials) => {
 });
 ipcMain.handle('gmail:disconnect', () => getGmailConnector().disconnect());
 ipcMain.handle('gmail:search', (_event, query) => getGmailConnector().search(query));
+ipcMain.handle('gmail:create-draft', (_event, draft) => getGmailConnector().createDraft(draft));
 
 function createWindow() {
   const window = new BrowserWindow({
