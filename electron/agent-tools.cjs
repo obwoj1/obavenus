@@ -1,5 +1,6 @@
 const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
 const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
+const { getGitStatus, getGitDiff } = require('./git-tools.cjs');
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
@@ -21,6 +22,10 @@ const OFFICE_TOOLS = [
 const MEMORY_TOOLS = [
   { name: 'read_project_memory', description: 'Read this project’s private, encrypted Obavenus memory: durable notes saved across conversations. Treat it as context and verify stale details.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'save_project_memory', description: 'Replace this project’s private, encrypted Obavenus memory with concise durable notes useful in later conversations. Available only when project-write mode is enabled.', parameters: { type: 'object', properties: { memory: { type: 'string', description: 'A concise standalone note, at most 12,000 characters. Include lasting project facts and preferences, never secrets.' } }, required: ['memory'], additionalProperties: false } },
+];
+const GIT_TOOLS = [
+  { name: 'get_project_git_status', description: 'Read the selected project Git branch and changed/untracked file names. This is read-only.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'read_project_git_diff', description: 'Read bounded staged and unstaged Git diffs for the selected project. This is read-only; untracked file contents are read with the project file tool.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
 ];
 
 const TOOL_DEFINITIONS = [
@@ -91,6 +96,14 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       if (!projectPath) return { error: 'No project folder is open.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Project file path must be 500 characters or fewer.');
       return readProjectRelativeFile(projectPath, args.path, { ocrImage });
+    }
+    if (name === 'get_project_git_status') {
+      if (!projectPath) return { error: 'No project folder is open.' };
+      return getGitStatus(projectPath);
+    }
+    if (name === 'read_project_git_diff') {
+      if (!projectPath) return { error: 'No project folder is open.' };
+      return getGitDiff(projectPath);
     }
     if (name === 'read_project_memory') {
       if (!projectPath || !projectMemory) return { memory: '', note: 'No project memory is available.' };
@@ -175,7 +188,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   while (calls < maxCalls) {
     signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => tool.name !== 'browser_fill_field' || browserFillAccess) : [];
-    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';
@@ -203,4 +216,4 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   return typeof final === 'string' ? final : final?.text || 'I reached the tool-use limit before producing a final answer.';
 }
 
-module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, OFFICE_TOOLS, MEMORY_TOOLS, createAgentToolExecutor, runToolAgent };
+module.exports = { TOOL_DEFINITIONS, WRITE_PROJECT_FILE, BROWSER_TOOLS, OFFICE_TOOLS, MEMORY_TOOLS, GIT_TOOLS, createAgentToolExecutor, runToolAgent };

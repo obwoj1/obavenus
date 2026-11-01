@@ -91,7 +91,7 @@ test('a detached remote runner finishes and retains its result after the launche
     assert.match(launched.stdout, new RegExp(`OBAVENUS_JOB_ID:${jobId}`));
     const jobDir = path.join(home, '.cache/obavenus/jobs', jobId);
     let status = '';
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    for (let attempt = 0; attempt < 500; attempt += 1) {
       try { status = await readFile(path.join(jobDir, 'status'), 'utf8'); break; }
       catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
     }

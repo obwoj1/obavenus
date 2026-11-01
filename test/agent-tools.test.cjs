@@ -1,9 +1,58 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { mkdtemp, mkdir, readFile, rm } = require('node:fs/promises');
+const { mkdtemp, mkdir, readFile, writeFile, rm } = require('node:fs/promises');
+const { execFileSync } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
-const { TOOL_DEFINITIONS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
+const { TOOL_DEFINITIONS, GIT_TOOLS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
+
+test('team agents get read-only Git status and bounded staged and unstaged diffs', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-git-tools-'));
+  const git = (args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.name', 'Obavenus Test']);
+    git(['config', 'user.email', 'test@example.invalid']);
+    await writeFile(path.join(root, 'tracked.txt'), 'original\n');
+    git(['add', 'tracked.txt']);
+    git(['commit', '-qm', 'initial']);
+    await writeFile(path.join(root, 'tracked.txt'), 'staged version\n');
+    git(['add', 'tracked.txt']);
+    await writeFile(path.join(root, 'tracked.txt'), 'unstaged version\n');
+    await writeFile(path.join(root, 'untracked.txt'), 'new file\n');
+
+    const executor = createAgentToolExecutor({ projectPath: root });
+    const status = await executor('get_project_git_status');
+    assert.equal(status.isRepository, true);
+    assert.match(status.status, /tracked\.txt/);
+    assert.match(status.status, /untracked\.txt/);
+    const diff = await executor('read_project_git_diff');
+    assert.equal(diff.isRepository, true);
+    assert.match(diff.stagedDiff, /staged version/);
+    assert.match(diff.unstagedDiff, /unstaged version/);
+    assert.doesNotMatch(diff.stagedDiff + diff.unstagedDiff, /new file/);
+    assert.deepEqual(GIT_TOOLS.map((tool) => tool.name), ['get_project_git_status', 'read_project_git_diff']);
+
+    const nested = path.join(root, 'nested');
+    await mkdir(nested);
+    await writeFile(path.join(nested, 'nested-only.txt'), 'nested file\n');
+    const nestedStatus = await createAgentToolExecutor({ projectPath: nested })('get_project_git_status');
+    assert.match(nestedStatus.status, /nested-only\.txt/);
+    assert.doesNotMatch(nestedStatus.status, /tracked\.txt|untracked\.txt/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Git tools are available to read-only team agent calls', async () => {
+  let tools;
+  await runToolAgent({
+    messages: [{ role: 'user', text: 'Review my changes' }],
+    executeTool: async () => ({}),
+    dispatch: async (_messages, options) => { tools = options.tools; return 'Reviewed.'; },
+  });
+  assert.ok(tools.some((tool) => tool.name === 'get_project_git_status'));
+  assert.ok(tools.some((tool) => tool.name === 'read_project_git_diff'));
+  assert.ok(!tools.some((tool) => /git.*write|commit/i.test(tool.name)));
+});
 
 test('career and code tools are available and GitHub inspection requires explicit profile sharing', async () => {
   assert.ok(TOOL_DEFINITIONS.some((tool) => tool.name === 'inspect_github_profile'));
