@@ -198,8 +198,13 @@
       .composer-controls > * { min-width: 0; }
       .composer-controls select { width: 100%; }
       .composer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 9px; }
-      .composer-hint { flex: 1 1 220px; min-width: 180px; color: #718074; font-size: 10px; line-height: 1.45; }
+      .composer-hint { flex: 1 1 auto; min-width: 220px; color: #718074; font-size: 10px; line-height: 1.45; white-space: nowrap; }
       .composer-actions > button { flex: 0 0 auto; white-space: nowrap; }
+      .composer-more { margin-top: 10px; border-top: 1px solid #edf1ea; }
+      .composer-more > summary { width: fit-content; padding: 9px 2px 2px; color: #607563; font-size: 11px; cursor: pointer; list-style: none; }
+      .composer-more > summary::-webkit-details-marker { display: none; }
+      .composer-more > summary::before { content: "+"; display: inline-grid; width: 17px; height: 17px; margin-right: 6px; place-items: center; border: 1px solid #dce5da; border-radius: 50%; transition: transform .2s ease; }
+      .composer-more[open] > summary::before { transform: rotate(45deg); }
       .cancel-run[hidden] { display: none !important; }
       .research-tools { margin-top: 12px; border-top: 1px solid #edf1ea; padding-top: 9px; }
       .research-tools summary { width: fit-content; color: #607563; font-size: 11px; cursor: pointer; }
@@ -236,6 +241,10 @@
         .composer-hint { flex: 1 0 100%; min-width: 0; }
         .composer-actions > button { flex: 1 1 auto; }
       }
+      @media (max-width: 1180px) {
+        .composer-actions { justify-content: flex-start; }
+        .composer-hint { order: 2; flex-basis: 100%; min-width: 0; white-space: normal; }
+      }
       .send, .settings-actions .primary { padding: 10px 16px; border-radius: 10px; background: #55765b; color: #fff; font-size: 12px; }
       .send:hover, .settings-actions .primary:hover, .workspace button:hover { background: #3e6247; }
       .suggestions { display: grid; width: min(100%, 920px); grid-template-columns: repeat(4, minmax(0, 1fr)); justify-content: stretch; gap: 10px; margin-top: 24px; }
@@ -256,6 +265,13 @@
       .study-head h2 { margin: 0; color: #26382b; font-size: 23px; letter-spacing: -.035em; }
       .study-head p { margin: 6px 0 0; color: #6c7d70; font-size: 12px; line-height: 1.6; }
       .study-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0; }
+      .canvas-connect { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr) auto auto auto; gap: 8px; align-items: center; margin-top: 16px; padding: 12px; border: 1px solid #dce5da; border-radius: 12px; background: #f8faf6; }
+      .canvas-connect p { grid-column: 1 / -1; margin: 0; color: #687a6b; font-size: 10px; line-height: 1.5; }
+      .canvas-connect input { min-width: 0; padding: 9px 10px; border: 1px solid #dce5da; border-radius: 8px; background: #fff; color: #344438; font: inherit; font-size: 11px; }
+      .canvas-connect button { padding: 9px 11px; border: 1px solid #d7e2d4; border-radius: 8px; background: #eef4eb; color: #405b46; font-size: 10px; font-weight: 650; }
+      .canvas-connect-status { grid-column: 1 / -1; min-height: 14px; color: #54725a; font-size: 10px; }
+      body[data-theme="dusk"] .canvas-connect { background: var(--sage-panel); border-color: var(--sage-line); }
+      body[data-theme="dusk"] .canvas-connect input { background: #111b15; color: var(--sage-ink); border-color: var(--sage-line); }
       .study-stat { padding: 12px 14px; border: 1px solid #dce5da; border-radius: 12px; background: #f8faf6; color: #65776a; font-size: 10px; }
       .study-stat strong { display: block; margin-bottom: 4px; color: #304936; font-size: 20px; }
       .study-grid { display: grid; grid-template-columns: minmax(230px, .75fr) minmax(0, 1.5fr); gap: 12px; align-items: start; }
@@ -285,7 +301,7 @@
       body[data-theme="dusk"] .study-item p, body[data-theme="dusk"] .study-item label, body[data-theme="dusk"] .study-review p { color: var(--sage-muted); }
       body[data-theme="dusk"] .study-review { background: #15221a; }
       body[data-theme="dusk"] .study-form input, body[data-theme="dusk"] .study-form select, body[data-theme="dusk"] .study-form textarea { background: #111b15; color: var(--sage-ink); border-color: var(--sage-line); }
-      @media (max-width: 700px) { .study-grid { grid-template-columns: minmax(0, 1fr); } .study-summary { grid-template-columns: minmax(0, 1fr); } }
+      @media (max-width: 700px) { .study-grid { grid-template-columns: minmax(0, 1fr); } .study-summary { grid-template-columns: minmax(0, 1fr); } .canvas-connect { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .canvas-connect p, .canvas-connect-status { grid-column: 1 / -1; } }
       .message-context { color: #507456; }
       .project-changes { display: grid; gap: 5px; padding: 9px 11px; border: 1px solid #dce5da; border-radius: 10px; background: #f7faf5; }
       .project-changes > small { color: #627666; font-weight: 650; }
@@ -393,9 +409,11 @@
               <textarea aria-label="Message Obavenus" placeholder="Ask a question or describe a task…"></textarea>
               <small class="run-status" id="run-status" role="status" aria-live="polite" hidden></small>
               <div class="composer-footer"><div class="composer-controls"><select id="run-mode" aria-label="How Obavenus handles this request" title="Browser research can use the isolated Research Browser or your explicitly paired Chrome tab. File writes require explicit project-write mode."><option value="solo">One response</option><option value="team">Team · read-only</option><option value="team-browser">Team · research browser</option><option value="team-chrome">Team · signed-in Chrome</option><option value="team-write">Team · write project files</option><option value="local-claude">Local · Claude Code · read-only</option><option value="local-codex">Local · Codex CLI · read-only</option><option value="local-gemini">Local · Gemini CLI · read-only</option><option value="local-claude-write">Claude Code · edit project</option><option value="local-codex-write">Codex · edit project</option><option value="local-gemini-write">Gemini · edit project</option><option value="remote-claude">SSH · Claude Code · read-only</option><option value="remote-codex">SSH · Codex CLI · read-only</option><option value="remote-gemini">SSH · Gemini CLI · read-only</option><option value="remote-claude-write">SSH · Claude Code · edit remote project</option><option value="remote-codex-write">SSH · Codex CLI · edit remote project</option><option value="remote-gemini-write">SSH · Gemini CLI · edit remote project</option></select><select id="skill-choice" class="theme-choice" aria-label="Reusable workflow"><option value="">No workflow</option></select><details class="agent-picker"><summary id="agent-picker-label">Auto-pick saved specialists</summary><div id="agent-options" class="agent-options"></div></details></div><div class="composer-actions"><small class="composer-hint">Return to send · Shift + Return for a new line</small><button class="profile-open" id="conversation-export" type="button">Export chat</button><button class="profile-open" id="schedule-toggle" type="button">Schedule</button><button class="profile-open cancel-run" id="cancel-run" type="button" hidden>Stop</button><button class="send" type="submit">Send ↗</button></div></div>
-              <div id="schedule-panel" hidden><label for="schedule-provider">Run</label><select id="schedule-provider" aria-label="Scheduled task provider"><option value="configured-ai">Configured AI provider</option><option value="claude">Claude Code CLI</option><option value="codex">Codex CLI</option><option value="gemini">Gemini CLI</option></select><label for="schedule-at">At</label><input id="schedule-at" type="datetime-local" /><button class="context-action" id="schedule-submit" type="button">Queue task</button></div>
-              <details class="research-tools"><summary>Research browser tools</summary><div class="research-toolbar"><input id="research-url" type="url" placeholder="https://…" aria-label="Research page URL" /><button class="context-action" id="research-open" type="button">Open page</button><button class="context-action" id="research-import" type="button">Add page text</button><button class="context-action" id="research-clear-session" type="button" title="Clear Obavenus Research Browser sign-ins">Clear browser sign-ins</button><button class="context-action" id="chrome-extension-open" type="button" title="Open the extension folder, then load it at chrome://extensions">Set up Chrome</button><small id="research-status" role="status" aria-live="polite"></small></div></details>
-              <div id="remote-controls" hidden><div class="remote-machine-row"><select id="remote-machine-choice" aria-label="Remote machine"><option value="">Choose a linked machine</option></select><button class="context-action" id="remote-machines-open" type="button">Manage machines</button></div><input id="remote-project-path" autocomplete="off" spellcheck="false" placeholder="/absolute/remote/project/path · required for edits" aria-label="Remote project path" /><div class="remote-task-row"><label><input id="remote-background" type="checkbox" /> Keep running if this app closes</label><label for="remote-run-at">Start at</label><input id="remote-run-at" type="datetime-local" aria-label="Remote task start time" disabled /><button class="context-action" id="remote-jobs-open" type="button">Remote jobs</button></div><small>Background tasks run on the remote machine using its existing CLI sign-in. Scheduled runs start within 30 days.</small></div>
+              <details class="composer-more"><summary>More tools</summary>
+                <div id="schedule-panel" hidden><label for="schedule-provider">Run</label><select id="schedule-provider" aria-label="Scheduled task provider"><option value="configured-ai">Configured AI provider</option><option value="claude">Claude Code CLI</option><option value="codex">Codex CLI</option><option value="gemini">Gemini CLI</option></select><label for="schedule-at">At</label><input id="schedule-at" type="datetime-local" /><button class="context-action" id="schedule-submit" type="button">Queue task</button></div>
+                <details class="research-tools"><summary>Research browser tools</summary><div class="research-toolbar"><input id="research-url" type="url" placeholder="https://…" aria-label="Research page URL" /><button class="context-action" id="research-open" type="button">Open page</button><button class="context-action" id="research-import" type="button">Add page text</button><button class="context-action" id="research-clear-session" type="button" title="Clear Obavenus Research Browser sign-ins">Clear browser sign-ins</button><button class="context-action" id="chrome-extension-open" type="button" title="Open the extension folder, then load it at chrome://extensions">Set up Chrome</button><small id="research-status" role="status" aria-live="polite"></small></div></details>
+                <div id="remote-controls" hidden><div class="remote-machine-row"><select id="remote-machine-choice" aria-label="Remote machine"><option value="">Choose a linked machine</option></select><button class="context-action" id="remote-machines-open" type="button">Manage machines</button></div><input id="remote-project-path" autocomplete="off" spellcheck="false" placeholder="/absolute/remote/project/path · required for edits" aria-label="Remote project path" /><div class="remote-task-row"><label><input id="remote-background" type="checkbox" /> Keep running if this app closes</label><label for="remote-run-at">Start at</label><input id="remote-run-at" type="datetime-local" aria-label="Remote task start time" disabled /><button class="context-action" id="remote-jobs-open" type="button">Remote jobs</button></div><small>Background tasks run on the remote machine using its existing CLI sign-in. Scheduled runs start within 30 days.</small></div>
+              </details>
             </form>
             <div class="suggestions" aria-label="Starter prompts">
               <button type="button" data-prompt="Help me plan a feature. Ask any important clarifying questions, then give me a practical plan with clear milestones.">Plan a feature<br><small>Shape an idea into clear milestones</small></button>
@@ -511,7 +529,8 @@
     </dialog>
     <dialog id="study-dialog" class="study-dialog" aria-labelledby="study-title">
       <section class="study-shell">
-        <div class="study-head"><div><h2 id="study-title">Study space</h2><p>Courses, plans, notes and review cards stay encrypted on this Mac. No Canvas account is connected here.</p></div><button type="button" id="study-close">Close</button></div>
+        <div class="study-head"><div><h2 id="study-title">Study space</h2><p>Courses, assignments, notes and review cards. Canvas credentials are encrypted on this Mac.</p></div><button type="button" id="study-close">Close</button></div>
+        <form class="canvas-connect" id="canvas-connect-form"><input id="canvas-url" type="url" required placeholder="https://your-school.instructure.com" aria-label="Canvas school URL" /><input id="canvas-token" type="password" required autocomplete="off" placeholder="Canvas access token" aria-label="Canvas access token" /><button type="submit" id="canvas-connect-button">Connect Canvas</button><button type="button" id="canvas-sync-button" hidden>Sync courses</button><button type="button" id="canvas-disconnect-button" hidden>Disconnect</button><p>Use your school’s Canvas URL and a personal access token from Canvas Account → Settings → Approved Integrations. The token stays encrypted locally and is never sent to an AI provider.</p><div id="canvas-connect-status" class="canvas-connect-status" role="status" aria-live="polite"></div></form>
         <div class="study-summary" aria-label="Study overview"><div class="study-stat"><strong id="study-due-count">0</strong>Assignments due soon</div><div class="study-stat"><strong id="study-overdue-count">0</strong>Past due</div><div class="study-stat"><strong id="study-review-count">0</strong>Cards ready to review</div></div>
         <p class="study-status" id="study-status" role="status" aria-live="polite"></p>
         <div class="study-grid">

@@ -901,6 +901,7 @@ runMode.addEventListener('change', () => {
   const remoteModeSelected = runMode.value.startsWith('remote-');
   document.querySelector('#remote-controls').hidden = !remoteModeSelected;
   document.querySelector('#schedule-toggle').disabled = remoteModeSelected;
+  if (remoteModeSelected) document.querySelector('.composer-more').open = true;
   if (remoteModeSelected) document.querySelector('#schedule-panel').hidden = true;
   if (remoteModeSelected) refreshRemoteMachineChoices().catch(() => {});
 });
@@ -1245,6 +1246,7 @@ async function renderCustomAgents() {
 }
 refreshCustomAgents().catch(() => {});
 document.querySelector('#schedule-toggle').addEventListener('click', () => {
+  document.querySelector('.composer-more').open = true;
   const panel = document.querySelector('#schedule-panel');
   panel.hidden = !panel.hidden;
   if (!panel.hidden) {
@@ -1801,10 +1803,50 @@ document.querySelector('#study-nav').addEventListener('click', async () => {
   try {
     studyData = await window.obavenus.loadStudySpace();
     renderStudySpace();
+    refreshCanvasStatus().catch(() => {});
     studyDialog.showModal();
   } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
 });
 document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+async function refreshCanvasStatus(message = '') {
+  const status = await window.obavenus.getCanvasStatus();
+  const url = document.querySelector('#canvas-url');
+  const token = document.querySelector('#canvas-token');
+  url.value = status.baseUrl || '';
+  url.disabled = status.connected;
+  token.disabled = status.connected;
+  token.required = !status.connected;
+  document.querySelector('#canvas-connect-button').hidden = status.connected;
+  document.querySelector('#canvas-sync-button').hidden = !status.connected;
+  document.querySelector('#canvas-disconnect-button').hidden = !status.connected;
+  document.querySelector('#canvas-connect-status').textContent = message || (status.connected ? `Canvas connected · ${status.baseUrl}` : 'Canvas is not connected.');
+}
+document.querySelector('#canvas-connect-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const status = document.querySelector('#canvas-connect-status');
+  status.textContent = 'Checking your Canvas connection…';
+  try {
+    const result = await window.obavenus.connectCanvas({ baseUrl: document.querySelector('#canvas-url').value, token: document.querySelector('#canvas-token').value });
+    document.querySelector('#canvas-token').value = '';
+    await refreshCanvasStatus(`Connected to Canvas${result.accountName ? ` as ${result.accountName}` : ''}.`);
+  } catch (error) { status.textContent = error.message || 'Could not connect Canvas.'; }
+});
+document.querySelector('#canvas-sync-button').addEventListener('click', async () => {
+  const status = document.querySelector('#canvas-connect-status');
+  status.textContent = 'Syncing active courses and assignments…';
+  try {
+    const result = await window.obavenus.syncCanvas();
+    studyData = await window.obavenus.loadStudySpace();
+    renderStudySpace();
+    await refreshCanvasStatus(`Canvas sync complete · ${result.courses} new courses, ${result.assignments} new assignments.`);
+  } catch (error) { status.textContent = error.message || 'Could not sync Canvas.'; }
+});
+document.querySelector('#canvas-disconnect-button').addEventListener('click', async () => {
+  try {
+    await window.obavenus.disconnectCanvas();
+    await refreshCanvasStatus('Canvas disconnected. Imported course records remain in your local study space.');
+  } catch (error) { document.querySelector('#canvas-connect-status').textContent = error.message || 'Could not disconnect Canvas.'; }
+});
 document.querySelector('#study-course-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
