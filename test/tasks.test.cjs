@@ -3,7 +3,7 @@ const test = require('node:test');
 const { mkdtemp, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createTaskStore } = require('../electron/tasks.cjs');
+const { createTaskStore, nextRecurringRunAt } = require('../electron/tasks.cjs');
 
 test('scheduled tasks persist locally, validate local provider/time, and cancel queued work', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'obavenus-tasks-'));
@@ -23,5 +23,28 @@ test('scheduled tasks persist locally, validate local provider/time, and cancel 
     assert.equal(await store.cancel(task.id), true);
     assert.equal((await store.list())[0].status, 'cancelled');
     assert.equal(await store.cancel(task.id), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('recurring tasks persist their local schedule and weekday recurrence skips weekends', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'obavenus-recurring-tasks-'));
+  const safeStorage = { isEncryptionAvailable: () => true, encryptString: (value) => Buffer.from(`sealed:${value}`), decryptString: (value) => value.toString().slice(7) };
+  const afterFriday = new Date(2026, 0, 2, 18, 30).getTime();
+  try {
+    const store = createTaskStore({ filePath: path.join(dir, 'tasks.enc'), safeStorage, now: () => afterFriday - 60_000 });
+    const task = await store.schedule({ prompt: 'Check the project inbox', provider: 'configured-ai', executeAt: new Date(2026, 0, 2, 19, 0).getTime(), recurrence: 'weekdays' });
+    assert.equal(task.recurrence, 'weekdays');
+    assert.equal(task.recurrenceHour, 19);
+    assert.equal(task.recurrenceMinute, 0);
+    const reopened = await createTaskStore({ filePath: path.join(dir, 'tasks.enc'), safeStorage }).list();
+    assert.equal(reopened[0].recurrence, 'weekdays');
+    const monday = new Date(nextRecurringRunAt('weekdays', 7, 15, afterFriday));
+    assert.equal(monday.getDay(), 1);
+    assert.equal(monday.getHours(), 7);
+    assert.equal(monday.getMinutes(), 15);
+    const daily = new Date(nextRecurringRunAt('daily', 8, 0, afterFriday));
+    assert.equal(daily.getDay(), 6);
+    assert.throws(() => nextRecurringRunAt('once', 8, 0, afterFriday), /invalid/);
+    await assert.rejects(store.schedule({ prompt: 'Bad repeat', provider: 'codex', executeAt: afterFriday + 120_000, recurrence: 'monthly' }), /repeat schedule/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

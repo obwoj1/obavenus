@@ -19,7 +19,7 @@ const { createRemoteAgent } = require('./remote-agent.cjs');
 const { createRemoteMachineStore } = require('./remote-machines.cjs');
 const { createRemoteJobStore } = require('./remote-jobs.cjs');
 const { SKILLS } = require('./skills.cjs');
-const { createTaskStore } = require('./tasks.cjs');
+const { createTaskStore, nextRecurringRunAt } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
 const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
@@ -319,13 +319,17 @@ async function runScheduledTasks() {
     const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
     for (const task of due) {
       const attempt = (task.attempts || 0) + 1;
-      await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now() });
+      await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now(), error: '' });
       broadcastTask({ id: task.id, status: 'running' });
       try {
         const result = await getScheduledTaskRunner().run(task);
-        const completed = await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt: Date.now() });
+        const completedAt = Date.now();
+        const recurring = ['daily', 'weekdays'].includes(task.recurrence);
+        const completed = recurring
+          ? await store.update(task.id, { status: 'queued', executeAt: nextRecurringRunAt(task.recurrence, task.recurrenceHour, task.recurrenceMinute, completedAt), attempts: 0, result: result.slice(0, 20_000), lastRunAt: completedAt, error: '' })
+          : await store.update(task.id, { status: 'completed', result: result.slice(0, 20_000), completedAt });
         broadcastTask({ id: task.id, status: completed.status, result: completed.result });
-        if (Notification.isSupported()) new Notification({ title: 'Obavenus task completed', body: task.prompt.slice(0, 100) }).show();
+        if (Notification.isSupported()) new Notification({ title: recurring ? 'Obavenus recurring task completed' : 'Obavenus task completed', body: `${task.prompt.slice(0, 74)}${recurring ? ` · next ${new Date(completed.executeAt).toLocaleString()}` : ''}` }).show();
       } catch (error) {
         const message = (error.message || 'Local task failed.').slice(0, 2000);
         if (attempt < 3) {
@@ -333,8 +337,15 @@ async function runScheduledTasks() {
           const retry = await store.update(task.id, { status: 'queued', executeAt: retryAt, error: message, retryAt });
           broadcastTask({ id: task.id, status: retry.status, error: retry.error, executeAt: retry.executeAt, attempts: attempt });
         } else {
-          const failed = await store.update(task.id, { status: 'error', error: message, completedAt: Date.now() });
-          broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
+          if (['daily', 'weekdays'].includes(task.recurrence)) {
+            const failedAt = Date.now();
+            const nextAt = nextRecurringRunAt(task.recurrence, task.recurrenceHour, task.recurrenceMinute, failedAt);
+            const queued = await store.update(task.id, { status: 'queued', executeAt: nextAt, attempts: 0, error: `Previous run failed after three attempts: ${message}`, lastErrorAt: failedAt });
+            broadcastTask({ id: task.id, status: queued.status, error: queued.error, executeAt: queued.executeAt });
+          } else {
+            const failed = await store.update(task.id, { status: 'error', error: message, completedAt: Date.now() });
+            broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
+          }
         }
       }
     }

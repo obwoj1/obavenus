@@ -1378,19 +1378,21 @@ document.querySelector('#schedule-toggle').addEventListener('click', () => {
     const local = new Date(earliest.getTime() - earliest.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
     document.querySelector('#schedule-at').min = local;
     document.querySelector('#schedule-at').value = local;
+    document.querySelector('#schedule-repeat').value = 'once';
   }
 });
 document.querySelector('#schedule-submit').addEventListener('click', async () => {
   const provider = document.querySelector('#schedule-provider').value;
   const prompt = promptInput.value.trim();
   const executeAt = new Date(document.querySelector('#schedule-at').value).getTime();
+  const recurrence = document.querySelector('#schedule-repeat').value;
   if (!prompt) { runStatus.hidden = false; runStatus.textContent = 'Enter the task in the composer first.'; return; }
   try {
-    await window.obavenus.scheduleLocalTask({ provider, prompt, executeAt });
+    await window.obavenus.scheduleLocalTask({ provider, prompt, executeAt, recurrence });
     promptInput.value = '';
     document.querySelector('#schedule-panel').hidden = true;
     runStatus.hidden = false;
-    runStatus.textContent = 'Task queued on this Mac. Open Scheduled tasks to view or cancel it.';
+    runStatus.textContent = recurrence === 'once' ? 'Task queued on this Mac. Open Scheduled tasks to view or cancel it.' : 'Recurring read-only task queued. It repeats at the selected local time until you cancel it.';
   } catch (error) { runStatus.hidden = false; runStatus.textContent = error.message || 'Could not schedule task.'; }
 });
 window.obavenus.onScheduledTaskUpdate((task) => {
@@ -1413,7 +1415,8 @@ async function renderScheduledTasks() {
     const title = document.createElement('strong');
     title.textContent = task.prompt.slice(0, 140);
     const meta = document.createElement('small');
-    meta.textContent = `${task.provider} · ${task.status}${task.attempts ? ` · attempt ${task.attempts}/3` : ''} · ${new Date(task.executeAt).toLocaleString()}`;
+    const repeatLabel = { daily: 'every day', weekdays: 'every weekday' }[task.recurrence];
+    meta.textContent = `${task.provider} · ${task.status}${repeatLabel ? ` · ${repeatLabel}` : ''}${task.attempts ? ` · attempt ${task.attempts}/3` : ''} · ${task.status === 'queued' && repeatLabel ? 'Next run ' : ''}${new Date(task.executeAt).toLocaleString()}`;
     card.append(title, meta);
     if (task.result || task.error) {
       const details = document.createElement('p');
