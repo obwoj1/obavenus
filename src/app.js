@@ -1509,10 +1509,10 @@ async function renderScheduledTasks() {
       details.textContent = task.result || task.error;
       card.append(details);
     }
-    if (task.status === 'queued') {
+    if (task.status === 'queued' || task.status === 'running') {
       const cancel = document.createElement('button');
       cancel.className = 'context-action';
-      cancel.textContent = 'Cancel task';
+      cancel.textContent = task.status === 'running' ? 'Stop task' : 'Cancel task';
       cancel.addEventListener('click', async () => { await window.obavenus.cancelScheduledTask(task.id); await renderScheduledTasks(); });
       card.append(cancel);
     }

@@ -2,13 +2,13 @@ const { appendWorkflowGuidance } = require('./skills.cjs');
 
 function createScheduledTaskRunner({ localAgent, dispatchProviderMessages, runTeamWorkflow, createAgentToolExecutor, getProfile, searchGmail, collectProjectContext, collectProjectInstructions, appendProjectInstructions, readProjectMemory, ocrImage, userDataPath, getAlwaysOnWorkflows }) {
   return {
-    async run(task) {
+    async run(task, { signal } = {}) {
       const alwaysOnWorkflows = await getAlwaysOnWorkflows?.();
       const taskPrompt = appendWorkflowGuidance(task.prompt, alwaysOnWorkflows);
       if (task.provider !== 'configured-ai') {
         const messages = [{ role: 'user', text: taskPrompt }];
         const instructions = task.projectPath && collectProjectInstructions ? await collectProjectInstructions(task.projectPath) : [];
-        return localAgent.run({ provider: task.provider, projectPath: task.projectPath || userDataPath, messages: appendProjectInstructions ? appendProjectInstructions(messages, instructions) : messages });
+        return localAgent.run({ provider: task.provider, projectPath: task.projectPath || userDataPath, messages: appendProjectInstructions ? appendProjectInstructions(messages, instructions) : messages, signal });
       }
       let prompt = taskPrompt;
       let context = [];
@@ -34,6 +34,7 @@ function createScheduledTaskRunner({ localAgent, dispatchProviderMessages, runTe
         executeTool,
         writeAccess: false,
         browserAccess: false,
+        signal,
       });
       return result.text;
     },

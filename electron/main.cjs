@@ -79,6 +79,7 @@ const scheduledLocalAgent = createLocalAgent({ timeoutMs: 2 * 60 * 60 * 1000, ma
 let taskStore;
 let taskTimer;
 let taskRunInFlight = false;
+const taskRunControllers = new Map();
 let skillStore;
 let agentStore;
 let researchBrowser;
@@ -334,10 +335,18 @@ async function runScheduledTasks() {
     const due = (await store.list()).filter((task) => task.status === 'queued' && task.executeAt <= Date.now());
     for (const task of due) {
       const attempt = (task.attempts || 0) + 1;
-      await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now(), error: '' });
-      broadcastTask({ id: task.id, status: 'running' });
+      const controller = new AbortController();
+      taskRunControllers.set(task.id, controller);
       try {
-        const result = await getScheduledTaskRunner().run(task);
+        await store.update(task.id, { status: 'running', attempts: attempt, startedAt: Date.now(), error: '' });
+        broadcastTask({ id: task.id, status: 'running' });
+        if (controller.signal.aborted) {
+          await store.update(task.id, { status: 'cancelled', error: 'Stopped by the user.', completedAt: Date.now() });
+          broadcastTask({ id: task.id, status: 'cancelled' });
+          continue;
+        }
+        const result = await getScheduledTaskRunner().run(task, { signal: controller.signal });
+        if (controller.signal.aborted) throw Object.assign(new Error('Scheduled task stopped.'), { name: 'AbortError' });
         const completedAt = Date.now();
         const recurring = ['daily', 'weekdays'].includes(task.recurrence);
         const completed = recurring
@@ -346,6 +355,12 @@ async function runScheduledTasks() {
         broadcastTask({ id: task.id, status: completed.status, result: completed.result });
         if (Notification.isSupported()) new Notification({ title: recurring ? 'Obavenus recurring task completed' : 'Obavenus task completed', body: `${task.prompt.slice(0, 74)}${recurring ? ` · next ${new Date(completed.executeAt).toLocaleString()}` : ''}` }).show();
       } catch (error) {
+        if (controller.signal.aborted) {
+          const current = (await store.list()).find((item) => item.id === task.id);
+          if (current && current.status !== 'cancelled') await store.update(task.id, { status: 'cancelled', error: 'Stopped by the user.', completedAt: Date.now() });
+          broadcastTask({ id: task.id, status: 'cancelled' });
+          continue;
+        }
         const message = (error.message || 'Local task failed.').slice(0, 2000);
         if (attempt < 3) {
           const retryAt = Date.now() + (attempt === 1 ? 60_000 : 5 * 60_000);
@@ -362,6 +377,8 @@ async function runScheduledTasks() {
             broadcastTask({ id: task.id, status: failed.status, error: failed.error, attempts: attempt });
           }
         }
+      } finally {
+        if (taskRunControllers.get(task.id) === controller) taskRunControllers.delete(task.id);
       }
     }
   } finally {
@@ -684,6 +701,7 @@ ipcMain.handle('tasks:schedule', async (_event, task) => {
   return saved;
 });
 ipcMain.handle('tasks:cancel', async (_event, id) => {
+  taskRunControllers.get(id)?.abort();
   const cancelled = await getTaskStore().cancel(id);
   if (cancelled) { broadcastTask({ id, status: 'cancelled' }); await scheduleNextTask(); }
   return cancelled;

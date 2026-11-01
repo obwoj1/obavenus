@@ -18,6 +18,12 @@ function nextRecurringRunAt(recurrence, hour, minute, after = Date.now()) {
 }
 
 function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
+  let writes = Promise.resolve();
+  function serialize(operation) {
+    const result = writes.then(operation, operation);
+    writes = result.then(() => undefined, () => undefined);
+    return result;
+  }
   async function read() {
     try {
       const value = JSON.parse(await readFile(filePath, 'utf8'));
@@ -36,7 +42,7 @@ function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
     await writeFile(filePath, JSON.stringify({ encrypted }), { mode: 0o600 });
   }
   return {
-    async list() { return (await read()).sort((a, b) => a.executeAt - b.executeAt); },
+    async list() { await writes; return (await read()).sort((a, b) => a.executeAt - b.executeAt); },
     async schedule({ prompt, provider, executeAt, projectPath = '', recurrence = 'once' }) {
       if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 20_000) throw new TypeError('Task prompt must contain 1–20,000 characters.');
       if (!PROVIDERS.has(provider)) throw new TypeError('Choose a local CLI or the configured AI provider.');
@@ -44,28 +50,34 @@ function createTaskStore({ filePath, now = () => Date.now(), safeStorage }) {
       if (!Number.isFinite(at) || at < now() + 60_000 || at > now() + 365 * 24 * 60 * 60 * 1000) throw new RangeError('Choose a time at least one minute from now and within the next year.');
       if (!RECURRENCES.has(recurrence)) throw new TypeError('Choose a supported task repeat schedule.');
       if (typeof projectPath !== 'string' || projectPath.length > 2000) throw new TypeError('Invalid project folder.');
-      const tasks = await read();
-      const scheduledDate = new Date(at);
-      const task = { id: require('node:crypto').randomUUID(), prompt: prompt.trim(), provider, executeAt: at, recurrence, recurrenceHour: scheduledDate.getHours(), recurrenceMinute: scheduledDate.getMinutes(), projectPath, status: 'queued', attempts: 0, createdAt: now(), result: '', error: '' };
-      tasks.push(task);
-      await write(tasks);
-      return { ...task };
+      return serialize(async () => {
+        const tasks = await read();
+        const scheduledDate = new Date(at);
+        const task = { id: require('node:crypto').randomUUID(), prompt: prompt.trim(), provider, executeAt: at, recurrence, recurrenceHour: scheduledDate.getHours(), recurrenceMinute: scheduledDate.getMinutes(), projectPath, status: 'queued', attempts: 0, createdAt: now(), result: '', error: '' };
+        tasks.push(task);
+        await write(tasks);
+        return { ...task };
+      });
     },
     async update(id, changes) {
-      const tasks = await read();
-      const index = tasks.findIndex((task) => task.id === id);
-      if (index < 0) throw new Error('Scheduled task no longer exists.');
-      tasks[index] = { ...tasks[index], ...changes };
-      await write(tasks);
-      return { ...tasks[index] };
+      return serialize(async () => {
+        const tasks = await read();
+        const index = tasks.findIndex((task) => task.id === id);
+        if (index < 0) throw new Error('Scheduled task no longer exists.');
+        tasks[index] = { ...tasks[index], ...changes };
+        await write(tasks);
+        return { ...tasks[index] };
+      });
     },
     async cancel(id) {
-      const tasks = await read();
-      const task = tasks.find((item) => item.id === id);
-      if (!task || task.status !== 'queued') return false;
-      task.status = 'cancelled';
-      await write(tasks);
-      return true;
+      return serialize(async () => {
+        const tasks = await read();
+        const task = tasks.find((item) => item.id === id);
+        if (!task || !['queued', 'running'].includes(task.status)) return false;
+        task.status = 'cancelled';
+        await write(tasks);
+        return true;
+      });
     },
   };
 }

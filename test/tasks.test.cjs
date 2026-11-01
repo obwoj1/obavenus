@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { createTaskStore, nextRecurringRunAt } = require('../electron/tasks.cjs');
 
-test('scheduled tasks persist locally, validate local provider/time, and cancel queued work', async () => {
+test('scheduled tasks persist locally, validate providers, and cancel queued or running work', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'obavenus-tasks-'));
   let now = Date.now();
   try {
@@ -23,6 +23,9 @@ test('scheduled tasks persist locally, validate local provider/time, and cancel 
     assert.equal(await store.cancel(task.id), true);
     assert.equal((await store.list())[0].status, 'cancelled');
     assert.equal(await store.cancel(task.id), false);
+    await store.update(aiTask.id, { status: 'running' });
+    assert.equal(await store.cancel(aiTask.id), true);
+    assert.equal((await store.list()).find((item) => item.id === aiTask.id).status, 'cancelled');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

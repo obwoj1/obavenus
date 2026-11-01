@@ -4,6 +4,7 @@ const { createScheduledTaskRunner } = require('../electron/scheduled-runner.cjs'
 
 test('configured-provider schedules use the read-only team with project, saved memory, and mail tools', async () => {
   const calls = {};
+  const controller = new AbortController();
   const runner = createScheduledTaskRunner({
     localAgent: { run: async () => 'local' },
     dispatchProviderMessages: async () => 'dispatch',
@@ -17,10 +18,11 @@ test('configured-provider schedules use the read-only team with project, saved m
     readProjectMemory: async () => 'Use the current project conventions.',
     userDataPath: '/app-data',
   });
-  const result = await runner.run({ provider: 'configured-ai', prompt: 'Review this project', projectPath: '/project' });
+  const result = await runner.run({ provider: 'configured-ai', prompt: 'Review this project', projectPath: '/project' }, { signal: controller.signal });
   assert.equal(result, 'Finished research.');
   assert.equal(calls.team.writeAccess, false);
   assert.equal(calls.team.browserAccess, false);
+  assert.equal(calls.team.signal, controller.signal);
   assert.match(calls.team.messages[0].text, /current project conventions/);
   assert.match(calls.team.messages[0].text, /Use the project conventions/);
   assert.deepEqual(calls.team.messages[0].context, [{ name: 'notes.md', content: '/project:Review this project' }]);
@@ -30,14 +32,15 @@ test('configured-provider schedules use the read-only team with project, saved m
 
 test('local scheduled jobs stay on the selected CLI and read-only scheduled agent', async () => {
   let options;
+  const controller = new AbortController();
   const runner = createScheduledTaskRunner({
     localAgent: { run: async (value) => { options = value; return 'done'; } },
     userDataPath: '/app-data',
     collectProjectInstructions: async () => [{ name: 'AGENTS.md', content: 'Keep edits scoped.', truncated: false }],
     appendProjectInstructions: (messages, instructions) => messages.map((message) => ({ ...message, text: `${message.text}\n${instructions[0].content}` })),
   });
-  assert.equal(await runner.run({ provider: 'codex', prompt: 'Inspect', projectPath: '/repo' }), 'done');
-  assert.deepEqual(options, { provider: 'codex', projectPath: '/repo', messages: [{ role: 'user', text: 'Inspect\nKeep edits scoped.' }] });
+  assert.equal(await runner.run({ provider: 'codex', prompt: 'Inspect', projectPath: '/repo' }, { signal: controller.signal }), 'done');
+  assert.deepEqual(options, { provider: 'codex', projectPath: '/repo', messages: [{ role: 'user', text: 'Inspect\nKeep edits scoped.' }], signal: controller.signal });
 });
 
 test('always-on workflows are injected when queued scheduled runs execute', async () => {
