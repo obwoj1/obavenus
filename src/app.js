@@ -1719,7 +1719,8 @@ function renderStudySpace() {
     const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal study file'} · imported ${new Date(source.updatedAt).toLocaleDateString()}`;
     info.append(title, meta);
     const ask = document.createElement('button'); ask.type = 'button'; ask.dataset.askSource = source.id; ask.textContent = 'Ask about file';
-    row.append(info, ask); sourceList.append(row);
+    const generate = document.createElement('button'); generate.type = 'button'; generate.dataset.generateSource = source.id; generate.textContent = 'Generate study set';
+    row.append(info, ask, generate); sourceList.append(row);
   }
 
   const assignmentList = document.querySelector('#study-assignment-list');
@@ -1886,6 +1887,15 @@ document.querySelector('#study-search-query').addEventListener('keydown', (event
   if (event.key === 'Enter') { event.preventDefault(); document.querySelector('#study-search-button').click(); }
 });
 document.querySelector('#study-source-list').addEventListener('click', (event) => {
+  const generateId = event.target.closest('[data-generate-source]')?.dataset.generateSource;
+  if (generateId) {
+    window.obavenus.generateStudyAids(generateId).then((result) => {
+      studyData = result.data;
+      renderStudySpace();
+      setStudyStatus(`Created an extractive outline and ${result.generated.cards} flashcards from the imported file. Review the source before relying on generated content.`);
+    }).catch((error) => setStudyStatus(error.message || 'Could not generate study aids.'));
+    return;
+  }
   const id = event.target.closest('[data-ask-source]')?.dataset.askSource; if (!id) return;
   const source = studyData.sources.find((item) => item.id === id); if (!source) return;
   promptInput.value = `Use this local course file as reference. Cite page or slide labels where present.\n\nFile: ${source.name}\n\n${source.content.slice(0, 16_000)}\n\nExplain the key ideas and quiz me on them.`;
