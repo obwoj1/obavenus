@@ -1670,7 +1670,7 @@ const studyDialog = document.querySelector('#study-dialog');
 let studyData = null;
 let studySaveQueue = Promise.resolve();
 let activeStudyQuiz = null;
-const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
+const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [] });
 
 function setStudyStatus(message = '') {
   document.querySelector('#study-status').textContent = message;
@@ -1709,6 +1709,19 @@ function renderStudySpace() {
     const title = document.createElement('strong'); title.textContent = course.name;
     const term = document.createElement('small'); term.textContent = course.term || 'Local course';
     card.append(title, term); courseList.append(card);
+  }
+  const moduleList = document.querySelector('#study-module-list'); moduleList.replaceChildren();
+  for (const module of [...(studyData.modules || [])].sort((a, b) => a.position - b.position)) {
+    const card = document.createElement('article'); card.className = 'study-item';
+    const course = studyData.courses.find((item) => item.id === module.courseId);
+    const title = document.createElement('strong'); title.textContent = module.title;
+    const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Canvas course'} · ${module.items.length} items`;
+    card.append(title, meta);
+    for (const item of [...module.items].sort((a, b) => a.position - b.position)) {
+      const detail = document.createElement('small'); detail.textContent = `${item.locked ? 'Locked · ' : ''}${item.type} · ${item.title}`;
+      card.append(detail);
+    }
+    moduleList.append(card);
   }
 
   const sourceList = document.querySelector('#study-source-list'); sourceList.replaceChildren();
@@ -1971,7 +1984,7 @@ document.querySelector('#canvas-sync-button').addEventListener('click', async ()
     const result = await window.obavenus.syncCanvas();
     studyData = await window.obavenus.loadStudySpace();
     renderStudySpace();
-    await refreshCanvasStatus(`Canvas sync complete · ${result.courses} new courses, ${result.assignments} new assignments.`);
+    await refreshCanvasStatus(`Canvas sync complete · ${result.courses} new courses, ${result.assignments} new assignments, ${result.modules} modules indexed.`);
   } catch (error) { status.textContent = error.message || 'Could not sync Canvas.'; }
 });
 document.querySelector('#canvas-disconnect-button').addEventListener('click', async () => {
