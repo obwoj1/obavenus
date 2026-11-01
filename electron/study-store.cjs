@@ -54,6 +54,7 @@ function normalizeStudyData(value) {
       canvasId: cleanText(assignment.canvasId, 'Canvas assignment ID', 40, { optional: true }),
       title: cleanText(assignment.title, 'Assignment title', 200),
       instructions: cleanText(assignment.instructions, 'Assignment instructions', 20_000, { optional: true }),
+      draft: cleanText(assignment.draft, 'Assignment draft', 50_000, { optional: true }),
       dueAt: assignment.dueAt === null || assignment.dueAt === undefined || assignment.dueAt === '' ? null : Number(assignment.dueAt),
       status: ['todo', 'in-progress', 'done'].includes(assignment.status) ? assignment.status : 'todo',
       remindedDueAt: Number.isFinite(assignment.remindedDueAt) ? assignment.remindedDueAt : null,

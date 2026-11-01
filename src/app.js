@@ -412,6 +412,12 @@ function renderMessages() {
       saveStudy.type = 'button'; saveStudy.className = 'save-study-response'; saveStudy.textContent = 'Save to Study notes';
       saveStudy.addEventListener('click', () => saveAssistantResponseToStudy(current, message, saveStudy));
       rendered.append(saveStudy);
+      if (assignmentDraftTarget?.assignmentId && assignmentDraftTarget.conversationId === current.id) {
+        const saveDraft = document.createElement('button');
+        saveDraft.type = 'button'; saveDraft.className = 'save-study-response'; saveDraft.textContent = 'Save to assignment draft';
+        saveDraft.addEventListener('click', () => saveAssistantResponseToAssignment(message, saveDraft));
+        rendered.append(saveDraft);
+      }
     }
     if (message.agents?.length) {
       const trace = document.createElement('details');
@@ -525,6 +531,23 @@ async function saveAssistantResponseToStudy(current, message, button) {
     button.disabled = false;
     runStatus.hidden = false;
     runStatus.textContent = error.message || 'Could not save this response to Study notes.';
+  }
+}
+
+async function saveAssistantResponseToAssignment(message, button) {
+  const assignment = studyData.assignments.find((item) => item.id === assignmentDraftTarget?.assignmentId);
+  if (!assignment) { runStatus.textContent = 'That assignment is no longer in the local Study space.'; return; }
+  button.disabled = true;
+  try {
+    assignment.draft = message.text.slice(0, 50_000);
+    await persistStudySpace();
+    button.textContent = 'Saved to assignment draft';
+    runStatus.hidden = false;
+    runStatus.textContent = 'Assistant response saved as an editable encrypted assignment draft. Review it before exporting or submitting.';
+  } catch (error) {
+    button.disabled = false;
+    runStatus.hidden = false;
+    runStatus.textContent = error.message || 'Could not save the assignment draft.';
   }
 }
 
@@ -1692,6 +1715,7 @@ async function refreshChatGPTModels() {
 const studyDialog = document.querySelector('#study-dialog');
 let studyData = null;
 let studySaveQueue = Promise.resolve();
+let assignmentDraftTarget = null;
 let activeStudyQuiz = null;
 const studyAssignmentAnalysis = new Map();
 let editingStudyNoteId = '';
@@ -1779,6 +1803,13 @@ function renderStudySpace() {
     if (assignment.instructions) { const instructions = document.createElement('p'); instructions.textContent = assignment.instructions; card.append(instructions); }
     const workspace = document.createElement('button'); workspace.type = 'button'; workspace.dataset.openAssignmentWorkspace = 'true'; workspace.textContent = 'Open assignment workspace';
     card.append(workspace);
+    const draftDetails = document.createElement('details'); draftDetails.className = 'study-assignment-draft';
+    const draftSummary = document.createElement('summary'); draftSummary.textContent = assignment.draft ? 'Editable draft · saved locally' : 'Editable draft workspace';
+    const draftEditor = document.createElement('textarea'); draftEditor.dataset.assignmentDraft = 'true'; draftEditor.maxLength = 50_000; draftEditor.placeholder = 'Write or paste a draft here. Save changes before exporting.'; draftEditor.setAttribute('aria-label', `Editable draft for ${assignment.title}`); draftEditor.value = assignment.draft || '';
+    const draftActions = document.createElement('div'); draftActions.className = 'study-row';
+    const saveDraft = document.createElement('button'); saveDraft.type = 'button'; saveDraft.dataset.saveAssignmentDraft = 'true'; saveDraft.textContent = 'Save draft';
+    const exportDraft = document.createElement('button'); exportDraft.type = 'button'; exportDraft.dataset.exportAssignmentDraft = 'true'; exportDraft.textContent = 'Export Word'; exportDraft.disabled = !assignment.draft;
+    draftActions.append(saveDraft, exportDraft); draftDetails.append(draftSummary, draftEditor, draftActions); card.append(draftDetails);
     const analyze = document.createElement('button'); analyze.type = 'button'; analyze.dataset.analyzeAssignment = 'true'; analyze.textContent = studyAssignmentAnalysis.has(assignment.id) ? 'Refresh requirement check' : 'Check requirements';
     card.append(analyze);
     const analysis = studyAssignmentAnalysis.get(assignment.id);
@@ -2147,7 +2178,7 @@ document.querySelector('#study-assignment-form').addEventListener('submit', asyn
   event.preventDefault();
   try {
     const dueInput = document.querySelector('#study-assignment-due').value;
-    studyData.assignments.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-assignment-course').value, title: document.querySelector('#study-assignment-title').value, instructions: document.querySelector('#study-assignment-instructions').value, dueAt: dueInput ? new Date(dueInput).getTime() : null, status: 'todo', steps: [], createdAt: Date.now() });
+    studyData.assignments.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-assignment-course').value, title: document.querySelector('#study-assignment-title').value, instructions: document.querySelector('#study-assignment-instructions').value, draft: '', dueAt: dueInput ? new Date(dueInput).getTime() : null, status: 'todo', steps: [], createdAt: Date.now() });
     await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Assignment added to your local plan.');
   } catch (error) { setStudyStatus(error.message || 'Could not save this assignment.'); }
 });
@@ -2179,6 +2210,19 @@ document.querySelector('#study-today-plan').addEventListener('change', async (ev
 document.querySelector('#study-assignment-list').addEventListener('click', async (event) => {
   const card = event.target.closest('[data-assignment-id]'); if (!card) return;
   const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId); if (!assignment) return;
+  if (event.target.closest('[data-save-assignment-draft]')) {
+    const editor = card.querySelector('[data-assignment-draft]');
+    assignment.draft = editor.value;
+    try { await persistStudySpace(); setStudyStatus('Assignment draft saved in encrypted local storage.'); }
+    catch (error) { setStudyStatus(error.message || 'Could not save the assignment draft.'); }
+    return;
+  }
+  if (event.target.closest('[data-export-assignment-draft]')) {
+    if (!assignment.draft?.trim()) { setStudyStatus('Save some draft text before exporting.'); return; }
+    try { await window.obavenus.exportStudyNote({ title: assignment.title, body: assignment.draft }); setStudyStatus('Assignment draft exported as a Word document. Review it before submitting it yourself.'); }
+    catch (error) { setStudyStatus(error.message || 'Could not export the assignment draft.'); }
+    return;
+  }
   if (event.target.closest('[data-analyze-assignment]')) {
     try {
       studyAssignmentAnalysis.set(assignment.id, await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt }));
@@ -2197,6 +2241,7 @@ document.querySelector('#study-assignment-list').addEventListener('click', async
   }
   if (event.target.closest('[data-open-assignment-workspace]')) {
     try {
+      assignmentDraftTarget = { assignmentId: assignment.id, conversationId: activeConversationId };
       const query = `${assignment.title} ${assignment.instructions}`.slice(0, 300).trim();
       const matches = query ? await window.obavenus.searchStudySources(query, assignment.courseId) : [];
       const references = matches.slice(0, 6).map((match) => `### ${match.fileName} · ${match.reference}\n${match.excerpt}`).join('\n\n');

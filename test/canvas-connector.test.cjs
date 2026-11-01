@@ -48,6 +48,7 @@ test('Canvas credentials are encrypted, hidden from status, and sync idempotentl
     assert.deepEqual(await connector.sync(study), { courses: 1, assignments: 1, modules: 1, filesImported: 1, filesSkipped: 0, syncedAt: 100 });
     assert.equal(study.data.courses[0].name, 'Biology');
     assert.equal(study.data.assignments[0].instructions, 'Use course data.');
+    study.data.assignments[0].draft = 'Student draft in progress.';
     assert.equal(study.data.modules[0].title, 'Week 1');
     assert.equal(study.data.modules[0].items[2].locked, true);
     assert.equal(study.data.modules[0].items[1].contentId, '73');
@@ -55,6 +56,7 @@ test('Canvas credentials are encrypted, hidden from status, and sync idempotentl
     assert.equal(study.data.sources[0].remoteUpdatedAt, 'revision-1');
     assert.deepEqual(await connector.sync(study), { courses: 0, assignments: 0, modules: 1, filesImported: 0, filesSkipped: 0, syncedAt: 100 });
     assert.equal(study.data.assignments.length, 1);
+    assert.equal(study.data.assignments[0].draft, 'Student draft in progress.');
     assert.ok(requests.every((request) => request.authorization === 'Bearer secret-token'));
     assert.equal(downloads.length, 1);
     assert.equal(downloads[0].headers.Authorization, undefined, 'Canvas bearer token must not be sent to a CDN');

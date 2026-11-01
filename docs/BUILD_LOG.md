@@ -37,6 +37,7 @@
 
 ## Next
 
+- 0.1.65: Assignment drafts are editable and encrypted with Study data, can be saved from an assistant response, export to Word, and survive Canvas refresh.
 - 0.1.64: Study digests can be saved as Gmail drafts; the integration creates drafts only and never sends mail. Gmail OAuth now requests draft permission in addition to message metadata access.
 
 - Added explicit local project-edit modes for the provider CLIs with provider-specific sandbox and permission flags; edits require a selected folder and scheduled work remains read-only.
