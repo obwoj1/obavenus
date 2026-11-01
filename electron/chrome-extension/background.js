@@ -149,6 +149,19 @@ async function inspect(tab, action, argument) {
   return result?.result;
 }
 async function execute(command, args) {
+  if (command === 'listTabs') {
+    const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+    return { tabs: tabs.filter((tab) => tab.id && /^https?:\/\//i.test(tab.url || '')).slice(0, 40).map((tab) => ({ url: tab.url.slice(0, 2_000), title: (tab.title || '').slice(0, 200), active: tab.active === true })) };
+  }
+  if (command === 'selectTab') {
+    const url = new URL(args.url);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Only ordinary http and https tabs can be selected.');
+    const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+    const matches = tabs.filter((tab) => tab.id && tab.url === url.toString());
+    if (matches.length !== 1) throw new Error(matches.length ? 'More than one open tab has that exact URL; close duplicates and retry.' : 'No open tab has that exact URL.');
+    await chrome.tabs.update(matches[0].id, { active: true });
+    return { selected: true, url: matches[0].url, title: (matches[0].title || '').slice(0, 200) };
+  }
   if (command === 'navigate') {
     const url = new URL(args.url);
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Only safe http and https URLs can be opened.');

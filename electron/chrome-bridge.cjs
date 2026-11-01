@@ -57,6 +57,12 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
   return {
     start, status,
     open: async (rawUrl) => { const url = safeUrl(rawUrl); return request('navigate', { url }); },
+    listTabs: async () => request('listTabs'),
+    selectTab: async (rawUrl) => {
+      if (typeof rawUrl !== 'string' || rawUrl.length > 2_000) throw new TypeError('Provide the exact URL of an open Chrome tab.');
+      const url = safeUrl(rawUrl);
+      return request('selectTab', { url });
+    },
     readPage: async () => request('readPage'),
     followLink: async (text) => request('followLink', { text: String(text || '').slice(0, 200) }),
     clickControl: async (text) => {

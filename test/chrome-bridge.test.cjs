@@ -44,7 +44,11 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
         if (message.type === 'paired') { clearTimeout(timer); assert.equal(message.accepted, true); resolve(); }
         else {
           commands.push(message.command);
-          const result = message.command === 'findControl'
+          const result = message.command === 'listTabs'
+            ? { tabs: [{ url: 'https://example.com/form', title: 'Example form', active: true }] }
+            : message.command === 'selectTab'
+              ? { selected: true, url: message.args.url, title: 'Example form' }
+            : message.command === 'findControl'
             ? { found: true, label: 'Continue', pageUrl: 'https://example.com/form' }
             : message.command === 'findField'
               ? { found: true, label: 'Email', fieldType: 'email', pageUrl: 'https://example.com/form' }
@@ -64,6 +68,11 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
       });
     });
     assert.equal((await bridge.status()).connected, true);
+    assert.deepEqual(await bridge.listTabs(), { tabs: [{ url: 'https://example.com/form', title: 'Example form', active: true }] });
+    assert.deepEqual(await bridge.selectTab('https://example.com/form'), { selected: true, url: 'https://example.com/form', title: 'Example form' });
+    await assert.rejects(bridge.selectTab('file:///etc/passwd'));
+    assert.deepEqual(commands.slice(0, 2), ['listTabs', 'selectTab']);
+    commands.length = 0;
     const result = await bridge.clickControl('Continue');
     assert.equal(result.approved, false);
     assert.deepEqual(commands, ['findControl']);

@@ -129,6 +129,8 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.match((await denied('browser_open_page', { url: 'https://example.com' })).error, /disabled/);
   const visited = [];
   const browser = {
+    listTabs: async () => ({ tabs: [{ title: 'Course', url: 'https://school.example/course', active: false }] }),
+    selectTab: async (url) => ({ selected: true, url }),
     open: async (url) => { visited.push(url); return { url }; },
     readPage: async () => ({ url: 'https://example.com', text: 'Public page text' }),
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
@@ -137,11 +139,24 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     setChecked: async (label, checked) => ({ approved: true, label, checked }),
   };
   const allowed = createAgentToolExecutor({ browserAccess: true, browser });
+  assert.deepEqual(await allowed('browser_list_tabs'), { tabs: [{ title: 'Course', url: 'https://school.example/course', active: false }] });
+  assert.deepEqual(await allowed('browser_select_tab', { url: 'https://school.example/course' }), { selected: true, url: 'https://school.example/course' });
+  await assert.rejects(allowed('browser_select_tab', { url: 'x'.repeat(2_001) }), /2,000/);
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
   assert.equal((await allowed('browser_read_page')).text, 'Public page text');
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });
   assert.deepEqual(visited, ['https://example.com']);
+});
+
+test('tab list and tab switching tools are exposed only to paired Chrome runs', async () => {
+  const isolatedTools = [];
+  await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, dispatch: async (_messages, options) => { isolatedTools.push(...options.tools); return 'Done'; } });
+  assert.equal(isolatedTools.some((tool) => tool.name === 'browser_list_tabs' || tool.name === 'browser_select_tab'), false);
+  const pairedTools = [];
+  await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, browserFillAccess: true, dispatch: async (_messages, options) => { pairedTools.push(...options.tools); return 'Done'; } });
+  assert.equal(pairedTools.some((tool) => tool.name === 'browser_list_tabs'), true);
+  assert.equal(pairedTools.some((tool) => tool.name === 'browser_select_tab'), true);
 });
 
 test('browser form entry and choices are exposed only for paired Chrome and enforce bounds', async () => {
