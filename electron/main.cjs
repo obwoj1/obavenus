@@ -872,6 +872,7 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
       if (error.code !== 'ENOENT') throw error;
     }
   }
+  if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling project-file writes.');
   const externalMcp = await getMcpConnector().getAgentTools();
   const executeTool = createAgentToolExecutor({
     projectPath,
