@@ -1,6 +1,7 @@
 # Build log
 
 - 0.1.79: Connected HTTPS MCP services now expose advertised read-only resources and simple URI templates alongside annotated read-only tools. Resource reads are limited to each server's published catalog and bounded to 60 KB; services without resources continue to work. The arm64 DMG is verified, installed, and is the only release DMG retained.
+- Course library: search can be scoped to a course or the full local library; grounded questions prepare an editable prompt with up to six bounded, page/slide-cited excerpts and wait for the student to send it.
 - Deterministic source search: team agents can search literal text in selected-project source/docs and receive bounded file/line excerpts, excluding dependencies, hidden folders, binary files, and symlinks.
 - Read-only Git review: team agents can inspect the selected folder's branch/status, staged and unstaged diffs, and recent commits through fixed bounded commands, without getting shell or repository write tools.
 - Project-guidance workflow: automatically load bounded root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` for provider, team, scheduled, and local CLI runs; content stays project-scoped and labeled as untrusted.

@@ -39,6 +39,7 @@ const { createStudyMcpServer } = require('./study-mcp-server.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
+const { buildGroundedStudyQuestion } = require('./study-question.cjs');
 const { buildPracticeQuiz } = require('./study-generation.cjs');
 const { suggestAssignmentSteps } = require('./assignment-planner.cjs');
 const { analyzeAssignment, buildAssignmentReviewChecklist } = require('./assignment-analysis.cjs');
@@ -578,6 +579,7 @@ ipcMain.handle('study:set-digest-schedule', (_event, settings) => getStudyStore(
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
+ipcMain.handle('study:question-prompt', async (_event, { question, matches }) => buildGroundedStudyQuestion(question, matches));
 ipcMain.handle('study:import-file', async (_event, courseId = '') => {
   const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Study files', extensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json', 'html', 'png', 'jpg', 'jpeg', 'webp'] }] });
   if (result.canceled || !result.filePaths[0]) return { cancelled: true };

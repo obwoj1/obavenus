@@ -1847,7 +1847,7 @@ function refreshStudyCourseChoices() {
   for (const selector of courseSelects) {
     const select = document.querySelector(selector);
     const selected = select.value;
-    select.replaceChildren(makeStudyOption(selector === '#study-assignment-course' ? 'Choose course' : selector === '#study-file-course' ? 'Personal study file' : 'No course'));
+    select.replaceChildren(makeStudyOption(selector === '#study-assignment-course' ? 'Choose course' : selector === '#study-file-course' ? 'All courses and personal files' : 'No course'));
     studyData.courses.forEach((course) => select.add(makeStudyOption(course.name, course.id)));
     if (studyData.courses.some((course) => course.id === selected)) select.value = selected;
   }
@@ -2288,7 +2288,7 @@ document.querySelector('#study-search-button').addEventListener('click', async (
   const status = document.querySelector('#study-material-status');
   const results = document.querySelector('#study-search-results'); results.replaceChildren();
   try {
-    const matches = await window.obavenus.searchStudySources(document.querySelector('#study-search-query').value, '');
+    const matches = await window.obavenus.searchStudySources(document.querySelector('#study-search-query').value, document.querySelector('#study-file-course').value);
     if (!matches.length) { status.textContent = 'No matching passages found in imported study files.'; return; }
     status.textContent = `${matches.length} matching passages · ranked by deterministic term relevance.`;
     for (const match of matches) {
@@ -2300,6 +2300,21 @@ document.querySelector('#study-search-button').addEventListener('click', async (
       row.append(title, meta, excerpt, ask); results.append(row);
     }
   } catch (error) { status.textContent = error.message || 'Could not search study files.'; }
+});
+document.querySelector('#study-ask-button').addEventListener('click', async () => {
+  const status = document.querySelector('#study-material-status');
+  const question = document.querySelector('#study-search-query').value.trim();
+  const courseId = document.querySelector('#study-file-course').value;
+  const results = document.querySelector('#study-search-results'); results.replaceChildren();
+  try {
+    const matches = await window.obavenus.searchStudySources(question, courseId);
+    if (!matches.length) { status.textContent = 'No matching passages found. Try different terms or import course files first.'; return; }
+    promptInput.value = await window.obavenus.buildGroundedStudyQuestion(question, matches);
+    studyDialog.close();
+    runStatus.hidden = false;
+    runStatus.textContent = `Grounded study prompt prepared with ${Math.min(matches.length, 6)} local sources. Review it before sending.`;
+    promptInput.focus();
+  } catch (error) { status.textContent = error.message || 'Could not prepare a question from course files.'; }
 });
 document.querySelector('#study-search-query').addEventListener('keydown', (event) => {
   if (event.key === 'Enter') { event.preventDefault(); document.querySelector('#study-search-button').click(); }
