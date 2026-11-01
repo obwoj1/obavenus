@@ -39,4 +39,4 @@ Obavenus can run provider CLIs over locally saved SSH machines, using existing C
 
 Root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` files are loaded as bounded project guidance for provider, team, scheduled, and local CLI runs. Guidance is labeled as untrusted project data and cannot override the user's request or Obavenus access limits. Files are read only from the selected project and never modified by this feature.
 
-Team agents can inspect Git branch/status and bounded staged or unstaged diffs through fixed read-only Git commands. Results are scoped to the selected folder, disable external diff/text conversion, and omit untracked file contents; agents use the project reader for those files.
+Team agents can inspect Git branch/status, bounded staged or unstaged diffs, and up to twelve recent commit summaries through fixed read-only Git commands. Results are scoped to the selected folder, disable external diff/text conversion, and omit untracked file contents; agents use the project reader for those files.
