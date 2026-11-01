@@ -41,6 +41,7 @@ const { buildPracticeQuiz } = require('./study-generation.cjs');
 const { suggestAssignmentSteps } = require('./assignment-planner.cjs');
 const { analyzeAssignment } = require('./assignment-analysis.cjs');
 const { buildStudyDigest } = require('./study-digest.cjs');
+const { createStudyDigestScheduler } = require('./study-digest-scheduler.cjs');
 const { isWithinQuietHours } = require('./study-reminders.cjs');
 const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
@@ -88,6 +89,7 @@ let canvasConnector;
 let mcpConnector;
 let studyReminderTimer;
 let studyReminderCheck;
+let studyDigestScheduler;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -101,6 +103,21 @@ function getConversationStore() {
 function getStudyStore() {
   if (!studyStore) studyStore = createStudyStore({ filePath: path.join(app.getPath('userData'), 'study-space.enc'), safeStorage });
   return studyStore;
+}
+
+function getStudyDigestScheduler() {
+  if (!studyDigestScheduler) studyDigestScheduler = createStudyDigestScheduler({
+    loadStudy: () => getStudyStore().load(),
+    createDraft: (draft) => getGmailConnector().createDraft(draft),
+    markCreated: (date) => getStudyStore().markDigestDraftCreated(date),
+  });
+  return studyDigestScheduler;
+}
+
+async function checkStudyDigestSchedule() {
+  const result = await getStudyDigestScheduler().check();
+  if (result.error) console.warn('Scheduled Study digest draft could not be created:', result.error.message);
+  return result;
 }
 
 async function checkStudyReminders() {
@@ -447,6 +464,7 @@ ipcMain.handle('study:set-reminders', async (_event, enabled) => {
   return { enabled: data.remindersEnabled, remindersSent, supported: Notification.isSupported() };
 });
 ipcMain.handle('study:set-quiet-hours', (_event, settings) => getStudyStore().setQuietHours(settings));
+ipcMain.handle('study:set-digest-schedule', (_event, settings) => getStudyStore().setDigestSchedule(settings));
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
@@ -809,7 +827,11 @@ app.whenReady().then(async () => {
   scheduleNextTask().catch(() => {});
   createWindow();
   checkStudyReminders().catch((error) => console.warn('Study reminders are unavailable:', error.message));
-  studyReminderTimer = setInterval(() => checkStudyReminders().catch((error) => console.warn('Study reminders are unavailable:', error.message)), 15 * 60 * 1000);
+  checkStudyDigestSchedule().catch((error) => console.warn('Scheduled Study digest is unavailable:', error.message));
+  studyReminderTimer = setInterval(() => {
+    checkStudyReminders().catch((error) => console.warn('Study reminders are unavailable:', error.message));
+    checkStudyDigestSchedule().catch((error) => console.warn('Scheduled Study digest is unavailable:', error.message));
+  }, 15 * 60 * 1000);
   studyReminderTimer.unref?.();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

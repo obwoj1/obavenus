@@ -92,6 +92,14 @@ test('due reminder preference and sent timestamp persist only in encrypted study
   const withQuietHours = await store.setQuietHours({ enabled: true, start: '21:30', end: '07:45' });
   assert.equal(withQuietHours.quietHoursEnabled, true);
   assert.equal(withQuietHours.quietStart, '21:30');
+  const digest = await store.setDigestSchedule({ enabled: true, time: '09:20', recipient: 'student@example.com' });
+  assert.equal(digest.digestScheduleEnabled, true);
+  assert.equal(digest.digestScheduleTime, '09:20');
+  assert.equal((await readFile(filePath, 'utf8')).includes('student@example.com'), false);
+  const sentDigest = await store.markDigestDraftCreated('2026-11-01');
+  assert.equal(sentDigest.digestLastCreatedDate, '2026-11-01');
+  await assert.rejects(store.setDigestSchedule({ enabled: true, time: '9am', recipient: 'student@example.com' }), /valid daily digest time/);
+  await assert.rejects(store.setDigestSchedule({ enabled: true, time: '09:20', recipient: 'bad-address' }), /valid email/);
   await assert.rejects(store.setQuietHours({ enabled: true, start: '07:00', end: '07:00' }), /different quiet-hour/);
   assert.equal((await readFile(filePath, 'utf8')).includes('Lab report'), false);
   await assert.rejects(store.setRemindersEnabled('yes'), /must be enabled or disabled/);

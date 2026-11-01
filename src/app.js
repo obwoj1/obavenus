@@ -1384,7 +1384,7 @@ document.querySelector('#gmail-search').addEventListener('keydown', (event) => {
 async function updateGmailStatus() {
   const status = await window.obavenus.getGmailStatus();
   document.querySelector('#gmail-status').textContent = status.connected
-    ? `Connected${status.email ? ` as ${status.email}` : ''} · message metadata and draft creation`
+    ? `Connected${status.email ? ` as ${status.email}` : ''} · message metadata${status.canCreateDraft ? ' and draft creation' : ' · reconnect to approve draft creation'}`
     : 'Not connected. Create a Desktop app OAuth client and enable Gmail API in Google Cloud.';
   document.querySelector('#gmail-disconnect').hidden = !status.connected;
   document.querySelector('#gmail-inbox').hidden = !status.connected;
@@ -1893,6 +1893,12 @@ function renderStudySpace() {
   document.querySelector('#study-quiet-enabled').checked = studyData.quietHoursEnabled === true;
   document.querySelector('#study-quiet-start').value = studyData.quietStart || '22:00';
   document.querySelector('#study-quiet-end').value = studyData.quietEnd || '08:00';
+  document.querySelector('#study-digest-schedule-enabled').checked = studyData.digestScheduleEnabled === true;
+  document.querySelector('#study-digest-schedule-time').value = studyData.digestScheduleTime || '08:00';
+  document.querySelector('#study-digest-schedule-recipient').value = studyData.digestRecipient || '';
+  document.querySelector('#study-digest-schedule-status').textContent = studyData.digestScheduleEnabled
+    ? `On · daily at ${studyData.digestScheduleTime} · last draft ${studyData.digestLastCreatedDate || 'not created yet'}`
+    : 'Off';
   renderStudyQuiz();
   renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
 }
@@ -2037,6 +2043,26 @@ document.querySelector('#study-quiet-form').addEventListener('submit', async (ev
     studyData.quietEnd = saved.quietEnd;
     setStudyStatus(saved.quietHoursEnabled ? `Quiet hours saved · ${saved.quietStart} to ${saved.quietEnd}. Deadlines close to the window are deferred until quiet hours end.` : 'Quiet hours are disabled.');
   } catch (error) { setStudyStatus(error.message || 'Could not save quiet hours.'); }
+});
+document.querySelector('#study-digest-schedule-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const settings = {
+    enabled: document.querySelector('#study-digest-schedule-enabled').checked,
+    time: document.querySelector('#study-digest-schedule-time').value,
+    recipient: document.querySelector('#study-digest-schedule-recipient').value.trim(),
+  };
+  const status = document.querySelector('#study-digest-schedule-status');
+  try {
+    if (settings.enabled) {
+      const gmail = await window.obavenus.getGmailStatus();
+      if (!gmail.connected || !gmail.canCreateDraft) throw new Error('Reconnect Gmail and approve draft access before enabling the schedule.');
+    }
+    const saved = await window.obavenus.setStudyDigestSchedule(settings);
+    Object.assign(studyData, saved);
+    status.textContent = saved.digestScheduleEnabled
+      ? `On · daily at ${saved.digestScheduleTime} while Obavenus is open · drafts only`
+      : 'Daily digest draft schedule is off.';
+  } catch (error) { status.textContent = error.message || 'Could not save the digest schedule.'; }
 });
 async function refreshMcpServers(message = '') {
   const list = document.querySelector('#study-mcp-list'); list.replaceChildren();

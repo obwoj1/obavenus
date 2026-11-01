@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { createGmailConnector, createRawMessage, SCOPE } = require('../electron/gmail.cjs');
 
-test('Gmail connector is read-only and lists only message metadata and snippets', async () => {
+test('Gmail search lists only message metadata and snippets', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-gmail-'));
   const filePath = path.join(root, 'gmail.json');
   const safeStorage = {
@@ -35,7 +35,7 @@ test('Gmail connector is read-only and lists only message metadata and snippets'
   });
 
   try {
-    assert.deepEqual(await connector.status(), { connected: true, email: 'user@example.com' });
+    assert.deepEqual(await connector.status(), { connected: true, canCreateDraft: false, email: 'user@example.com' });
     assert.equal(SCOPE, 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose');
     const messages = await connector.search('from:sender@example.com');
     assert.deepEqual(messages, [{ id: 'message-id', from: 'sender@example.com', subject: 'Hello', date: 'Today', snippet: 'Preview only' }]);
@@ -75,6 +75,7 @@ test('Gmail OAuth requests inbox read and draft creation and validates its loopb
     assert.equal(tokenBody.get('code'), 'test-auth-code');
     assert.ok(tokenBody.get('code_verifier'));
     assert.equal((await connector.status()).email, 'test@example.com');
+    assert.equal((await connector.status()).canCreateDraft, true);
     assert.deepEqual(await connector.getOAuthClientCredentials(), { clientId: 'test.apps.googleusercontent.com', clientSecret: 'client-secret' });
   } finally { await rm(root, { recursive: true, force: true }); }
 });

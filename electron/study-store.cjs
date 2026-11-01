@@ -5,7 +5,7 @@ const { scheduleReview } = require('./study-review.cjs');
 const { generateStudyAids } = require('./study-generation.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
-const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [], remindersEnabled: false, quietHoursEnabled: false, quietStart: '22:00', quietEnd: '08:00' });
+const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [], remindersEnabled: false, quietHoursEnabled: false, quietStart: '22:00', quietEnd: '08:00', digestScheduleEnabled: false, digestScheduleTime: '08:00', digestRecipient: '', digestLastCreatedDate: '' });
 
 function cleanText(value, label, max, { optional = false } = {}) {
   if (optional && (value === undefined || value === null)) return '';
@@ -128,7 +128,11 @@ function normalizeStudyData(value) {
   if (normalizedSources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) > 4 * 1024 * 1024) throw new RangeError('Imported study text is over its 4 MB local limit.');
   const quietStart = typeof value.quietStart === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.quietStart) ? value.quietStart : '22:00';
   const quietEnd = typeof value.quietEnd === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.quietEnd) ? value.quietEnd : '08:00';
-  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules, remindersEnabled: value.remindersEnabled === true, quietHoursEnabled: value.quietHoursEnabled === true, quietStart, quietEnd };
+  const digestScheduleTime = typeof value.digestScheduleTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.digestScheduleTime) ? value.digestScheduleTime : '08:00';
+  const digestRecipient = cleanText(value.digestRecipient, 'Digest recipient', 254, { optional: true });
+  if (digestRecipient && !/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(digestRecipient)) throw new TypeError('Enter one valid email address for the scheduled digest.');
+  const digestLastCreatedDate = typeof value.digestLastCreatedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.digestLastCreatedDate) ? value.digestLastCreatedDate : '';
+  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules, remindersEnabled: value.remindersEnabled === true, quietHoursEnabled: value.quietHoursEnabled === true, quietStart, quietEnd, digestScheduleEnabled: value.digestScheduleEnabled === true, digestScheduleTime, digestRecipient, digestLastCreatedDate };
 }
 
 function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
@@ -215,6 +219,26 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
         data.quietHoursEnabled = enabled;
         data.quietStart = start;
         data.quietEnd = end;
+        return write(data);
+      });
+    },
+    async setDigestSchedule({ enabled, time, recipient }) {
+      if (typeof enabled !== 'boolean' || typeof time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new TypeError('Set a valid daily digest time.');
+      const address = cleanText(recipient, 'Digest recipient', 254, { optional: true });
+      if (enabled && !/^[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+$/.test(address)) throw new TypeError('Enter one valid email address before enabling the scheduled digest.');
+      return serialize(async () => {
+        const data = await read();
+        data.digestScheduleEnabled = enabled;
+        data.digestScheduleTime = time;
+        data.digestRecipient = address;
+        return write(data);
+      });
+    },
+    async markDigestDraftCreated(date) {
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new TypeError('Digest date is invalid.');
+      return serialize(async () => {
+        const data = await read();
+        data.digestLastCreatedDate = date;
         return write(data);
       });
     },

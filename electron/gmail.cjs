@@ -104,7 +104,7 @@ function createGmailConnector({ filePath, safeStorage, fetchImpl = globalThis.fe
       const tokens = await tokenResponse.json();
       if (!tokenResponse.ok || !tokens.refresh_token) throw new Error(tokens.error_description || 'Google did not return a refresh token. Reconnect and grant access.');
       const previous = await readSaved();
-      await saveSaved({ clientId, encryptedClientSecret: await encrypt(clientSecret || ''), encryptedRefreshToken: await encrypt(tokens.refresh_token), encryptedAccessToken: await encrypt(tokens.access_token), expiresAt: Date.now() + tokens.expires_in * 1000, email: previous.email || '' });
+      await saveSaved({ clientId, scope: tokens.scope || SCOPE, encryptedClientSecret: await encrypt(clientSecret || ''), encryptedRefreshToken: await encrypt(tokens.refresh_token), encryptedAccessToken: await encrypt(tokens.access_token), expiresAt: Date.now() + tokens.expires_in * 1000, email: previous.email || '' });
       const profile = await fetchImpl('https://gmail.googleapis.com/gmail/v1/users/me/profile', { headers: { Authorization: `Bearer ${tokens.access_token}` } });
       const profileBody = await profile.json();
       if (profile.ok && profileBody.emailAddress) await saveSaved({ ...(await readSaved()), email: profileBody.emailAddress });
@@ -132,7 +132,11 @@ function createGmailConnector({ filePath, safeStorage, fetchImpl = globalThis.fe
   }
 
   return {
-    async status() { const saved = await readSaved(); return { connected: Boolean(saved.encryptedRefreshToken), email: saved.email || '' }; },
+    async status() {
+      const saved = await readSaved();
+      const scope = saved.scope || 'https://www.googleapis.com/auth/gmail.readonly';
+      return { connected: Boolean(saved.encryptedRefreshToken), canCreateDraft: scope.includes('https://www.googleapis.com/auth/gmail.compose'), email: saved.email || '' };
+    },
     async getOAuthClientCredentials() {
       const saved = await readSaved();
       const clientSecret = await decrypt(saved.encryptedClientSecret);
