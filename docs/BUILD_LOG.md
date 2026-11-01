@@ -1,5 +1,6 @@
 # Build log
 
+- Project-guidance workflow: automatically load bounded root `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `.github/copilot-instructions.md` for provider, team, scheduled, and local CLI runs; content stays project-scoped and labeled as untrusted.
 - Composer layout: replaced the fragile wrapping action row with a responsive grid. Keyboard guidance now gets a full-width row, export/schedule/send stay aligned at desktop and compact widths, and phone layouts stack the send action cleanly.
 
 ## 2026-10-23 — Project start
