@@ -1908,6 +1908,23 @@ document.querySelector('#study-reminders-enabled').addEventListener('change', as
     setStudyStatus(error.message || 'Could not update due-date reminders.');
   }
 });
+document.querySelector('#study-digest-generate').addEventListener('click', async () => {
+  const status = document.querySelector('#study-digest-status');
+  status.textContent = 'Preparing digest from encrypted local study data…';
+  try {
+    const digest = await window.obavenus.buildStudyDigest();
+    const preview = document.querySelector('#study-digest-preview');
+    preview.value = `Subject: ${digest.subject}\n\n${digest.body}`;
+    preview.hidden = false;
+    document.querySelector('#study-digest-copy').hidden = false;
+    status.textContent = 'Digest ready to review and copy.';
+  } catch (error) { status.textContent = error.message || 'Could not prepare a study digest.'; }
+});
+document.querySelector('#study-digest-copy').addEventListener('click', async () => {
+  const status = document.querySelector('#study-digest-status');
+  try { await navigator.clipboard.writeText(document.querySelector('#study-digest-preview').value); status.textContent = 'Digest copied. Paste it into your email app and review before sending.'; }
+  catch { status.textContent = 'Select the digest text and copy it into your email app.'; }
+});
 async function refreshMcpServers(message = '') {
   const list = document.querySelector('#study-mcp-list'); list.replaceChildren();
   const servers = await window.obavenus.listMcpServers();
