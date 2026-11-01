@@ -691,6 +691,9 @@ ipcMain.handle('local-agent:status', () => localAgent.status());
 ipcMain.handle('local-agent:claude-auth-status', () => localAgent.claudeAuthStatus());
 ipcMain.handle('local-agent:claude-sign-in', () => localAgent.signInClaude());
 ipcMain.handle('local-agent:claude-sign-out', () => localAgent.signOutClaude());
+ipcMain.handle('local-agent:grok-auth-status', () => localAgent.grokAuthStatus());
+ipcMain.handle('local-agent:grok-sign-in', () => localAgent.signInGrok());
+ipcMain.handle('local-agent:grok-sign-out', () => localAgent.signOutGrok());
 ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAccess = false, runId, model = '' }) => withRunSignal(runId, async (signal) => {
     let projectPath;
     try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }

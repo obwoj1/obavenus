@@ -29,9 +29,11 @@ const providerFormStatus = document.querySelector('#provider-form-status');
 const removeProviderKeyButton = document.querySelector('#remove-provider-key');
 const authMethodSelect = document.querySelector('#openai-auth-method');
 const claudeAuthSelect = document.querySelector('#claude-auth-method');
+const xaiAuthSelect = document.querySelector('#xai-auth-method');
 const geminiAuthSelect = document.querySelector('#gemini-auth-method');
 const chatgptConnection = document.querySelector('#chatgpt-connection');
 const claudeConnection = document.querySelector('#claude-connection');
+const xaiConnection = document.querySelector('#xai-connection');
 const geminiConnection = document.querySelector('#gemini-connection');
 const chatgptState = document.querySelector('#chatgpt-session-state');
 const chatgptSignInButton = document.querySelector('#chatgpt-sign-in');
@@ -753,9 +755,12 @@ form.addEventListener('submit', async (event) => {
     const ollamaStatus = settings.provider === 'ollama' ? await window.obavenus.getOllamaStatus() : null;
     const claudeCodeMode = settings.provider === 'anthropic' && settings.claudeAuthMethod === 'claude-code';
     const claudeStatus = claudeCodeMode ? await window.obavenus.getClaudeAccountStatus() : null;
+    const grokCliMode = settings.provider === 'xai' && settings.xaiAuthMethod === 'grok-cli';
+    const grokStatus = grokCliMode ? await window.obavenus.getGrokAccountStatus() : null;
     const accountConnectedMode = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
       || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
       || claudeCodeMode && claudeStatus?.loggedIn
+      || grokCliMode && grokStatus?.loggedIn
       || settings.provider === 'ollama' && ollamaStatus?.connected;
     if (!settings.configured && !accountConnectedMode) {
       submittedMessage.localOnly = true;
@@ -765,6 +770,7 @@ form.addEventListener('submit', async (event) => {
       pendingReply.status = 'error';
     } else {
       if (claudeCodeMode && teamMode) throw new Error('Claude account mode runs through the signed-in Claude Code CLI for one-response chats. Choose One response, or connect an Anthropic Console API key to use team mode.');
+      if (grokCliMode && teamMode) throw new Error('Grok account mode runs through the signed-in Grok Build CLI for one-response chats. Choose One response, or connect an xAI API key to use team mode.');
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
@@ -776,6 +782,8 @@ form.addEventListener('submit', async (event) => {
         pendingReply.changes = result.changes || [];
       } else if (claudeCodeMode) {
         pendingReply.text = await window.obavenus.runLocalAgent('claude', messages, false, activeRunId, settings.model);
+      } else if (grokCliMode) {
+        pendingReply.text = await window.obavenus.runLocalAgent('grok', messages, false, activeRunId, settings.model);
       } else {
         pendingReply.text = await window.obavenus.sendChat(messages, activeRunId);
       }
@@ -1556,8 +1564,11 @@ async function updateProviderBadge() {
     const claudeConnected = settings.provider === 'anthropic' && settings.claudeAuthMethod === 'claude-code'
       ? await window.obavenus.getClaudeAccountStatus().then((status) => status.loggedIn).catch(() => false)
       : false;
+    const grokConnected = settings.provider === 'xai' && settings.xaiAuthMethod === 'grok-cli'
+      ? await window.obavenus.getGrokAccountStatus().then((status) => status.loggedIn).catch(() => false)
+      : false;
     const displayName = settings.provider === 'gemini' ? 'Gemini' : providerName;
-    badge.textContent = (settings.configured || chatgptConnected || geminiConnected || ollamaConnected || claudeConnected)
+    badge.textContent = (settings.configured || chatgptConnected || geminiConnected || ollamaConnected || claudeConnected || grokConnected)
       ? `${displayName} · ${settings.model} connected · Settings`
       : `${displayName} not connected · Settings`;
     return settings;
@@ -1575,6 +1586,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     providerSelect.value = settings.provider || 'openai';
     authMethodSelect.value = settings.openaiAuthMethod || 'api-key';
     claudeAuthSelect.value = settings.claudeAuthMethod || 'api-key';
+    xaiAuthSelect.value = settings.xaiAuthMethod || 'api-key';
     geminiAuthSelect.value = settings.geminiAuthMethod || 'api-key';
     providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
@@ -1587,6 +1599,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     removeProviderKeyButton.hidden = !settings.configured;
     await updateChatGPTControls();
     await updateClaudeControls();
+    await updateGrokControls();
     await updateGeminiControls();
     if (providerSelect.value === 'ollama') await updateOllamaStatus();
   } catch (error) {
@@ -1605,6 +1618,7 @@ providerForm.addEventListener('submit', async (event) => {
       provider: providerSelect.value,
       openaiAuthMethod: authMethodSelect.value,
       claudeAuthMethod: claudeAuthSelect.value,
+      xaiAuthMethod: xaiAuthSelect.value,
       geminiAuthMethod: geminiAuthSelect.value,
       geminiProjectId: document.querySelector('#gemini-project-id').value.trim(),
       model: providerModelInput.value,
@@ -1647,6 +1661,7 @@ providerSelect.addEventListener('change', async () => {
   removeProviderKeyButton.hidden = !connected;
   await updateChatGPTControls();
   await updateClaudeControls();
+  await updateGrokControls();
   await updateGeminiControls();
   if (providerSelect.value === 'ollama') await updateOllamaStatus();
 });
@@ -1668,6 +1683,7 @@ async function updateOllamaStatus() {
 
 authMethodSelect.addEventListener('change', () => { updateChatGPTControls(); updateProviderDisclosure(); });
 claudeAuthSelect.addEventListener('change', () => { updateClaudeControls(); updateProviderDisclosure(); });
+xaiAuthSelect.addEventListener('change', () => { updateGrokControls(); updateProviderDisclosure(); });
 geminiAuthSelect.addEventListener('change', () => { updateGeminiControls(); updateProviderDisclosure(); });
 
 document.querySelector('#claude-sign-in').addEventListener('click', async () => {
@@ -1697,6 +1713,35 @@ document.querySelector('#claude-disconnect').addEventListener('click', async () 
     await updateProviderBadge();
   } catch (error) { document.querySelector('#claude-session-state').textContent = error.message || 'Could not sign out of Claude Code.'; }
   finally { button.disabled = false; await updateClaudeControls(); }
+});
+
+document.querySelector('#xai-sign-in').addEventListener('click', async () => {
+  const button = document.querySelector('#xai-sign-in');
+  const state = document.querySelector('#xai-session-state');
+  button.disabled = true;
+  state.textContent = 'Starting the official Grok Build browser sign-in…';
+  try {
+    const status = await window.obavenus.signInGrokAccount();
+    if (!status.loggedIn) throw new Error('Grok sign-in finished, but the CLI could not verify account access. Check that the browser flow completed, then retry.');
+    providerSelect.value = 'xai';
+    xaiAuthSelect.value = 'grok-cli';
+    updateProviderFormLabels();
+    await window.obavenus.saveProviderSettings({ provider: 'xai', xaiAuthMethod: 'grok-cli', model: providerModelInput.value || 'grok-4.7', apiKey: '' });
+    state.textContent = 'Grok account connected through the Grok Build CLI on this Mac.';
+    await updateProviderBadge();
+  } catch (error) { state.textContent = error.message || 'Grok sign-in did not complete.'; }
+  finally { button.disabled = false; await updateGrokControls(); }
+});
+
+document.querySelector('#xai-disconnect').addEventListener('click', async () => {
+  const button = document.querySelector('#xai-disconnect');
+  button.disabled = true;
+  try {
+    await window.obavenus.signOutGrokAccount();
+    document.querySelector('#xai-session-state').textContent = 'Signed out of Grok Build on this Mac.';
+    await updateProviderBadge();
+  } catch (error) { document.querySelector('#xai-session-state').textContent = error.message || 'Could not sign out of Grok Build.'; }
+  finally { button.disabled = false; await updateGrokControls(); }
 });
 
 geminiSignInButton.addEventListener('click', async () => {
@@ -1790,10 +1835,13 @@ function updateProviderFormLabels() {
   authMethodSelect.hidden = providerSelect.value !== 'openai';
   document.querySelector('#claude-auth-label').hidden = providerSelect.value !== 'anthropic';
   claudeAuthSelect.hidden = providerSelect.value !== 'anthropic';
+  document.querySelector('#xai-auth-label').hidden = providerSelect.value !== 'xai';
+  xaiAuthSelect.hidden = providerSelect.value !== 'xai';
   document.querySelector('#gemini-auth-label').hidden = providerSelect.value !== 'gemini';
   geminiAuthSelect.hidden = providerSelect.value !== 'gemini';
   const accountMode = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt'
     || providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code'
+    || providerSelect.value === 'xai' && xaiAuthSelect.value === 'grok-cli'
     || providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account'
     || providerSelect.value === 'ollama';
   document.querySelector('#ollama-settings').hidden = providerSelect.value !== 'ollama';
@@ -1803,13 +1851,15 @@ function updateProviderFormLabels() {
   removeProviderKeyButton.hidden = accountMode;
   chatgptConnection.hidden = providerSelect.value !== 'openai' || authMethodSelect.value !== 'chatgpt';
   claudeConnection.hidden = providerSelect.value !== 'anthropic' || claudeAuthSelect.value !== 'claude-code';
+  xaiConnection.hidden = providerSelect.value !== 'xai' || xaiAuthSelect.value !== 'grok-cli';
   geminiConnection.hidden = providerSelect.value !== 'gemini' || geminiAuthSelect.value !== 'google-account';
   const note = document.querySelector('#provider-auth-note');
   const claudeCodeMode = providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code';
-  note.hidden = !['anthropic', 'xai', 'ollama'].includes(providerSelect.value) || claudeCodeMode;
+  const grokCliMode = providerSelect.value === 'xai' && xaiAuthSelect.value === 'grok-cli';
+  note.hidden = !['anthropic', 'xai', 'ollama'].includes(providerSelect.value) || claudeCodeMode || grokCliMode;
   note.textContent = providerSelect.value === 'anthropic' && !claudeCodeMode
     ? 'Claude Pro/Max sign-in is for Anthropic apps such as Claude Code. For third-party apps, Anthropic directs developers to use a Console API key, billed separately from your subscription.'
-    : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.'
+    : providerSelect.value === 'xai' ? 'xAI API-key requests use Console API billing. Choose Grok account sign-in to use the official Grok Build CLI.'
       : providerSelect.value === 'ollama' ? 'Ollama runs models locally. It must be running on this Mac, and the selected model must already be installed.' : '';
   const defaults = { openai: 'gpt-5.5', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-3.8-flash', xai: 'grok-4.7', ollama: 'qwen3' };
   if (providerModelInput.dataset.provider !== providerSelect.value || !providerModelInput.value) providerModelInput.value = defaults[providerSelect.value];
@@ -1820,6 +1870,7 @@ async function updateProviderDisclosure() {
   const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI', ollama: 'local Ollama' }[providerSelect.value] || 'selected provider';
   const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
   const isClaudeAccount = providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code';
+  const isGrokAccount = providerSelect.value === 'xai' && xaiAuthSelect.value === 'grok-cli';
   const isGeminiOAuth = providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
   const isOllama = providerSelect.value === 'ollama';
   const profile = await window.obavenus.getProfile().catch(() => ({ shareWithAI: false }));
@@ -1832,7 +1883,9 @@ async function updateProviderDisclosure() {
       ? `When you press Send, this chat and attached files go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.${profileNote}`
       : isClaudeAccount
         ? `When you press Send, chat text and attached files go to Anthropic through the official Claude Code CLI signed in on this Mac. Claude Code applies your account's plan and usage terms.${profileNote}`
-    : `When you press Send, this chat and attached files go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.${profileNote}`;
+        : isGrokAccount
+          ? `When you press Send, chat text and attached files go to xAI through the official Grok Build CLI signed in on this Mac. Grok applies the account usage and data settings.${profileNote}`
+          : `When you press Send, this chat and attached files go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.${profileNote}`;
 }
 
 async function updateChatGPTControls() {
@@ -1874,6 +1927,21 @@ async function updateClaudeControls() {
     document.querySelector('#claude-sign-in').textContent = status.loggedIn ? 'Reconnect Claude' : 'Continue with Claude';
     document.querySelector('#claude-disconnect').hidden = !status.loggedIn;
   } catch (error) { state.textContent = error.message || 'Claude account status unavailable.'; }
+}
+
+async function updateGrokControls() {
+  updateProviderFormLabels();
+  if (providerSelect.value !== 'xai' || xaiAuthSelect.value !== 'grok-cli') return;
+  const state = document.querySelector('#xai-session-state');
+  try {
+    const status = await window.obavenus.getGrokAccountStatus();
+    state.textContent = !status.installed ? 'Grok Build CLI is not installed. Install the official CLI to connect your account.'
+      : status.compatible === false ? status.error || 'Install the official Grok Build CLI to connect your account.'
+      : status.loggedIn ? 'Connected through Grok Build on this Mac.'
+        : 'Grok Build is installed, but account access could not be verified. Sign in or reconnect.';
+    document.querySelector('#xai-sign-in').textContent = status.loggedIn ? 'Reconnect Grok' : 'Continue with Grok';
+    document.querySelector('#xai-disconnect').hidden = !status.loggedIn;
+  } catch (error) { state.textContent = error.message || 'Grok account status unavailable.'; }
 }
 
 async function refreshChatGPTModels() {

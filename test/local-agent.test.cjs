@@ -72,6 +72,39 @@ test('Claude account controls report an absent CLI without attempting auth comma
   assert.equal(spawned, false);
 });
 
+test('Grok account sign-in invokes the official browser flow and checks models without returning credentials', async () => {
+  const calls = [];
+  const spawnImpl = (command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough(); child.kill = () => {};
+    process.nextTick(() => { child.stdout.end(args[0] === '--help' ? 'Commands: login logout models' : 'grok-4.7'); child.stderr.end(); child.emit('close', 0); });
+    return child;
+  };
+  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl });
+  assert.deepEqual(await agent.signInGrok(), { installed: true, compatible: true, loggedIn: true });
+  assert.deepEqual(calls.map(({ args }) => args), [['--help'], ['models'], ['login'], ['--help'], ['models']]);
+  assert.ok(calls.every(({ options }) => options.env.XAI_API_KEY === undefined && options.shell === false));
+});
+
+test('Grok account sign-in refuses an unrelated command named grok', async () => {
+  const calls = [];
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: () => '/fake/grok', spawnImpl: fakeSpawn(calls, { output: 'Usage: grok [options]' }) });
+  assert.deepEqual(await agent.grokAuthStatus(), { installed: true, compatible: false, loggedIn: false, error: 'A different grok command is installed. Install the official Grok Build CLI from x.ai to use account sign-in.' });
+  await assert.rejects(agent.signInGrok(), /different grok command is installed/);
+  assert.equal(calls.length, 2);
+});
+
+test('Grok account chats run without an API-key environment variable and keep tools read-only', async () => {
+  const calls = [];
+  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn(calls) });
+  await agent.run({ provider: 'grok', model: 'grok-4.7', messages: [{ role: 'user', text: 'Explain this.' }] });
+  assert.equal(calls[0].options.env.XAI_API_KEY, undefined);
+  assert.ok(calls[0].args.includes('--sandbox') && calls[0].args.includes('read-only'));
+  assert.ok(calls[0].args.includes('--permission-mode') && calls[0].args.includes('dontAsk'));
+  assert.ok(calls[0].args.includes('--deny') && calls[0].args.includes('Bash'));
+  assert.ok(calls[0].args.includes('Edit'));
+});
+
 test('Codex uses read-only sandbox and feeds the prompt over stdin', async () => {
   const calls = [];
   const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn(calls), timeoutMs: 1000 });

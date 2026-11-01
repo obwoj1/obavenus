@@ -17,17 +17,17 @@ test('provider store encrypts the key and exposes only safe settings', async () 
   const store = createProviderStore({ filePath, safeStorage });
 
   try {
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: DEFAULT_MODEL, configured: false, connectedProviders: [] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', xaiAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: DEFAULT_MODEL, configured: false, connectedProviders: [] });
     await store.save({ provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-test-secret' });
     assert.equal(await store.getApiKey('openai'), 'sk-test-secret');
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: 'gpt-5.5', configured: true, connectedProviders: ['openai'] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', xaiAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: 'gpt-5.5', configured: true, connectedProviders: ['openai'] });
     assert.equal((await readFile(filePath, 'utf8')).includes('sk-test-secret'), false);
 
     await store.save({ provider: 'anthropic', model: 'claude-sonnet-4-6', apiKey: 'claude-secret' });
     assert.equal(await store.getApiKey('openai'), 'sk-test-secret');
     assert.equal(await store.getApiKey('anthropic'), 'claude-secret');
     await store.clearKey('openai');
-    assert.deepEqual(await store.getPublicSettings(), { provider: 'anthropic', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: 'claude-sonnet-4-6', configured: true, connectedProviders: ['anthropic'] });
+    assert.deepEqual(await store.getPublicSettings(), { provider: 'anthropic', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', xaiAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: 'claude-sonnet-4-6', configured: true, connectedProviders: ['anthropic'] });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -85,6 +85,24 @@ test('Claude Code account mode persists without saving a Console API key', async
     assert.equal(encrypted, 0);
     assert.equal((await store.getPublicSettings()).claudeAuthMethod, 'claude-code');
     await assert.rejects(store.save({ provider: 'anthropic', claudeAuthMethod: 'unsupported', model: 'claude-sonnet-4-6' }), /supported Claude sign-in/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Grok Build account mode persists without saving an xAI API key', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-grok-account-mode-'));
+  let encrypted = 0;
+  const store = createProviderStore({ filePath: path.join(root, 'provider.json'), safeStorage: {
+    isAsyncEncryptionAvailable: async () => true,
+    encryptStringAsync: async (value) => { encrypted++; return Buffer.from(value); },
+    decryptStringAsync: async (value) => ({ result: value.toString() }),
+  } });
+  try {
+    const settings = await store.save({ provider: 'xai', xaiAuthMethod: 'grok-cli', model: 'grok-4.7' });
+    assert.equal(settings.xaiAuthMethod, 'grok-cli');
+    assert.equal(settings.configured, false);
+    assert.equal(encrypted, 0);
+    assert.equal((await store.getPublicSettings()).xaiAuthMethod, 'grok-cli');
+    await assert.rejects(store.save({ provider: 'xai', xaiAuthMethod: 'unsupported', model: 'grok-4.7' }), /supported Grok sign-in/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

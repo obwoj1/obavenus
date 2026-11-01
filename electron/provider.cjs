@@ -37,6 +37,7 @@ function createProviderStore({ filePath, safeStorage }) {
         provider: PROVIDERS[saved.provider] ? saved.provider : 'openai',
         openaiAuthMethod: saved.openaiAuthMethod === 'chatgpt' ? 'chatgpt' : 'api-key',
         claudeAuthMethod: saved.claudeAuthMethod === 'claude-code' ? 'claude-code' : 'api-key',
+        xaiAuthMethod: saved.xaiAuthMethod === 'grok-cli' ? 'grok-cli' : 'api-key',
         geminiAuthMethod: saved.geminiAuthMethod === 'google-account' ? 'google-account' : 'api-key',
         geminiProjectId: typeof saved.geminiProjectId === 'string' ? saved.geminiProjectId : '',
         model: typeof saved.model === 'string' ? saved.model : DEFAULT_MODEL,
@@ -45,7 +46,7 @@ function createProviderStore({ filePath, safeStorage }) {
           : (typeof saved.encryptedApiKey === 'string' && saved.encryptedApiKey ? { openai: saved.encryptedApiKey } : {}),
       };
     } catch (error) {
-      if (error.code === 'ENOENT') return { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: DEFAULT_MODEL, encryptedKeys: {} };
+      if (error.code === 'ENOENT') return { provider: 'openai', openaiAuthMethod: 'api-key', claudeAuthMethod: 'api-key', xaiAuthMethod: 'api-key', geminiAuthMethod: 'api-key', geminiProjectId: '', model: DEFAULT_MODEL, encryptedKeys: {} };
       throw error;
     }
   }
@@ -62,6 +63,7 @@ function createProviderStore({ filePath, safeStorage }) {
         provider: settings.provider,
         openaiAuthMethod: settings.openaiAuthMethod,
         claudeAuthMethod: settings.claudeAuthMethod,
+        xaiAuthMethod: settings.xaiAuthMethod,
         geminiAuthMethod: settings.geminiAuthMethod,
         geminiProjectId: settings.geminiProjectId,
         model: settings.model,
@@ -69,10 +71,11 @@ function createProviderStore({ filePath, safeStorage }) {
         connectedProviders: Object.keys(settings.encryptedKeys),
       };
     },
-    async save({ provider = 'openai', openaiAuthMethod = 'api-key', claudeAuthMethod = 'api-key', geminiAuthMethod = 'api-key', geminiProjectId = '', apiKey, model }) {
+    async save({ provider = 'openai', openaiAuthMethod = 'api-key', claudeAuthMethod = 'api-key', xaiAuthMethod = 'api-key', geminiAuthMethod = 'api-key', geminiProjectId = '', apiKey, model }) {
       if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, Grok, or local Ollama.');
       if (!['api-key', 'chatgpt'].includes(openaiAuthMethod)) throw new TypeError('Choose a supported OpenAI sign-in method.');
       if (!['api-key', 'claude-code'].includes(claudeAuthMethod)) throw new TypeError('Choose a supported Claude sign-in method.');
+      if (!['api-key', 'grok-cli'].includes(xaiAuthMethod)) throw new TypeError('Choose a supported Grok sign-in method.');
       if (!['api-key', 'google-account'].includes(geminiAuthMethod)) throw new TypeError('Choose a supported Gemini sign-in method.');
       if (provider === 'gemini' && geminiAuthMethod === 'google-account' && (typeof geminiProjectId !== 'string' || !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(geminiProjectId.trim()))) throw new TypeError('Enter a valid Google Cloud project ID.');
       const current = await readSettings();
@@ -82,16 +85,16 @@ function createProviderStore({ filePath, safeStorage }) {
         if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('Secure key storage is unavailable on this device.');
         encryptedKeys[provider] = (await safeStorage.encryptStringAsync(enteredKey)).toString('base64');
       }
-      const next = { provider, openaiAuthMethod, claudeAuthMethod, geminiAuthMethod, geminiProjectId: typeof geminiProjectId === 'string' ? geminiProjectId.trim() : '', model: normalizeModel(model, provider), encryptedKeys };
+      const next = { provider, openaiAuthMethod, claudeAuthMethod, xaiAuthMethod, geminiAuthMethod, geminiProjectId: typeof geminiProjectId === 'string' ? geminiProjectId.trim() : '', model: normalizeModel(model, provider), encryptedKeys };
       await writeSettings(next);
-      return { provider, openaiAuthMethod, claudeAuthMethod, geminiAuthMethod, geminiProjectId: next.geminiProjectId, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
+      return { provider, openaiAuthMethod, claudeAuthMethod, xaiAuthMethod, geminiAuthMethod, geminiProjectId: next.geminiProjectId, model: next.model, configured: Boolean(encryptedKeys[provider]), connectedProviders: Object.keys(encryptedKeys) };
     },
     async clearKey(provider = 'openai') {
       if (!PROVIDERS[provider]) throw new TypeError('Choose OpenAI, Claude, Gemini, Grok, or local Ollama.');
       const current = await readSettings();
       const encryptedKeys = { ...current.encryptedKeys };
       delete encryptedKeys[provider];
-      await writeSettings({ provider: current.provider, openaiAuthMethod: current.openaiAuthMethod, claudeAuthMethod: current.claudeAuthMethod, geminiAuthMethod: current.geminiAuthMethod, geminiProjectId: current.geminiProjectId, model: current.model, encryptedKeys });
+      await writeSettings({ provider: current.provider, openaiAuthMethod: current.openaiAuthMethod, claudeAuthMethod: current.claudeAuthMethod, xaiAuthMethod: current.xaiAuthMethod, geminiAuthMethod: current.geminiAuthMethod, geminiProjectId: current.geminiProjectId, model: current.model, encryptedKeys });
       return { provider, model: current.model, configured: false, connectedProviders: Object.keys(encryptedKeys) };
     },
     async getApiKey(provider = 'openai') {

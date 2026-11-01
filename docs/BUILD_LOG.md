@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.82: Added Grok Build browser sign-in for local one-response chats. Obavenus verifies that the installed `grok` executable is the official CLI, strips `XAI_API_KEY` from account-backed subprocesses, and limits account chats to read-only tools; API keys remain available for hosted team/API calls.
 - 0.1.81: Packaged the Claude Code account connection and installed the verified arm64 DMG; older DMGs and blockmaps were removed.
 - Claude account connection: Settings can start the official Claude Code `auth login --claudeai` browser flow, report login status without exposing credential data, and run safe one-response chats with the selected model through the signed-in CLI; team runs still require an Anthropic Console API key.
 - 0.1.80: Shipped course-scoped/full-library search and a grounded Study question composer with cited, bounded excerpts.

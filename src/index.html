@@ -551,6 +551,13 @@
           <div class="settings-actions"><button type="button" id="claude-sign-in" class="primary">Continue with Claude</button><button type="button" id="claude-disconnect" hidden>Sign out of Claude Code</button></div>
           <small>Uses the official Claude Code CLI and its Claude.ai Pro/Max or Console sign-in on this Mac. Signing out here also signs Claude Code CLI out for other apps.</small>
         </div>
+        <label for="xai-auth-method" id="xai-auth-label" hidden>Grok sign-in method</label>
+        <select id="xai-auth-method" hidden><option value="grok-cli">Sign in with Grok account</option><option value="api-key">Use xAI API key</option></select>
+        <div id="xai-connection" hidden>
+          <small id="xai-session-state">Checking Grok Build sign-in…</small>
+          <div class="settings-actions"><button type="button" id="xai-sign-in" class="primary">Continue with Grok</button><button type="button" id="xai-disconnect" hidden>Sign out of Grok Build</button></div>
+          <small>Uses xAI’s official Grok Build CLI browser sign-in and its account usage. Signing out also signs the Grok Build CLI out for other apps. Install the Grok Build CLI before connecting.</small>
+        </div>
         <label for="gemini-auth-method" id="gemini-auth-label" hidden>Gemini sign-in method</label>
         <select id="gemini-auth-method" hidden><option value="google-account">Sign in with Google account</option><option value="api-key">Use Gemini API key</option></select>
         <div id="gemini-connection" hidden>

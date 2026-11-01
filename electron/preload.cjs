@@ -76,6 +76,9 @@ contextBridge.exposeInMainWorld('obavenus', {
   getClaudeAccountStatus: () => ipcRenderer.invoke('local-agent:claude-auth-status'),
   signInClaudeAccount: () => ipcRenderer.invoke('local-agent:claude-sign-in'),
   signOutClaudeAccount: () => ipcRenderer.invoke('local-agent:claude-sign-out'),
+  getGrokAccountStatus: () => ipcRenderer.invoke('local-agent:grok-auth-status'),
+  signInGrokAccount: () => ipcRenderer.invoke('local-agent:grok-sign-in'),
+  signOutGrokAccount: () => ipcRenderer.invoke('local-agent:grok-sign-out'),
   runLocalAgent: (provider, messages, writeAccess = false, runId, model = '') => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess, runId, model }),
   cancelRun: (runId) => ipcRenderer.invoke('runs:cancel', runId),
   onRunDelta: (callback) => {

@@ -8,6 +8,11 @@ const COMMANDS = {
     : ['-p', '--permission-mode', 'plan', '--max-turns', '4']), ...(model ? ['--model', model] : []), prompt] },
   codex: { bin: 'codex', args: (_prompt, writeAccess) => ['exec', '--sandbox', writeAccess ? 'workspace-write' : 'read-only', '--ask-for-approval', 'never', '-'], stdin: true },
   gemini: { bin: 'gemini', args: (prompt, writeAccess) => ['-p', prompt, '--approval-mode', writeAccess ? 'auto_edit' : 'default'] },
+  grok: { bin: 'grok', args: (prompt, writeAccess, model) => [
+    '-p', prompt, '--output-format', 'plain', '--model', model || 'grok-4.7',
+    '--sandbox', writeAccess ? 'workspace' : 'read-only', '--permission-mode', writeAccess ? 'acceptEdits' : 'dontAsk',
+    ...['Bash', ...(writeAccess ? [] : ['Edit']), 'MCPTool', 'WebFetch', 'WebSearch'].flatMap((tool) => ['--deny', tool]),
+  ] },
 };
 
 function executableCandidates(bin, env = process.env) {
@@ -42,7 +47,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
   function runClaudeAuthCommand(args, { timeout = 600_000, maxBytes = 32_000 } = {}) {
     const executable = findExecutableImpl('claude', env);
     if (!executable) return Promise.reject(new Error('Claude Code CLI was not found. Install Claude Code before connecting your Claude account.'));
-    const child = spawnImpl(executable, args, { cwd: os.homedir(), env: { ...env }, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawnImpl(executable, args, { cwd: os.homedir(), env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
     return new Promise((resolve, reject) => {
       let stdout = '';
       let stderr = '';
@@ -91,6 +96,59 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
     return claudeAuthStatus();
   }
 
+  async function grokAuthStatus() {
+    if (!findExecutableImpl('grok', env)) return { installed: false, loggedIn: false, error: 'Grok Build CLI was not found. Install the official Grok Build CLI to connect your account.' };
+    try {
+      const help = await runProviderCliAuthCommand('grok', ['--help'], { timeout: 8_000, maxBytes: 16_000 });
+      if (!/\blogin\b/.test(help) || !/\blogout\b/.test(help) || !/\bmodels\b/.test(help)) {
+        return { installed: true, compatible: false, loggedIn: false, error: 'A different grok command is installed. Install the official Grok Build CLI from x.ai to use account sign-in.' };
+      }
+      await runProviderCliAuthCommand('grok', ['models'], { timeout: 20_000, maxBytes: 16_000 });
+      return { installed: true, compatible: true, loggedIn: true };
+    } catch {
+      return { installed: true, compatible: true, loggedIn: false };
+    }
+  }
+
+  async function runProviderCliAuthCommand(bin, args, options) {
+    const executable = findExecutableImpl(bin, env);
+    if (!executable) throw new Error(`${bin === 'grok' ? 'Grok Build' : 'Claude Code'} CLI was not found.`);
+    const commandEnv = { ...env };
+    if (bin === 'grok') delete commandEnv.XAI_API_KEY;
+    const child = spawnImpl(executable, args, { cwd: os.homedir(), env: commandEnv, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const { timeout = 600_000, maxBytes = 32_000 } = options || {};
+    return new Promise((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let bytes = 0;
+      let settled = false;
+      const finish = (error, value) => { if (settled) return; settled = true; clearTimeout(timer); if (error) reject(error); else resolve(value); };
+      const capture = (stream, chunk) => {
+        bytes += chunk.length;
+        if (bytes > maxBytes) { child.kill('SIGKILL'); finish(new Error('Provider CLI returned too much command output.')); return; }
+        if (stream === 'stdout') stdout += chunk.toString('utf8'); else stderr += chunk.toString('utf8');
+      };
+      child.stdout.on('data', (chunk) => capture('stdout', chunk));
+      child.stderr.on('data', (chunk) => capture('stderr', chunk));
+      child.on('error', (error) => finish(new Error(`Could not start ${bin}: ${error.message}`)));
+      child.on('close', (code) => code === 0 ? finish(null, stdout.trim()) : finish(new Error((stderr.trim() || `${bin} exited with code ${code}.`).slice(0, 1200))));
+      const timer = setTimeout(() => { child.kill('SIGTERM'); finish(new Error(`${bin} sign-in timed out.`)); }, timeout);
+      child.stdin.end();
+    });
+  }
+
+  async function signInGrok() {
+    const status = await grokAuthStatus();
+    if (!status.compatible) throw new Error(status.error || 'Install the official Grok Build CLI before signing in.');
+    await runProviderCliAuthCommand('grok', ['login']);
+    return grokAuthStatus();
+  }
+
+  async function signOutGrok() {
+    await runProviderCliAuthCommand('grok', ['logout'], { timeout: 30_000 });
+    return grokAuthStatus();
+  }
+
   function status() {
     return Object.fromEntries(Object.entries(COMMANDS).map(([id, config]) => {
       const executable = findExecutableImpl(config.bin, env);
@@ -100,7 +158,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
 
   function run({ provider, messages, projectPath, writeAccess = false, signal, model = '' }) {
     const config = COMMANDS[provider];
-    if (!config) throw new TypeError('Choose Claude Code, Codex CLI, or Gemini CLI.');
+    if (!config) throw new TypeError('Choose Claude Code, Codex CLI, Gemini CLI, or Grok Build.');
     const executable = findExecutableImpl(config.bin, env);
     if (!executable) throw new Error(`${config.bin} CLI was not found. Install it and sign in with its own command, then restart Obavenus.`);
     if (!Array.isArray(messages) || !messages.length) throw new TypeError('Enter a message before running a local agent.');
@@ -126,7 +184,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
     const args = config.args(prompt, writeAccess, model);
     const child = spawnImpl(executable, args, {
       cwd: projectPath || os.homedir(),
-      env: { ...env },
+      env: (() => { const commandEnv = { ...env }; if (provider === 'grok') delete commandEnv.XAI_API_KEY; return commandEnv; })(),
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -174,7 +232,7 @@ function createLocalAgent({ spawnImpl = spawn, env = process.env, findExecutable
     });
   }
 
-  return { status, run, claudeAuthStatus, signInClaude, signOutClaude };
+  return { status, run, claudeAuthStatus, signInClaude, signOutClaude, grokAuthStatus, signInGrok, signOutGrok };
 }
 
 module.exports = { COMMANDS, createLocalAgent, executableCandidates, findExecutable };
