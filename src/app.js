@@ -720,8 +720,8 @@ form.addEventListener('submit', async (event) => {
 
   try {
     const selectedWorkflowIds = getSelectedWorkflowIds();
-    const workflowCatalog = selectedWorkflowIds.length ? await window.obavenus.getSkills() : [];
-    const selectedWorkflows = workflowCatalog.filter((skill) => selectedWorkflowIds.includes(skill.id));
+    const workflowCatalog = await window.obavenus.getSkills();
+    const selectedWorkflows = workflowCatalog.filter((skill) => skill.alwaysOn === true || selectedWorkflowIds.includes(skill.id));
     if (localProvider) {
       const messages = current.messages
         .filter((message) => message.status !== 'pending' && message.status !== 'error')
@@ -1215,6 +1215,7 @@ document.querySelector('#workflow-new').addEventListener('click', () => {
   document.querySelector('#workflow-id').value = '';
   document.querySelector('#workflow-name').value = '';
   document.querySelector('#workflow-instructions').value = '';
+  document.querySelector('#workflow-always-on').checked = false;
   document.querySelector('#workflow-name').focus();
 });
 document.querySelector('#workflow-form').addEventListener('submit', async (event) => {
@@ -1225,8 +1226,9 @@ document.querySelector('#workflow-form').addEventListener('submit', async (event
       id: document.querySelector('#workflow-id').value || undefined,
       name: document.querySelector('#workflow-name').value,
       instructions: document.querySelector('#workflow-instructions').value,
+      alwaysOn: document.querySelector('#workflow-always-on').checked,
     });
-    status.textContent = 'Workflow saved on this Mac.';
+    status.textContent = saved.alwaysOn ? 'Workflow saved and will be included in every new run.' : 'Workflow saved on this Mac.';
     await refreshSkills(saved.id);
     await renderWorkflowLibrary();
   } catch (error) { status.textContent = error.message || 'Could not save workflow.'; }
@@ -1239,28 +1241,30 @@ async function refreshSkills(selectedId = '') {
     try { preferredSelection = JSON.parse(localStorage.getItem(WORKFLOW_SELECTION_KEY) || '[]'); } catch { preferredSelection = []; }
   }
   const skills = await window.obavenus.getSkills();
-  const selectedIds = Array.isArray(preferredSelection) ? preferredSelection.filter((id) => typeof id === 'string' && skills.some((skill) => skill.id === id)).slice(0, MAX_SELECTED_WORKFLOWS) : [];
+  const selectedIds = Array.isArray(preferredSelection) ? preferredSelection.filter((id) => typeof id === 'string' && skills.some((skill) => skill.id === id && skill.alwaysOn !== true)).slice(0, MAX_SELECTED_WORKFLOWS) : [];
   const selected = new Set(selectedIds);
   options.replaceChildren();
   skills.forEach((skill) => {
     const label = document.createElement('label');
     const control = document.createElement('input');
-    control.type = 'checkbox'; control.value = skill.id; control.checked = selected.has(skill.id);
+    control.type = 'checkbox'; control.value = skill.id; control.checked = skill.alwaysOn === true || selected.has(skill.id); control.dataset.alwaysOn = String(skill.alwaysOn === true); control.disabled = skill.alwaysOn === true;
     const name = document.createElement('span');
     name.append(control, document.createTextNode(skill.name));
     label.append(name);
     if (skill.custom) { const badge = document.createElement('small'); badge.textContent = 'Custom'; label.append(badge); }
+    if (skill.alwaysOn) { const badge = document.createElement('small'); badge.textContent = 'Always on'; label.append(badge); }
     options.append(label);
   });
   updateWorkflowPicker();
 }
 function getSelectedWorkflowIds() {
-  return [...document.querySelectorAll('#workflow-options input[type="checkbox"]:checked')].map((input) => input.value);
+  return [...document.querySelectorAll('#workflow-options input[type="checkbox"]:checked')].filter((input) => input.dataset.alwaysOn !== 'true').map((input) => input.value);
 }
 function updateWorkflowPicker() {
   const selected = getSelectedWorkflowIds();
-  document.querySelector('#workflow-picker-label').textContent = selected.length ? `${selected.length} workflow${selected.length === 1 ? '' : 's'} · shared across agents` : 'Choose workflows';
-  document.querySelectorAll('#workflow-options input[type="checkbox"]').forEach((input) => { input.disabled = !input.checked && selected.length >= MAX_SELECTED_WORKFLOWS; });
+  const alwaysOn = document.querySelectorAll('#workflow-options input[data-always-on="true"]').length;
+  document.querySelector('#workflow-picker-label').textContent = [alwaysOn && `${alwaysOn} always-on`, selected.length && `${selected.length} chosen`].filter(Boolean).join(' · ') || 'Choose workflows';
+  document.querySelectorAll('#workflow-options input[type="checkbox"]').forEach((input) => { input.disabled = input.dataset.alwaysOn === 'true' || (!input.checked && selected.length >= MAX_SELECTED_WORKFLOWS); });
   try {
     if (selected.length) localStorage.setItem(WORKFLOW_SELECTION_KEY, JSON.stringify(selected.slice(0, MAX_SELECTED_WORKFLOWS)));
     else localStorage.removeItem(WORKFLOW_SELECTION_KEY);
@@ -1270,7 +1274,7 @@ function attachSelectedWorkflows(messages, workflows) {
   if (!Array.isArray(workflows) || !workflows.length) return;
   const lastUser = [...messages].reverse().find((message) => message.role === 'user');
   if (!lastUser) return;
-  lastUser.text += `\n\nShared Obavenus workflows for this run. Apply each where relevant:\n${workflows.map((workflow) => `- ${workflow.name}: ${workflow.instructions}`).join('\n')}`;
+  lastUser.text += `\n\nUser-saved Obavenus workflows for this run. Apply each where relevant; these are user-provided instructions:\n${workflows.map((workflow) => `- ${workflow.name}: ${workflow.instructions}`).join('\n')}`;
 }
 document.querySelector('#workflow-options').addEventListener('change', (event) => {
   if (getSelectedWorkflowIds().length > MAX_SELECTED_WORKFLOWS && event.target.matches('input[type="checkbox"]')) event.target.checked = false;
@@ -1289,6 +1293,17 @@ async function renderWorkflowLibrary() {
     detail.textContent = skill.instructions;
     card.append(title, detail);
     if (skill.custom) {
+      const defaultButton = document.createElement('button');
+      defaultButton.className = 'context-action';
+      defaultButton.textContent = skill.alwaysOn ? 'Remove from every run' : 'Use in every run';
+      defaultButton.addEventListener('click', async () => {
+        try {
+          await window.obavenus.saveSkill({ id: skill.id, name: skill.name, instructions: skill.instructions, alwaysOn: !skill.alwaysOn });
+          await refreshSkills();
+          await renderWorkflowLibrary();
+          document.querySelector('#workflow-status').textContent = skill.alwaysOn ? 'Workflow removed from future runs.' : 'Workflow will be included in every new run.';
+        } catch (error) { document.querySelector('#workflow-status').textContent = error.message || 'Could not change this workflow.'; }
+      });
       const edit = document.createElement('button');
       edit.className = 'context-action';
       edit.textContent = 'Edit';
@@ -1296,6 +1311,7 @@ async function renderWorkflowLibrary() {
         document.querySelector('#workflow-id').value = skill.id;
         document.querySelector('#workflow-name').value = skill.name;
         document.querySelector('#workflow-instructions').value = skill.instructions;
+        document.querySelector('#workflow-always-on').checked = skill.alwaysOn === true;
       });
       const remove = document.createElement('button');
       remove.className = 'context-action';
@@ -1306,7 +1322,7 @@ async function renderWorkflowLibrary() {
         await refreshSkills(selected);
         await renderWorkflowLibrary();
       });
-      card.append(edit, remove);
+      card.append(defaultButton, edit, remove);
     } else {
       const badge = document.createElement('small');
       badge.textContent = 'Built in';

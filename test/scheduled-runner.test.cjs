@@ -39,3 +39,21 @@ test('local scheduled jobs stay on the selected CLI and read-only scheduled agen
   assert.equal(await runner.run({ provider: 'codex', prompt: 'Inspect', projectPath: '/repo' }), 'done');
   assert.deepEqual(options, { provider: 'codex', projectPath: '/repo', messages: [{ role: 'user', text: 'Inspect\nKeep edits scoped.' }] });
 });
+
+test('always-on workflows are injected when queued scheduled runs execute', async () => {
+  const captured = [];
+  const runner = createScheduledTaskRunner({
+    localAgent: { run: async ({ messages }) => { captured.push(messages[0].text); return 'local'; } },
+    dispatchProviderMessages: async () => 'response',
+    runTeamWorkflow: async ({ messages }) => { captured.push(messages[0].text); return { text: 'team' }; },
+    createAgentToolExecutor: () => async () => ({}),
+    getProfile: async () => ({ shareWithAI: false }),
+    searchGmail: async () => [],
+    userDataPath: '/app-data',
+    getAlwaysOnWorkflows: async () => [{ name: 'Cite evidence', instructions: 'Link sources.', alwaysOn: true }],
+  });
+  await runner.run({ provider: 'codex', prompt: 'Inspect this.' });
+  await runner.run({ provider: 'configured-ai', prompt: 'Research this.' });
+  assert.match(captured[0], /Cite evidence: Link sources/);
+  assert.match(captured[1], /Cite evidence: Link sources/);
+});

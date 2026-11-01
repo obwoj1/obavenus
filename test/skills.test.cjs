@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { SKILLS, applySkill, getSkill } = require('../electron/skills.cjs');
+const { SKILLS, applySkill, appendWorkflowGuidance, getSkill } = require('../electron/skills.cjs');
 
 test('bundled reusable workflows are unique and apply only to the latest user message', () => {
   assert.equal(new Set(SKILLS.map((skill) => skill.id)).size, SKILLS.length);
@@ -15,4 +15,15 @@ test('bundled reusable workflows are unique and apply only to the latest user me
 test('unknown workflows leave messages untouched', () => {
   const messages = [{ role: 'user', text: 'Hello' }];
   assert.deepEqual(applySkill(messages, 'not-a-skill'), messages);
+});
+
+test('scheduled workflow guidance includes only user-enabled defaults and is clearly labeled', () => {
+  const prompt = appendWorkflowGuidance('Review the report.', [
+    { name: 'Cite evidence', instructions: 'Link sources.', alwaysOn: true },
+    { name: 'Optional', instructions: 'Not selected.', alwaysOn: false },
+  ]);
+  assert.match(prompt, /user-provided instructions/);
+  assert.match(prompt, /Cite evidence: Link sources/);
+  assert.doesNotMatch(prompt, /Optional/);
+  assert.equal(appendWorkflowGuidance('Unchanged', []), 'Unchanged');
 });

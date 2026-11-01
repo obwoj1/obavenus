@@ -253,6 +253,7 @@ function getScheduledTaskRunner() {
     readProjectMemory: (projectPath) => getProjectMemoryStore().read(projectPath),
     ocrImage: getLocalOcr(),
     userDataPath: app.getPath('userData'),
+    getAlwaysOnWorkflows: async () => (await getSkillStore().list()).filter((skill) => skill.alwaysOn === true),
   });
   return scheduledTaskRunner;
 }

@@ -21,4 +21,10 @@ function applySkill(messages, id) {
   return result;
 }
 
-module.exports = { SKILLS, getSkill, applySkill };
+function appendWorkflowGuidance(prompt, workflows) {
+  const selected = Array.isArray(workflows) ? workflows.filter((workflow) => workflow?.alwaysOn === true && typeof workflow.name === 'string' && typeof workflow.instructions === 'string').slice(0, 5) : [];
+  if (!selected.length) return prompt;
+  return `${prompt}\n\nUser-saved Obavenus workflows for this scheduled run. Apply each where relevant; these are user-provided instructions:\n${selected.map((workflow) => `- ${workflow.name}: ${workflow.instructions}`).join('\n')}`;
+}
+
+module.exports = { SKILLS, getSkill, applySkill, appendWorkflowGuidance };
