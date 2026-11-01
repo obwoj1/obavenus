@@ -82,6 +82,8 @@ let remoteJobStore;
 let studyStore;
 let canvasConnector;
 let mcpConnector;
+let studyReminderTimer;
+let studyReminderCheck;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -95,6 +97,28 @@ function getConversationStore() {
 function getStudyStore() {
   if (!studyStore) studyStore = createStudyStore({ filePath: path.join(app.getPath('userData'), 'study-space.enc'), safeStorage });
   return studyStore;
+}
+
+async function checkStudyReminders() {
+  if (studyReminderCheck) return studyReminderCheck;
+  studyReminderCheck = (async () => {
+    if (!Notification.isSupported()) return 0;
+    const data = await getStudyStore().load();
+    if (!data.remindersEnabled) return 0;
+    const now = Date.now();
+    const dueSoon = data.assignments.filter((item) => item.status !== 'done' && item.dueAt > now && item.dueAt <= now + 24 * 60 * 60 * 1000 && item.remindedDueAt !== item.dueAt);
+    let sent = 0;
+    for (const assignment of dueSoon) {
+      try {
+        const notification = new Notification({ title: 'Assignment due within 24 hours', body: assignment.title });
+        notification.show();
+        await getStudyStore().markReminderSent(assignment.id, assignment.dueAt);
+        sent += 1;
+      } catch (error) { console.warn('Study reminder could not be shown:', error.message); }
+    }
+    return sent;
+  })().finally(() => { studyReminderCheck = null; });
+  return studyReminderCheck;
 }
 
 function getCanvasConnector() {
@@ -396,6 +420,11 @@ ipcMain.handle('study:build-quiz', async (_event, deckId) => {
   return buildPracticeQuiz(deck);
 });
 ipcMain.handle('study:suggest-assignment-steps', (_event, instructions) => suggestAssignmentSteps(instructions));
+ipcMain.handle('study:set-reminders', async (_event, enabled) => {
+  const data = await getStudyStore().setRemindersEnabled(enabled);
+  const remindersSent = enabled ? await checkStudyReminders() : 0;
+  return { enabled: data.remindersEnabled, remindersSent, supported: Notification.isSupported() };
+});
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
@@ -756,12 +785,15 @@ app.whenReady().then(async () => {
   await recoverInterruptedTasks();
   scheduleNextTask().catch(() => {});
   createWindow();
+  checkStudyReminders().catch((error) => console.warn('Study reminders are unavailable:', error.message));
+  studyReminderTimer = setInterval(() => checkStudyReminders().catch((error) => console.warn('Study reminders are unavailable:', error.message)), 15 * 60 * 1000);
+  studyReminderTimer.unref?.();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('before-quit', () => { chromeBridge?.close().catch(() => {}); localOcr?.close().catch(() => {}); });
+app.on('before-quit', () => { clearInterval(studyReminderTimer); chromeBridge?.close().catch(() => {}); localOcr?.close().catch(() => {}); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
