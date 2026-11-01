@@ -73,7 +73,7 @@ document.querySelector('#profile-resume-file').addEventListener('click', async (
     const file = await window.obavenus.chooseResume();
     if (file) {
       document.querySelector('#profile-resume').value = file.text;
-      document.querySelector('#profile-resume-state').textContent = `Loaded ${file.name} · ${file.text.length.toLocaleString()} characters.`;
+      document.querySelector('#profile-resume-state').textContent = `Loaded ${file.name} · ${file.text.length.toLocaleString()} characters${file.truncated ? ' · trimmed to the 50,000 character limit' : ''}.`;
     }
   } catch (error) { document.querySelector('#profile-resume-state').textContent = error.message || 'Could not read that file.'; }
 });

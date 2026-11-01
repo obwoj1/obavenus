@@ -28,6 +28,7 @@ const { createLocalOcr } = require('./local-ocr.cjs');
 const { createScheduledTaskRunner } = require('./scheduled-runner.cjs');
 const { formatConversationMarkdown } = require('./conversation-export.cjs');
 const { createConversationStore } = require('./conversations.cjs');
+const { readResumeFile } = require('./resume-file.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
 
@@ -361,14 +362,9 @@ ipcMain.handle('profile:get', () => getProfileStore().get());
 ipcMain.handle('profile:save', (_event, profile) => getProfileStore().save(profile));
 ipcMain.handle('profile:clear', () => getProfileStore().clear());
 ipcMain.handle('profile:choose-resume', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Text resume', extensions: ['txt', 'md'] }] });
+  const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Resume', extensions: ['txt', 'md', 'pdf', 'docx'] }] });
   if (result.canceled || !result.filePaths[0]) return null;
-  const filePath = result.filePaths[0];
-  const details = await require('node:fs/promises').stat(filePath);
-  if (details.size > 100 * 1024) throw new RangeError('Resume text file must be 100 KB or smaller.');
-  const bytes = await readFile(filePath);
-  if (bytes.includes(0)) throw new TypeError('Resume must be a plain-text file.');
-  return { name: path.basename(filePath), text: bytes.toString('utf8').slice(0, 50_000) };
+  return readResumeFile(result.filePaths[0], { ocrImage: getLocalOcr() });
 });
 
 ipcMain.handle('jobs:search-plan', (_event, text) => createSearchPlan(text));
