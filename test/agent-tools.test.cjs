@@ -123,6 +123,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
     clickControl: async (text) => ({ approved: true, label: text }),
     selectOption: async (label, option) => ({ approved: true, label, option }),
+    setChecked: async (label, checked) => ({ approved: true, label, checked }),
   };
   const allowed = createAgentToolExecutor({ browserAccess: true, browser });
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
@@ -132,19 +133,22 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.deepEqual(visited, ['https://example.com']);
 });
 
-test('browser form entry and dropdown selection are exposed only for paired Chrome and enforce bounds', async () => {
+test('browser form entry and choices are exposed only for paired Chrome and enforce bounds', async () => {
   const browser = {
     fillField: async (label, value) => ({ approved: true, label, value, submitted: false }),
     selectOption: async (label, option) => ({ approved: true, label, option }),
+    setChecked: async (label, checked) => ({ approved: true, label, checked }),
   };
   const researchTools = [];
   await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, dispatch: async (_messages, options) => { researchTools.push(...options.tools); return 'Done'; } });
   assert.equal(researchTools.some((tool) => tool.name === 'browser_fill_field'), false);
   assert.equal(researchTools.some((tool) => tool.name === 'browser_select_option'), false);
+  assert.equal(researchTools.some((tool) => tool.name === 'browser_set_checked'), false);
   const chromeTools = [];
   await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, browserFillAccess: true, dispatch: async (_messages, options) => { chromeTools.push(...options.tools); return 'Done'; } });
   assert.equal(chromeTools.some((tool) => tool.name === 'browser_fill_field'), true);
   assert.equal(chromeTools.some((tool) => tool.name === 'browser_select_option'), true);
+  assert.equal(chromeTools.some((tool) => tool.name === 'browser_set_checked'), true);
 
   const denied = createAgentToolExecutor({ browserAccess: true, browser, browserFillAccess: false });
   assert.match((await denied('browser_fill_field', { label: 'Email', value: 'a@example.com' })).error, /paired Chrome/);
@@ -154,6 +158,9 @@ test('browser form entry and dropdown selection are exposed only for paired Chro
   assert.match((await denied('browser_select_option', { label: 'Department', option: 'Engineering' })).error, /paired Chrome/);
   assert.deepEqual(await allowed('browser_select_option', { label: 'Department', option: 'Engineering' }), { approved: true, label: 'Department', option: 'Engineering' });
   await assert.rejects(allowed('browser_select_option', { label: 'x'.repeat(201), option: 'Engineering' }), /200 characters/);
+  assert.match((await denied('browser_set_checked', { label: 'Email updates', checked: true })).error, /paired Chrome/);
+  assert.deepEqual(await allowed('browser_set_checked', { label: 'Email updates', checked: true }), { approved: true, label: 'Email updates', checked: true });
+  await assert.rejects(allowed('browser_set_checked', { label: 'Email updates', checked: 'yes' }), /checked state/);
 });
 
 test('connected MCP read-only tools join the agent tool list and dispatch to their connector', async () => {

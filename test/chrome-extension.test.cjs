@@ -41,7 +41,22 @@ function makeSelect({ label, options }) {
   };
 }
 
-function makeBridge(fields, selects = []) {
+function makeChoice({ label, type = 'checkbox', checked = false }) {
+  const events = [];
+  return {
+    name: label.toLowerCase(),
+    value: label,
+    checked,
+    disabled: false,
+    labels: [{ innerText: label }],
+    getAttribute: (key) => key === 'type' ? type : key === 'aria-label' ? label : null,
+    getClientRects: () => [{}],
+    dispatchEvent: (event) => { events.push(event.type); return true; },
+    events,
+  };
+}
+
+function makeBridge(fields, selects = [], choices = []) {
   let onMessage;
   let socket;
   const responses = [];
@@ -63,7 +78,7 @@ function makeBridge(fields, selects = []) {
   const document = {
     title: 'Application',
     body: { innerText: 'Application form' },
-      querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : [],
+      querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : selector === 'input[type=checkbox],input[type=radio]' ? choices : [],
   };
   const context = vm.createContext({
     chrome,
@@ -159,4 +174,35 @@ test('Chrome extension excludes duplicate option labels and rejects changed page
     id: 'select-stale', command: 'selectOption',
     args: { pageUrl: 'https://example.com/apply', fieldLabel: 'Department', optionLabel: 'Research' },
   }), { error: 'The approved Chrome page has changed.' });
+});
+
+test('Chrome extension changes a labelled checkbox only to the approved state', async () => {
+  const updates = makeChoice({ label: 'Email updates' });
+  const bridge = makeBridge([], [], [updates]);
+  await bridge.connect();
+  assert.deepEqual(await bridge.send({ id: 'choice-find', command: 'findChoice', args: { label: 'Email updates' } }), {
+    found: true, pageUrl: 'https://example.com/apply', label: 'Email updates', type: 'checkbox', checked: false,
+  });
+  assert.deepEqual(await bridge.send({
+    id: 'choice-set', command: 'setChoice',
+    args: { pageUrl: 'https://example.com/apply', fieldLabel: 'Email updates', type: 'checkbox', checked: true },
+  }), { checked: true, label: 'Email updates', type: 'checkbox', pageUrl: 'https://example.com/apply' });
+  assert.deepEqual(updates.events, ['input', 'change']);
+});
+
+test('Chrome extension rejects ambiguous and hidden checkboxes and cannot clear radio options', async () => {
+  const hidden = makeChoice({ label: 'Hidden' });
+  hidden.getClientRects = () => [];
+  const choices = [makeChoice({ label: 'Terms' }), makeChoice({ label: 'Terms' }), makeChoice({ label: 'Plan A', type: 'radio', checked: true }), hidden];
+  const bridge = makeBridge([], [], choices);
+  await bridge.connect();
+  assert.deepEqual(await bridge.send({ id: 'choice-ambiguous', command: 'findChoice', args: { label: 'Terms' } }), {
+    found: false, message: 'More than one visible checkbox or radio option has that exact label.',
+  });
+  assert.equal((await bridge.send({ id: 'choice-hidden', command: 'findChoice', args: { label: 'Hidden' } })).found, false);
+  assert.equal((await bridge.send({ id: 'radio-find', command: 'findChoice', args: { label: 'Plan A' } })).found, true);
+  assert.deepEqual(await bridge.send({
+    id: 'radio-clear', command: 'setChoice',
+    args: { pageUrl: 'https://example.com/apply', fieldLabel: 'Plan A', type: 'radio', checked: false },
+  }), { error: 'A radio option can be selected but not cleared.' });
 });

@@ -86,6 +86,16 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       if (!await confirmAction({ ...field, action: 'select', optionLabel: selectedOption })) return { approved: false, message: 'The user declined to change the Chrome selection.' };
       return request('selectOption', { pageUrl: field.pageUrl, fieldLabel: field.label, optionLabel: selectedOption });
     },
+    setChecked: async (label, checked) => {
+      const fieldLabel = String(label || '').trim();
+      if (!fieldLabel || fieldLabel.length > 200 || typeof checked !== 'boolean') throw new TypeError('Provide a labelled checkbox or radio choice and a checked state.');
+      const field = await request('findChoice', { label: fieldLabel });
+      if (!field.found) return field;
+      if (field.type === 'radio' && !checked) return { found: false, message: 'A radio option can be selected but not cleared.' };
+      if (field.checked === checked) return { changed: false, checked, label: field.label, pageUrl: field.pageUrl };
+      if (!await confirmAction({ ...field, action: 'check', currentChecked: field.checked, checked })) return { approved: false, message: 'The user declined to change the Chrome choice.' };
+      return request('setChoice', { pageUrl: field.pageUrl, fieldLabel: field.label, type: field.type, checked });
+    },
     close: async () => {
       for (const resolve of pending.values()) resolve({ error: 'Obavenus is closing.' });
       pending.clear(); socket?.close(); socket = null; paired = false;

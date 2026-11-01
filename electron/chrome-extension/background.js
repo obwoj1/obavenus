@@ -4,6 +4,7 @@ let desiredConnection = false;
 let approvedControl;
 let approvedField;
 let approvedSelection;
+let approvedChoice;
 
 function setState(connected) {
   chrome.storage.local.set({ connected });
@@ -84,6 +85,17 @@ async function inspect(tab, action, argument) {
       const options = allOptions.filter((option, index) => allOptions.indexOf(option) === index && allOptions.lastIndexOf(option) === index).slice(0, 40);
       return { found: true, pageUrl: location.href, label: norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')), selected: norm(el.selectedOptions?.[0]?.textContent), options };
     }
+    const visibleChoices = () => [...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter((el) => {
+      const label = norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label'));
+      return !el.disabled && label && el.getClientRects().length;
+    });
+    if (kind === 'findChoice') {
+      const wanted = norm(value.label).toLowerCase();
+      const choices = visibleChoices().filter((el) => norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')).toLowerCase() === wanted);
+      if (choices.length !== 1) return { found: false, message: choices.length ? 'More than one visible checkbox or radio option has that exact label.' : 'No normal visible checkbox or radio option has that exact label.' };
+      const el = choices[0];
+      return { found: true, pageUrl: location.href, label: norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')), type: (el.getAttribute('type') || '').toLowerCase(), checked: el.checked === true };
+    }
     if (kind === 'clickControl') {
       if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
       const controls = [...document.querySelectorAll('button,input[type=button],input[type=submit],[role=button]')].filter((el) => {
@@ -120,6 +132,17 @@ async function inspect(tab, action, argument) {
       select.dispatchEvent(new Event('input', { bubbles: true }));
       select.dispatchEvent(new Event('change', { bubbles: true }));
       return { selected: norm(options[0].textContent), label: value.fieldLabel, pageUrl: location.href };
+    }
+    if (kind === 'setChoice') {
+      if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
+      const choices = visibleChoices().filter((el) => norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')) === value.fieldLabel && (el.getAttribute('type') || '').toLowerCase() === value.type);
+      if (choices.length !== 1) return { error: 'The approved checkbox or radio option is no longer unique and available.' };
+      const choice = choices[0];
+      if (value.type === 'radio' && !value.checked) return { error: 'A radio option can be selected but not cleared.' };
+      choice.checked = value.checked;
+      choice.dispatchEvent(new Event('input', { bubbles: true }));
+      choice.dispatchEvent(new Event('change', { bubbles: true }));
+      return { checked: choice.checked === true, label: value.fieldLabel, type: value.type, pageUrl: location.href };
     }
     return { error: 'Unsupported Chrome command.' };
   }, args: [action, argument] });
@@ -169,6 +192,20 @@ async function execute(command, args) {
     approvedSelection = null;
     return selected;
   }
+  if (command === 'findChoice') {
+    approvedChoice = { tabId: tab.id, pageUrl: tab.url, label: String(args.label || '').slice(0, 200) };
+    const found = await inspect(tab, 'findChoice', approvedChoice);
+    approvedChoice = found.found ? { ...approvedChoice, label: found.label, type: found.type, pageUrl: found.pageUrl } : null;
+    return found;
+  }
+  if (command === 'setChoice') {
+    if (!approvedChoice || approvedChoice.tabId !== tab.id || approvedChoice.pageUrl !== args.pageUrl || approvedChoice.label !== args.fieldLabel || approvedChoice.type !== args.type) throw new Error('The approved Chrome tab or choice changed. Review it and request approval again.');
+    const pinnedTab = await chrome.tabs.get(approvedChoice.tabId);
+    if (pinnedTab.url !== approvedChoice.pageUrl) throw new Error('The approved Chrome page has changed.');
+    const changed = await inspect(pinnedTab, 'setChoice', args);
+    approvedChoice = null;
+    return changed;
+  }
   if (command === 'clickControl') {
     if (!approvedControl || approvedControl.tabId !== tab.id || approvedControl.pageUrl !== args.pageUrl || approvedControl.label !== args.label) throw new Error('The approved Chrome tab or control changed. Review it and request approval again.');
     const pinnedTab = await chrome.tabs.get(approvedControl.tabId);
@@ -181,7 +218,7 @@ async function execute(command, args) {
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'connect') { connect(); sendResponse({ connecting: true }); }
-  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; approvedField = null; approvedSelection = null; setState(false); sendResponse({ disconnected: true }); }
+  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; approvedField = null; approvedSelection = null; approvedChoice = null; setState(false); sendResponse({ disconnected: true }); }
   if (message?.type === 'state') sendResponse({ connected: socket?.readyState === WebSocket.OPEN });
   return true;
 });

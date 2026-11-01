@@ -310,15 +310,18 @@ function getChromeBridge() {
       try { host = new URL(control.pageUrl).hostname; } catch {}
       const filling = control.action === 'fill';
       const selecting = control.action === 'select';
+      const checking = control.action === 'check';
       const result = await dialog.showMessageBox({
-        type: 'warning', title: filling ? 'Approve Chrome field entry?' : selecting ? 'Approve Chrome selection?' : 'Approve Chrome page action?',
-        message: filling ? `The agent wants to fill “${control.label}” on ${host}.` : selecting ? `The agent wants to choose “${control.optionLabel}” in “${control.label}” on ${host}.` : `The agent wants to activate “${control.label}” on ${host}.`,
+        type: 'warning', title: filling ? 'Approve Chrome field entry?' : selecting ? 'Approve Chrome selection?' : checking ? 'Approve Chrome choice?' : 'Approve Chrome page action?',
+        message: filling ? `The agent wants to fill “${control.label}” on ${host}.` : selecting ? `The agent wants to choose “${control.optionLabel}” in “${control.label}” on ${host}.` : checking ? `The agent wants to ${control.checked ? 'check/select' : 'uncheck'} “${control.label}” on ${host}.` : `The agent wants to activate “${control.label}” on ${host}.`,
         detail: filling
           ? `${control.pageUrl}\n\nField text to enter:\n${control.value || '(clear this field)'}\n\nThis fills the field only. It does not submit the form.`
           : selecting
             ? `${control.pageUrl}\n\nReview that exact tab before approving. The site may react to this selection; Obavenus will not press a submit button.`
+            : checking
+              ? `${control.pageUrl}\n\nCurrent: ${control.currentChecked ? 'checked' : 'unchecked'} · requested: ${control.checked ? 'checked' : 'unchecked'}\nReview that exact tab before approving. The site may react to this choice.`
             : `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
-        buttons: ['Cancel', filling ? 'Fill field' : selecting ? 'Choose option' : 'Approve action'], defaultId: 0, cancelId: 0,
+        buttons: ['Cancel', filling ? 'Fill field' : selecting ? 'Choose option' : checking ? 'Change choice' : 'Approve action'], defaultId: 0, cancelId: 0,
       });
       return result.response === 1;
     },
