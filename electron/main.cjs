@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const { describeProject, readProjectFile, collectProjectContext, collectProjectInstructions, appendProjectInstructions, restoreProjectSnapshot } = require('./project.cjs');
+const { describeProject, readProjectFile, resolveProjectFilePath, collectProjectContext, collectProjectInstructions, appendProjectInstructions, restoreProjectSnapshot } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
 const { createGeminiConnector } = require('./gemini.cjs');
@@ -492,6 +492,13 @@ ipcMain.handle('project:close', () => getWorkspaceStore().close());
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
   return readProjectFile(saved.projectPath, fileName, { ocrImage: getLocalOcr() });
+});
+ipcMain.handle('project:open-file', async (_event, fileName) => {
+  const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+  const { target } = await resolveProjectFilePath(saved.projectPath, fileName, { topLevelOnly: true });
+  const error = await shell.openPath(target);
+  if (error) throw new Error(error);
+  return true;
 });
 ipcMain.handle('project:undo-change', async (_event, undoToken) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));

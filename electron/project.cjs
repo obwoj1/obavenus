@@ -133,7 +133,7 @@ async function readPdfText(bytes, { ocrImage } = {}) {
   } finally { await loadingTask.destroy(); }
 }
 
-async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false, ocrImage } = {}) {
+async function resolveProjectFilePath(projectPath, relativeName, { topLevelOnly = false } = {}) {
   if (typeof relativeName !== 'string' || !relativeName || (topLevelOnly && (path.basename(relativeName) !== relativeName || ['.', '..'].includes(relativeName))) || path.isAbsolute(relativeName)
     || relativeName.split(/[\\/]/).some((part) => !part || part === '.' || part === '..')) {
     throw new TypeError(topLevelOnly ? 'Only a top-level file name can be opened' : 'Use a relative project file path without traversal segments.');
@@ -149,6 +149,12 @@ async function readProjectBytes(projectPath, relativeName, { topLevelOnly = fals
     if (index === parts.length - 1 && !details.isFile()) throw new TypeError('Only regular project files can be read.');
   }
   const details = await lstat(target);
+  return { target, details };
+}
+
+async function readProjectBytes(projectPath, relativeName, { topLevelOnly = false, ocrImage } = {}) {
+  const { target, details } = await resolveProjectFilePath(projectPath, relativeName, { topLevelOnly });
+  const parts = relativeName.split(/[\\/]/);
   const extension = path.extname(target).toLowerCase();
   const office = OFFICE_READ_EXTENSIONS.has(extension);
   const pdf = extension === PDF_EXTENSION;
@@ -456,4 +462,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_PROJECT_INSTRUCTION_BYTES, MAX_PROJECT_SEARCH_MATCHES, MAX_PROJECT_SEARCH_QUERY_CHARS, MAX_AGENT_WRITE_BYTES, MAX_OCR_PAGES, IMAGE_EXTENSIONS };
+module.exports = { describeProject, readProjectFile, resolveProjectFilePath, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_PROJECT_INSTRUCTION_BYTES, MAX_PROJECT_SEARCH_MATCHES, MAX_PROJECT_SEARCH_QUERY_CHARS, MAX_AGENT_WRITE_BYTES, MAX_OCR_PAGES, IMAGE_EXTENSIONS };

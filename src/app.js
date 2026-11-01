@@ -266,6 +266,16 @@ async function openProjectFile(fileName) {
 
   const heading = document.createElement('strong');
   heading.textContent = fileName;
+  const openButton = document.createElement('button');
+  openButton.type = 'button';
+  openButton.className = 'context-action';
+  openButton.textContent = 'Open in default app';
+  openButton.addEventListener('click', async () => {
+    openButton.disabled = true;
+    try { await window.obavenus.openProjectFile(fileName); }
+    catch (error) { note.textContent = error.message || 'Could not open this file in its default app.'; }
+    finally { openButton.disabled = false; }
+  });
   const preview = document.createElement('pre');
   preview.className = 'file-preview';
   preview.textContent = result.content;
@@ -276,7 +286,7 @@ async function openProjectFile(fileName) {
   attachButton.className = 'context-action';
   attachButton.textContent = '＋ Add to next message';
   attachButton.addEventListener('click', () => attachProjectContext(fileName, result.content));
-  contextCard.append(heading, preview, attachButton, note);
+  contextCard.append(heading, openButton, preview, attachButton, note);
 }
 
 function attachProjectContext(name, content) {

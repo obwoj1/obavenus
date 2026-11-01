@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { mkdtemp, mkdir, writeFile, readFile, rm } = require('node:fs/promises');
+const { mkdtemp, mkdir, writeFile, readFile, rm, symlink } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -24,7 +24,7 @@ function makeTextPdf(text) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf, 'latin1');
 }
-const { describeProject, readProjectFile, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_INSTRUCTION_BYTES } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, resolveProjectFilePath, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_INSTRUCTION_BYTES } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -264,6 +264,21 @@ test('project writes reject symlink targets and parent folders', async () => {
     await assert.rejects(writeProjectFile(project, 'linked.txt', 'overwrite'), /regular files/);
     await assert.rejects(writeProjectFile(project, 'linked-dir/escape.txt', 'escape'), /symlinks/);
     assert.equal(await readFile(path.join(root, 'outside.txt'), 'utf8'), 'keep safe');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('opening a project file resolves only regular files inside the selected folder', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-open-'));
+  const project = path.join(root, 'project');
+  await mkdir(project);
+  await writeFile(path.join(project, 'index.html'), '<h1>Ready</h1>');
+  await writeFile(path.join(root, 'outside.txt'), 'outside');
+  await symlink(path.join(root, 'outside.txt'), path.join(project, 'linked.txt'));
+  try {
+    assert.equal(await resolveProjectFilePath(project, 'index.html', { topLevelOnly: true }).then(({ target }) => target), path.join(await require('node:fs/promises').realpath(project), 'index.html'));
+    await assert.rejects(resolveProjectFilePath(project, '../outside.txt'), /relative project file path/);
+    await assert.rejects(resolveProjectFilePath(project, 'linked.txt', { topLevelOnly: true }), /Symbolic links/);
+    await assert.rejects(resolveProjectFilePath(project, 'missing.html', { topLevelOnly: true }), { code: 'ENOENT' });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
