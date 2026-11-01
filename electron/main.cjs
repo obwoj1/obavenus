@@ -1,7 +1,9 @@
 const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell, session } = require('electron');
-const { readFile, writeFile, mkdir, unlink, cp } = require('node:fs/promises');
+const { readFile, writeFile, mkdir, unlink, cp, mkdtemp, rm } = require('node:fs/promises');
 const { WebSocketServer } = require('ws');
 const path = require('node:path');
+const os = require('node:os');
+const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { describeProject, readProjectFile, collectProjectContext, restoreProjectSnapshot } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
@@ -95,8 +97,21 @@ function getStudyStore() {
 }
 
 function getCanvasConnector() {
-  if (!canvasConnector) canvasConnector = createCanvasConnector({ filePath: path.join(app.getPath('userData'), 'canvas.enc'), safeStorage });
+  if (!canvasConnector) canvasConnector = createCanvasConnector({ filePath: path.join(app.getPath('userData'), 'canvas.enc'), safeStorage, extractFile: extractCanvasStudyFile });
   return canvasConnector;
+}
+
+async function extractCanvasStudyFile(name, bytes) {
+  const extension = path.extname(path.basename(name)).toLowerCase();
+  if (!['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.csv', '.json', '.html', '.png', '.jpg', '.jpeg', '.webp'].includes(extension)) throw new Error('Canvas file type is not supported for local text extraction.');
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-canvas-'));
+  const temporaryName = `course-file${extension}`;
+  try {
+    await writeFile(path.join(directory, temporaryName), bytes, { mode: 0o600 });
+    const result = await readProjectFile(directory, temporaryName, { ocrImage: getLocalOcr() });
+    if (result.truncated) throw new Error('Canvas file text exceeds the local extraction limit.');
+    return result;
+  } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
 function getMcpConnector() {

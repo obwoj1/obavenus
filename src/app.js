@@ -1730,7 +1730,7 @@ function renderStudySpace() {
     const info = document.createElement('div');
     const title = document.createElement('strong'); title.textContent = source.name;
     const course = studyData.courses.find((item) => item.id === source.courseId);
-    const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal study file'} · imported ${new Date(source.updatedAt).toLocaleDateString()}`;
+    const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal study file'} · ${source.canvasId ? 'synced from Canvas' : 'imported locally'} · ${new Date(source.updatedAt).toLocaleDateString()}`;
     info.append(title, meta);
     const ask = document.createElement('button'); ask.type = 'button'; ask.dataset.askSource = source.id; ask.textContent = 'Ask about file';
     const generate = document.createElement('button'); generate.type = 'button'; generate.dataset.generateSource = source.id; generate.textContent = 'Generate study set';
@@ -1984,7 +1984,9 @@ document.querySelector('#canvas-sync-button').addEventListener('click', async ()
     const result = await window.obavenus.syncCanvas();
     studyData = await window.obavenus.loadStudySpace();
     renderStudySpace();
-    await refreshCanvasStatus(`Canvas sync complete · ${result.courses} new courses, ${result.assignments} new assignments, ${result.modules} modules indexed.`);
+    const fileMessage = result.filesImported ? ` · ${result.filesImported} course files imported` : '';
+    const skippedMessage = result.filesSkipped ? ` · ${result.filesSkipped} files could not be imported` : '';
+    await refreshCanvasStatus(`Canvas sync complete · ${result.courses} new courses, ${result.assignments} new assignments, ${result.modules} modules indexed${fileMessage}${skippedMessage}.`);
   } catch (error) { status.textContent = error.message || 'Could not sync Canvas.'; }
 });
 document.querySelector('#canvas-disconnect-button').addEventListener('click', async () => {
