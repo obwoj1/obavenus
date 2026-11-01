@@ -1,5 +1,6 @@
 # Build log
 
+- Claude account connection: Settings can start the official Claude Code `auth login --claudeai` browser flow, report login status without exposing credential data, and run safe one-response chats with the selected model through the signed-in CLI; team runs still require an Anthropic Console API key.
 - 0.1.80: Shipped course-scoped/full-library search and a grounded Study question composer with cited, bounded excerpts.
 - 0.1.79: Connected HTTPS MCP services now expose advertised read-only resources and simple URI templates alongside annotated read-only tools. Resource reads are limited to each server's published catalog and bounded to 60 KB; services without resources continue to work. The arm64 DMG is verified, installed, and is the only release DMG retained.
 - Course library: search can be scoped to a course or the full local library; grounded questions prepare an editable prompt with up to six bounded, page/slide-cited excerpts and wait for the student to send it.

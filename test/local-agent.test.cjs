@@ -34,6 +34,44 @@ test('local agent runs signed-in CLIs with shell disabled and read-only safety f
   assert.ok(!calls[0].args.includes('--dangerously-skip-permissions'));
 });
 
+test('signed-in Claude Code can use the selected model in safe one-response mode', async () => {
+  const calls = [];
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn(calls) });
+  await agent.run({ provider: 'claude', model: 'claude-sonnet-4-6', messages: [{ role: 'user', text: 'Explain this.' }] });
+  assert.ok(calls[0].args.includes('--model'));
+  assert.ok(calls[0].args.includes('claude-sonnet-4-6'));
+  assert.ok(calls[0].args.includes('--permission-mode'));
+  assert.throws(() => agent.run({ provider: 'claude', model: '--dangerously-skip-permissions', messages: [{ role: 'user', text: 'No.' }] }), /valid local Claude model ID/);
+});
+
+test('Claude account sign-in uses the supported Claude Code auth command and returns only safe status', async () => {
+  const calls = [];
+  const spawnImpl = (command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough(); child.kill = () => {};
+    process.nextTick(() => {
+      child.stdout.end(args.at(-1) === '--json' ? JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', email: 'private@example.com', accessToken: 'do-not-return' }) : 'login complete');
+      child.stderr.end(); child.emit('close', 0);
+    });
+    return child;
+  };
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl });
+  const status = await agent.signInClaude();
+  assert.deepEqual(status, { installed: true, loggedIn: true, authMethod: 'claude.ai' });
+  assert.deepEqual(calls[0].args, ['auth', 'login', '--claudeai']);
+  assert.deepEqual(calls[1].args, ['auth', 'status', '--json']);
+  assert.equal(calls.every((call) => call.options.shell === false), true);
+  assert.equal(JSON.stringify(status).includes('do-not-return'), false);
+});
+
+test('Claude account controls report an absent CLI without attempting auth commands', async () => {
+  let spawned = false;
+  const agent = createLocalAgent({ env: { PATH: '' }, findExecutableImpl: () => null, spawnImpl: () => { spawned = true; } });
+  assert.deepEqual(await agent.claudeAuthStatus(), { installed: false, loggedIn: false, authMethod: '', error: 'Claude Code CLI was not found. Install Claude Code before connecting your Claude account.' });
+  await assert.rejects(agent.signInClaude(), /Claude Code CLI was not found/);
+  assert.equal(spawned, false);
+});
+
 test('Codex uses read-only sandbox and feeds the prompt over stdin', async () => {
   const calls = [];
   const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn(calls), timeoutMs: 1000 });

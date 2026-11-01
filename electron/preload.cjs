@@ -73,7 +73,10 @@ contextBridge.exposeInMainWorld('obavenus', {
     return () => ipcRenderer.removeListener('tasks:updated', listener);
   },
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
-  runLocalAgent: (provider, messages, writeAccess = false, runId) => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess, runId }),
+  getClaudeAccountStatus: () => ipcRenderer.invoke('local-agent:claude-auth-status'),
+  signInClaudeAccount: () => ipcRenderer.invoke('local-agent:claude-sign-in'),
+  signOutClaudeAccount: () => ipcRenderer.invoke('local-agent:claude-sign-out'),
+  runLocalAgent: (provider, messages, writeAccess = false, runId, model = '') => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess, runId, model }),
   cancelRun: (runId) => ipcRenderer.invoke('runs:cancel', runId),
   onRunDelta: (callback) => {
     const listener = (_event, update) => callback(update);

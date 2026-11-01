@@ -28,8 +28,10 @@ const providerKeyState = document.querySelector('#provider-key-state');
 const providerFormStatus = document.querySelector('#provider-form-status');
 const removeProviderKeyButton = document.querySelector('#remove-provider-key');
 const authMethodSelect = document.querySelector('#openai-auth-method');
+const claudeAuthSelect = document.querySelector('#claude-auth-method');
 const geminiAuthSelect = document.querySelector('#gemini-auth-method');
 const chatgptConnection = document.querySelector('#chatgpt-connection');
+const claudeConnection = document.querySelector('#claude-connection');
 const geminiConnection = document.querySelector('#gemini-connection');
 const chatgptState = document.querySelector('#chatgpt-session-state');
 const chatgptSignInButton = document.querySelector('#chatgpt-sign-in');
@@ -749,8 +751,11 @@ form.addEventListener('submit', async (event) => {
     }
     const settings = await window.obavenus.getProviderSettings();
     const ollamaStatus = settings.provider === 'ollama' ? await window.obavenus.getOllamaStatus() : null;
+    const claudeCodeMode = settings.provider === 'anthropic' && settings.claudeAuthMethod === 'claude-code';
+    const claudeStatus = claudeCodeMode ? await window.obavenus.getClaudeAccountStatus() : null;
     const accountConnectedMode = settings.provider === 'openai' && settings.openaiAuthMethod === 'chatgpt'
       || settings.provider === 'gemini' && settings.geminiAuthMethod === 'google-account'
+      || claudeCodeMode && claudeStatus?.loggedIn
       || settings.provider === 'ollama' && ollamaStatus?.connected;
     if (!settings.configured && !accountConnectedMode) {
       submittedMessage.localOnly = true;
@@ -759,6 +764,7 @@ form.addEventListener('submit', async (event) => {
       pendingReply.localOnly = true;
       pendingReply.status = 'error';
     } else {
+      if (claudeCodeMode && teamMode) throw new Error('Claude account mode runs through the signed-in Claude Code CLI for one-response chats. Choose One response, or connect an Anthropic Console API key to use team mode.');
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
@@ -768,6 +774,8 @@ form.addEventListener('submit', async (event) => {
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
+      } else if (claudeCodeMode) {
+        pendingReply.text = await window.obavenus.runLocalAgent('claude', messages, false, activeRunId, settings.model);
       } else {
         pendingReply.text = await window.obavenus.sendChat(messages, activeRunId);
       }
@@ -1545,8 +1553,11 @@ async function updateProviderBadge() {
     const ollamaConnected = settings.provider === 'ollama'
       ? await window.obavenus.getOllamaStatus().then((status) => status.connected).catch(() => false)
       : false;
+    const claudeConnected = settings.provider === 'anthropic' && settings.claudeAuthMethod === 'claude-code'
+      ? await window.obavenus.getClaudeAccountStatus().then((status) => status.loggedIn).catch(() => false)
+      : false;
     const displayName = settings.provider === 'gemini' ? 'Gemini' : providerName;
-    badge.textContent = (settings.configured || chatgptConnected || geminiConnected || ollamaConnected)
+    badge.textContent = (settings.configured || chatgptConnected || geminiConnected || ollamaConnected || claudeConnected)
       ? `${displayName} · ${settings.model} connected · Settings`
       : `${displayName} not connected · Settings`;
     return settings;
@@ -1563,6 +1574,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
     const settings = await window.obavenus.getProviderSettings();
     providerSelect.value = settings.provider || 'openai';
     authMethodSelect.value = settings.openaiAuthMethod || 'api-key';
+    claudeAuthSelect.value = settings.claudeAuthMethod || 'api-key';
     geminiAuthSelect.value = settings.geminiAuthMethod || 'api-key';
     providerModelInput.dataset.provider = providerSelect.value;
     providerModelInput.value = settings.model;
@@ -1574,6 +1586,7 @@ document.querySelector('#provider-settings').addEventListener('click', async () 
       : 'No key saved. Your key will be encrypted with macOS Keychain-backed storage.';
     removeProviderKeyButton.hidden = !settings.configured;
     await updateChatGPTControls();
+    await updateClaudeControls();
     await updateGeminiControls();
     if (providerSelect.value === 'ollama') await updateOllamaStatus();
   } catch (error) {
@@ -1591,6 +1604,7 @@ providerForm.addEventListener('submit', async (event) => {
     const settings = await window.obavenus.saveProviderSettings({
       provider: providerSelect.value,
       openaiAuthMethod: authMethodSelect.value,
+      claudeAuthMethod: claudeAuthSelect.value,
       geminiAuthMethod: geminiAuthSelect.value,
       geminiProjectId: document.querySelector('#gemini-project-id').value.trim(),
       model: providerModelInput.value,
@@ -1632,6 +1646,7 @@ providerSelect.addEventListener('change', async () => {
   providerKeyState.textContent = connected ? 'This provider has a key saved in encrypted device storage.' : 'No key saved for this provider.';
   removeProviderKeyButton.hidden = !connected;
   await updateChatGPTControls();
+  await updateClaudeControls();
   await updateGeminiControls();
   if (providerSelect.value === 'ollama') await updateOllamaStatus();
 });
@@ -1652,7 +1667,37 @@ async function updateOllamaStatus() {
 }
 
 authMethodSelect.addEventListener('change', () => { updateChatGPTControls(); updateProviderDisclosure(); });
+claudeAuthSelect.addEventListener('change', () => { updateClaudeControls(); updateProviderDisclosure(); });
 geminiAuthSelect.addEventListener('change', () => { updateGeminiControls(); updateProviderDisclosure(); });
+
+document.querySelector('#claude-sign-in').addEventListener('click', async () => {
+  const button = document.querySelector('#claude-sign-in');
+  const state = document.querySelector('#claude-session-state');
+  button.disabled = true;
+  state.textContent = 'Starting the official Claude Code sign-in… Complete authentication in the browser window.';
+  try {
+    const status = await window.obavenus.signInClaudeAccount();
+    if (!status.loggedIn) throw new Error('Claude Code sign-in did not finish. Complete the browser flow, then retry.');
+    providerSelect.value = 'anthropic';
+    claudeAuthSelect.value = 'claude-code';
+    updateProviderFormLabels();
+    await window.obavenus.saveProviderSettings({ provider: 'anthropic', claudeAuthMethod: 'claude-code', model: providerModelInput.value || 'claude-sonnet-4-6', apiKey: '' });
+    state.textContent = 'Claude account connected on this Mac through Claude Code.';
+    await updateProviderBadge();
+  } catch (error) { state.textContent = error.message || 'Claude sign-in did not complete.'; }
+  finally { button.disabled = false; await updateClaudeControls(); }
+});
+
+document.querySelector('#claude-disconnect').addEventListener('click', async () => {
+  const button = document.querySelector('#claude-disconnect');
+  button.disabled = true;
+  try {
+    await window.obavenus.signOutClaudeAccount();
+    document.querySelector('#claude-session-state').textContent = 'Signed out of Claude Code on this Mac.';
+    await updateProviderBadge();
+  } catch (error) { document.querySelector('#claude-session-state').textContent = error.message || 'Could not sign out of Claude Code.'; }
+  finally { button.disabled = false; await updateClaudeControls(); }
+});
 
 geminiSignInButton.addEventListener('click', async () => {
   geminiSignInButton.disabled = true;
@@ -1743,9 +1788,12 @@ function updateProviderFormLabels() {
   document.querySelector('#provider-title').textContent = `Connect ${providerName}`;
   document.querySelector('#openai-auth-label').hidden = providerSelect.value !== 'openai';
   authMethodSelect.hidden = providerSelect.value !== 'openai';
+  document.querySelector('#claude-auth-label').hidden = providerSelect.value !== 'anthropic';
+  claudeAuthSelect.hidden = providerSelect.value !== 'anthropic';
   document.querySelector('#gemini-auth-label').hidden = providerSelect.value !== 'gemini';
   geminiAuthSelect.hidden = providerSelect.value !== 'gemini';
   const accountMode = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt'
+    || providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code'
     || providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account'
     || providerSelect.value === 'ollama';
   document.querySelector('#ollama-settings').hidden = providerSelect.value !== 'ollama';
@@ -1754,10 +1802,12 @@ function updateProviderFormLabels() {
   providerKeyState.hidden = accountMode;
   removeProviderKeyButton.hidden = accountMode;
   chatgptConnection.hidden = providerSelect.value !== 'openai' || authMethodSelect.value !== 'chatgpt';
+  claudeConnection.hidden = providerSelect.value !== 'anthropic' || claudeAuthSelect.value !== 'claude-code';
   geminiConnection.hidden = providerSelect.value !== 'gemini' || geminiAuthSelect.value !== 'google-account';
   const note = document.querySelector('#provider-auth-note');
-  note.hidden = !['anthropic', 'xai', 'ollama'].includes(providerSelect.value);
-  note.textContent = providerSelect.value === 'anthropic'
+  const claudeCodeMode = providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code';
+  note.hidden = !['anthropic', 'xai', 'ollama'].includes(providerSelect.value) || claudeCodeMode;
+  note.textContent = providerSelect.value === 'anthropic' && !claudeCodeMode
     ? 'Claude Pro/Max sign-in is for Anthropic apps such as Claude Code. For third-party apps, Anthropic directs developers to use a Console API key, billed separately from your subscription.'
     : providerSelect.value === 'xai' ? 'Grok subscription sign-in is not available through xAI’s public API. Obavenus uses an xAI API key.'
       : providerSelect.value === 'ollama' ? 'Ollama runs models locally. It must be running on this Mac, and the selected model must already be installed.' : '';
@@ -1769,6 +1819,7 @@ function updateProviderFormLabels() {
 async function updateProviderDisclosure() {
   const providerName = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google', xai: 'xAI', ollama: 'local Ollama' }[providerSelect.value] || 'selected provider';
   const isChatGPT = providerSelect.value === 'openai' && authMethodSelect.value === 'chatgpt';
+  const isClaudeAccount = providerSelect.value === 'anthropic' && claudeAuthSelect.value === 'claude-code';
   const isGeminiOAuth = providerSelect.value === 'gemini' && geminiAuthSelect.value === 'google-account';
   const isOllama = providerSelect.value === 'ollama';
   const profile = await window.obavenus.getProfile().catch(() => ({ shareWithAI: false }));
@@ -1779,6 +1830,8 @@ async function updateProviderDisclosure() {
     ? `When you press Send, this chat and attached files go to OpenAI through your ChatGPT account. Requests use store: false; OpenAI’s account data policies still apply.${profileNote}`
     : isGeminiOAuth
       ? `When you press Send, this chat and attached files go to the Gemini API through your Google account. Usage is charged to your selected Google Cloud project.${profileNote}`
+      : isClaudeAccount
+        ? `When you press Send, chat text and attached files go to Anthropic through the official Claude Code CLI signed in on this Mac. Claude Code applies your account's plan and usage terms.${profileNote}`
     : `When you press Send, this chat and attached files go to ${providerName}. OpenAI API requests use store: false; other providers’ data policies apply.${profileNote}`;
 }
 
@@ -1807,6 +1860,20 @@ async function updateGeminiControls() {
     geminiSignInButton.textContent = status.connected ? 'Reconnect Google' : 'Continue with Google';
     geminiDisconnectButton.hidden = !status.connected;
   } catch (error) { geminiState.textContent = error.message || 'Google account status unavailable.'; }
+}
+
+async function updateClaudeControls() {
+  updateProviderFormLabels();
+  if (providerSelect.value !== 'anthropic' || claudeAuthSelect.value !== 'claude-code') return;
+  const state = document.querySelector('#claude-session-state');
+  try {
+    const status = await window.obavenus.getClaudeAccountStatus();
+    state.textContent = !status.installed ? 'Claude Code CLI is not installed. Install it to connect a Claude account.'
+      : status.loggedIn ? `Connected through Claude Code (${status.authMethod}).`
+        : 'Claude Code is installed, but no Claude account is signed in.';
+    document.querySelector('#claude-sign-in').textContent = status.loggedIn ? 'Reconnect Claude' : 'Continue with Claude';
+    document.querySelector('#claude-disconnect').hidden = !status.loggedIn;
+  } catch (error) { state.textContent = error.message || 'Claude account status unavailable.'; }
 }
 
 async function refreshChatGPTModels() {

@@ -688,13 +688,16 @@ ipcMain.handle('tasks:cancel', async (_event, id) => {
   return cancelled;
 });
 ipcMain.handle('local-agent:status', () => localAgent.status());
-ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAccess = false, runId }) => withRunSignal(runId, async (signal) => {
+ipcMain.handle('local-agent:claude-auth-status', () => localAgent.claudeAuthStatus());
+ipcMain.handle('local-agent:claude-sign-in', () => localAgent.signInClaude());
+ipcMain.handle('local-agent:claude-sign-out', () => localAgent.signOutClaude());
+ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAccess = false, runId, model = '' }) => withRunSignal(runId, async (signal) => {
     let projectPath;
     try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
     const preparedMessages = await withSelectedProjectInstructions(messages, projectPath);
-    return localAgent.run({ provider, messages: preparedMessages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true, signal });
+    return localAgent.run({ provider, messages: preparedMessages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true, signal, model });
   }));
 ipcMain.handle('runs:cancel', (_event, runId) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) return false;

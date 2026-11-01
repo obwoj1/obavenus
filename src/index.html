@@ -544,6 +544,13 @@
           <div class="settings-actions"><button type="button" id="chatgpt-sign-in" class="primary">Continue with ChatGPT</button><button type="button" id="chatgpt-disconnect" hidden>Disconnect ChatGPT</button></div>
           <small>Availability depends on your account and OpenAI’s approval of this app. ChatGPT plan access is separate from API billing.</small>
         </div>
+        <label for="claude-auth-method" id="claude-auth-label" hidden>Claude sign-in method</label>
+        <select id="claude-auth-method" hidden><option value="claude-code">Sign in with Claude account</option><option value="api-key">Use Anthropic Console API key</option></select>
+        <div id="claude-connection" hidden>
+          <small id="claude-session-state">Checking Claude Code sign-in…</small>
+          <div class="settings-actions"><button type="button" id="claude-sign-in" class="primary">Continue with Claude</button><button type="button" id="claude-disconnect" hidden>Sign out of Claude Code</button></div>
+          <small>Uses the official Claude Code CLI and its Claude.ai Pro/Max or Console sign-in on this Mac. Signing out here also signs Claude Code CLI out for other apps.</small>
+        </div>
         <label for="gemini-auth-method" id="gemini-auth-label" hidden>Gemini sign-in method</label>
         <select id="gemini-auth-method" hidden><option value="google-account">Sign in with Google account</option><option value="api-key">Use Gemini API key</option></select>
         <div id="gemini-connection" hidden>
