@@ -83,6 +83,26 @@ test('browser form filling is exposed only for paired Chrome and enforces text b
   await assert.rejects(allowed('browser_fill_field', { label: 'Email', value: 'x'.repeat(2001) }), /2,000/);
 });
 
+test('connected MCP read-only tools join the agent tool list and dispatch to their connector', async () => {
+  const externalTool = { name: 'mcp_course_search_materials', description: '[Courseware] Search material', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } };
+  let listed = false;
+  let executed;
+  let turn = 0;
+  const answer = await runToolAgent({
+    messages: [{ role: 'user', text: 'Find enzymes in my course' }],
+    externalTools: [externalTool],
+    executeTool: async (name, args) => { executed = { name, args }; return { text: 'Page 3 describes enzymes.' }; },
+    dispatch: async (_messages, { tools }) => {
+      listed ||= tools.some((tool) => tool.name === externalTool.name);
+      turn += 1;
+      return turn === 1 ? { toolCalls: [{ name: externalTool.name, arguments: { query: 'enzymes' } }] } : { text: 'The result is on page 3.' };
+    },
+  });
+  assert.equal(listed, true);
+  assert.deepEqual(executed, { name: externalTool.name, args: { query: 'enzymes' } });
+  assert.equal(answer, 'The result is on page 3.');
+});
+
 test('native spreadsheet tool is gated behind project-write mode and reports its project artifact', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-office-tool-'));
   try {

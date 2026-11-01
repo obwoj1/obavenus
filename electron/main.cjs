@@ -35,6 +35,7 @@ const { createStudyStore } = require('./study-store.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
+const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -76,6 +77,7 @@ let remoteMachineStore;
 let remoteJobStore;
 let studyStore;
 let canvasConnector;
+let mcpConnector;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -94,6 +96,11 @@ function getStudyStore() {
 function getCanvasConnector() {
   if (!canvasConnector) canvasConnector = createCanvasConnector({ filePath: path.join(app.getPath('userData'), 'canvas.enc'), safeStorage });
   return canvasConnector;
+}
+
+function getMcpConnector() {
+  if (!mcpConnector) mcpConnector = createMcpConnector({ filePath: path.join(app.getPath('userData'), 'mcp-connections.enc'), safeStorage });
+  return mcpConnector;
 }
 
 function getRemoteMachineStore() {
@@ -381,6 +388,9 @@ ipcMain.handle('study:canvas-status', () => getCanvasConnector().status());
 ipcMain.handle('study:canvas-connect', (_event, credentials) => getCanvasConnector().connect(credentials));
 ipcMain.handle('study:canvas-disconnect', () => getCanvasConnector().disconnect());
 ipcMain.handle('study:canvas-sync', () => getCanvasConnector().sync(getStudyStore()));
+ipcMain.handle('mcp:list', () => getMcpConnector().listServers());
+ipcMain.handle('mcp:add', (_event, config) => getMcpConnector().addServer(config));
+ipcMain.handle('mcp:remove', (_event, id) => getMcpConnector().removeServer(id));
 ipcMain.handle('conversation:export', async (_event, conversation) => {
   const markdown = formatConversationMarkdown(conversation);
   const result = await dialog.showSaveDialog({
@@ -619,6 +629,7 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
       if (error.code !== 'ENOENT') throw error;
     }
   }
+  const externalMcp = await getMcpConnector().getAgentTools();
   const executeTool = createAgentToolExecutor({
     projectPath,
     writeAccess: writeAccess === true && Boolean(projectPath),
@@ -630,6 +641,7 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     projectUndo: getProjectUndoStore(),
     ocrImage: getLocalOcr(),
     searchGmail: (query) => getGmailConnector().search(query),
+    executeMcpTool: (name, args) => externalMcp.execute(name, args),
   });
   const customAgents = await getAgentStore().list();
   const requestedIds = Array.isArray(agentIds) ? [...new Set(agentIds.filter((id) => typeof id === 'string'))].slice(0, 12) : [];
@@ -639,6 +651,7 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     dispatch: dispatchProviderMessages,
     signal,
     executeTool,
+    externalTools: externalMcp.definitions,
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true || chromeAccess === true,
     browserFillAccess: chromeAccess === true,

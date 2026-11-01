@@ -56,7 +56,7 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, executeMcpTool, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
   const changes = [];
   async function writeWithUndo(relativePath, content, write) {
     const snapshot = await snapshotProjectFile(projectPath, relativePath, Math.max(MAX_AGENT_WRITE_BYTES, Buffer.byteLength(content)));
@@ -74,6 +74,10 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
   }
   const executeAgentTool = async function executeAgentTool(name, args = {}) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) throw new TypeError('Tool arguments must be an object.');
+    if (name.startsWith('mcp_')) {
+      if (typeof executeMcpTool !== 'function') return { error: 'No connected MCP learning service is available for this run.' };
+      return executeMcpTool(name, args);
+    }
     if (name === 'list_project_files') {
       if (!projectPath) return { error: 'No project folder is open.' };
       return listProjectFiles(projectPath);
@@ -165,13 +169,13 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
   return executeAgentTool;
 }
 
-async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false, signal }) {
+async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false, externalTools = [], signal }) {
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
     signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => tool.name !== 'browser_fill_field' || browserFillAccess) : [];
-    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';

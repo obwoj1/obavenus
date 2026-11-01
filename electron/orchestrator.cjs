@@ -55,7 +55,7 @@ function lastUserMessage(messages) {
   return [...messages].reverse().find((message) => message.role === 'user');
 }
 
-async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, browserFillAccess = false, specialist = null, specialists = [], autoSelectSpecialists = false, signal }) {
+async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, browserFillAccess = false, externalTools = [], specialist = null, specialists = [], autoSelectSpecialists = false, signal }) {
   if (!Array.isArray(messages) || messages.length === 0) throw new TypeError('Add a message before starting a team run.');
   if (typeof dispatch !== 'function') throw new TypeError('A provider dispatcher is required.');
   const task = lastUserMessage(messages);
@@ -85,6 +85,7 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
       writeAccess: canWrite,
       browserAccess: canBrowse,
       browserFillAccess: canBrowse && browserFillAccess,
+      externalTools,
       onTool: ({ name, call }) => {
         traces[role].push(name);
         onProgress({ stage: 'tool', label: `${definition.label} · ${name} (${call})` });
