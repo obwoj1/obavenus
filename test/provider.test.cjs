@@ -131,6 +131,18 @@ test('only explicitly attached file context is included in the API input', async
   assert.match(sentBody.instructions, /untrusted reference data/);
 });
 
+test('provider API request propagates Stop as cancellation rather than a timeout', async () => {
+  const controller = new AbortController();
+  const pending = requestProviderResponse({
+    apiKey: 'test-key', model: 'gpt-5.5', messages: [{ role: 'user', text: 'Wait' }], signal: controller.signal,
+    fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+      setImmediate(() => controller.abort());
+    }),
+  });
+  await assert.rejects(pending, (error) => error.name === 'AbortError' && /stopped/.test(error.message));
+});
+
 test('OpenAI request rejects invalid models and oversized conversation context', async () => {
   await assert.rejects(requestProviderResponse({
     apiKey: 'key', model: 'bad model', messages: [{ role: 'user', text: 'Hi' }],

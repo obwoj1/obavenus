@@ -48,6 +48,21 @@ test('team workflow rejects a conversation without a user message', async () => 
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });
 
+test('team cancellation aborts the lead request without triggering retries or synthesis', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const dispatch = async (_messages, { signal }) => {
+    calls += 1;
+    assert.equal(signal, controller.signal);
+    controller.abort();
+    throw Object.assign(new Error('stopped'), { name: 'AbortError' });
+  };
+  await assert.rejects(runTeamWorkflow({
+    messages: [{ role: 'user', text: 'Research this.' }], dispatch, signal: controller.signal,
+  }), { name: 'AbortError' });
+  assert.equal(calls, 1);
+});
+
 test('team workflow preserves review findings when planning and one specialist fail', async () => {
   const warnings = [];
   const result = await runTeamWorkflow({

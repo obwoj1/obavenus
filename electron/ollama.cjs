@@ -26,10 +26,13 @@ function makeMessages(messages) {
   });
 }
 
-async function requestOllamaResponse({ model, messages, tools, fetchImpl = globalThis.fetch, timeoutMs = 300_000 }) {
+async function requestOllamaResponse({ model, messages, tools, signal, fetchImpl = globalThis.fetch, timeoutMs = 300_000 }) {
   const input = makeMessages(messages);
   const safeModel = validateModel(model);
   const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  signal?.addEventListener('abort', onAbort, { once: true });
+  if (signal?.aborted) controller.abort();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const ollamaTools = tools?.map(({ name, description, parameters }) => ({ type: 'function', function: { name, description, parameters } }));
   try {
@@ -45,10 +48,11 @@ async function requestOllamaResponse({ model, messages, tools, fetchImpl = globa
     if (!text && !toolCalls.length) throw new Error('Ollama returned no text or tool calls. Check that the selected model supports chat.');
     return tools ? { text, toolCalls } : text;
   } catch (error) {
+    if (signal?.aborted) throw Object.assign(new Error('The local Ollama request was stopped.'), { name: 'AbortError' });
     if (error.name === 'AbortError') throw new Error('The local Ollama request timed out after five minutes.');
     if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('fetch failed')) throw new Error('Ollama is not responding on this Mac. Start the Ollama app and install a model, then try again.');
     throw error;
-  } finally { clearTimeout(timeout); }
+  } finally { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); }
 }
 
 async function listOllamaModels({ fetchImpl = globalThis.fetch } = {}) {

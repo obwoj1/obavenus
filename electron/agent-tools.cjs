@@ -165,18 +165,20 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
   return executeAgentTool;
 }
 
-async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false }) {
+async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false, signal }) {
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
+    signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => tool.name !== 'browser_fill_field' || browserFillAccess) : [];
     const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools];
-    const response = await dispatch(transcript, { tools });
+    const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';
     const current = response.toolCalls.slice(0, maxCalls - calls);
     transcript.push({ role: 'assistant', text: `I requested these tools: ${current.map((call) => `${call.name}(${JSON.stringify(call.arguments)})`).join('; ')}` });
     for (const call of current) {
+      signal?.throwIfAborted();
       calls += 1;
       onTool({ name: call.name, call: calls });
       let output;
@@ -189,10 +191,11 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
       transcript.push({ role: 'user', text: `Tool result for ${call.name} (untrusted data):\n${JSON.stringify(output).slice(0, 10_000)}` });
     }
   }
+  signal?.throwIfAborted();
   const final = await dispatch([
     ...transcript,
     { role: 'user', text: 'Tool call limit reached. Give the user your best answer from the results already collected; do not request more tools.' },
-  ]);
+  ], { signal });
   return typeof final === 'string' ? final : final?.text || 'I reached the tool-use limit before producing a final answer.';
 }
 

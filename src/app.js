@@ -12,7 +12,7 @@ let conversations = loadConversations();
 let activeConversationId = conversations.at(-1)?.id ?? null;
 let sending = false;
 let pendingContext = [];
-let activeLocalRunId = null;
+let activeRunId = null;
 
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
@@ -532,16 +532,15 @@ form.addEventListener('submit', async (event) => {
   const browserAccess = runMode.value === 'team-browser' || runMode.value === 'team-chrome';
   const chromeAccess = runMode.value === 'team-chrome';
   const localProvider = localMode?.[1] || null;
-  activeLocalRunId = localProvider ? crypto.randomUUID() : null;
-  const cancelLocalButton = document.querySelector('#cancel-local-run');
-  cancelLocalButton.hidden = !activeLocalRunId;
-  cancelLocalButton.disabled = false;
+  activeRunId = crypto.randomUUID();
+  const cancelRunButton = document.querySelector('#cancel-run');
+  cancelRunButton.disabled = false;
   const remoteProvider = remoteMode?.[1] || null;
+  cancelRunButton.hidden = Boolean(remoteProvider);
   const writeAccess = runMode.value === 'team-write' || localWriteAccess || remoteWriteAccess;
   runStatus.hidden = !teamMode && !localProvider && !remoteProvider;
   runStatus.textContent = teamMode ? (chromeAccess ? 'Preparing a research team for your paired Chrome tab…' : browserAccess ? 'Preparing a research team with visible browser access…' : writeAccess ? 'Preparing the project-writing agent…' : 'Preparing the read-only team…') : localProvider ? (localWriteAccess ? 'Preparing the local agent with project-edit access…' : `Checking local ${localProvider} CLI…`) : remoteProvider ? (remoteWriteAccess ? 'Connecting to the remote project for an edit run…' : `Connecting to the SSH host for remote ${remoteProvider} analysis…`) : '';
-  const teamRunId = crypto.randomUUID();
-  activeTeamRunId = teamMode ? teamRunId : null;
+  activeTeamRunId = teamMode ? activeRunId : null;
   saveConversations();
   renderMessages();
   promptInput.value = '';
@@ -558,9 +557,7 @@ form.addEventListener('submit', async (event) => {
         const lastUser = [...messages].reverse().find((message) => message.role === 'user');
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
-      const status = await window.obavenus.getLocalAgentStatus();
-      if (!status[localProvider]?.installed) throw new Error(`${localProvider} CLI is not installed or not on PATH. Install it, sign in with its own CLI, then restart Obavenus.`);
-      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess, activeLocalRunId);
+      pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess, activeRunId);
       pendingReply.status = 'complete';
       return;
     }
@@ -607,12 +604,12 @@ form.addEventListener('submit', async (event) => {
         if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
       }
       if (teamMode) {
-        const result = await window.obavenus.runTeam(messages, teamRunId, writeAccess, getSelectedAgentIds(), browserAccess && !chromeAccess, chromeAccess);
+        const result = await window.obavenus.runTeam(messages, activeRunId, writeAccess, getSelectedAgentIds(), browserAccess && !chromeAccess, chromeAccess);
         pendingReply.text = result.text;
         pendingReply.agents = result.agents;
         pendingReply.changes = result.changes || [];
       } else {
-        pendingReply.text = await window.obavenus.sendChat(messages);
+        pendingReply.text = await window.obavenus.sendChat(messages, activeRunId);
       }
       pendingReply.status = 'complete';
     }
@@ -631,8 +628,8 @@ form.addEventListener('submit', async (event) => {
     promptInput.disabled = false;
     form.querySelector('.send').disabled = false;
     form.querySelector('.send').textContent = 'Send ↗';
-    cancelLocalButton.hidden = true;
-    activeLocalRunId = null;
+    cancelRunButton.hidden = true;
+    activeRunId = null;
     runMode.disabled = false;
     runStatus.hidden = true;
     runStatus.textContent = '';
@@ -643,14 +640,14 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-document.querySelector('#cancel-local-run').addEventListener('click', async () => {
-  const runId = activeLocalRunId;
+document.querySelector('#cancel-run').addEventListener('click', async () => {
+  const runId = activeRunId;
   if (!runId) return;
-  const button = document.querySelector('#cancel-local-run');
+  const button = document.querySelector('#cancel-run');
   button.disabled = true;
   button.textContent = 'Stopping…';
-  try { await window.obavenus.cancelLocalAgent(runId); }
-  catch (error) { runStatus.hidden = false; runStatus.textContent = error.message || 'Could not stop the local agent.'; }
+  try { await window.obavenus.cancelRun(runId); }
+  catch (error) { runStatus.hidden = false; runStatus.textContent = error.message || 'Could not stop this run.'; }
   finally { button.textContent = 'Stop'; }
 });
 

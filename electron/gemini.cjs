@@ -117,7 +117,8 @@ function createGeminiConnector({ filePath, safeStorage, fetchImpl = globalThis.f
     connect,
     async status() { const saved = await readSaved(); return { connected: Boolean(saved.encryptedRefreshToken), email: saved.email || '', projectId: saved.projectId || '' }; },
     async disconnect() { await writeSaved({}); return true; },
-    async generate({ model, messages, tools }) {
+    async generate({ model, messages, tools, signal }) {
+      signal?.throwIfAborted();
       if (typeof model !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(model.trim())) throw new TypeError('Enter a valid Gemini model ID.');
       const saved = await readSaved();
       if (!saved.projectId) throw new Error('Connect a Google account and set a Cloud project ID in Settings first.');
@@ -141,6 +142,9 @@ function createGeminiConnector({ filePath, safeStorage, fetchImpl = globalThis.f
       });
       if (chars > 100_000 || contextChars > 60_000) throw new RangeError('This conversation or its selected file context is too long to send in one request.');
       const controller = new AbortController();
+      const onAbort = () => controller.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) controller.abort();
       const timeout = setTimeout(() => controller.abort(), 90_000);
       try {
         const response = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model.trim())}:generateContent`, {
@@ -157,9 +161,10 @@ function createGeminiConnector({ filePath, safeStorage, fetchImpl = globalThis.f
         if (tools) return { text, toolCalls };
         return text;
       } catch (error) {
+        if (signal?.aborted) throw Object.assign(new Error('The Gemini request was stopped.'), { name: 'AbortError' });
         if (error.name === 'AbortError') throw new Error('The Gemini request timed out after 90 seconds.');
         throw error;
-      } finally { clearTimeout(timeout); }
+      } finally { clearTimeout(timeout); signal?.removeEventListener('abort', onAbort); }
     },
   };
 }

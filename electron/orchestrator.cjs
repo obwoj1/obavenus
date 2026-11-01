@@ -55,7 +55,7 @@ function lastUserMessage(messages) {
   return [...messages].reverse().find((message) => message.role === 'user');
 }
 
-async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, browserFillAccess = false, specialist = null, specialists = [], autoSelectSpecialists = false }) {
+async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = () => {}, writeAccess = false, browserAccess = false, browserFillAccess = false, specialist = null, specialists = [], autoSelectSpecialists = false, signal }) {
   if (!Array.isArray(messages) || messages.length === 0) throw new TypeError('Add a message before starting a team run.');
   if (typeof dispatch !== 'function') throw new TypeError('A provider dispatcher is required.');
   const task = lastUserMessage(messages);
@@ -65,6 +65,7 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
   const candidates = Array.isArray(specialists) ? specialists.slice(0, 30) : [];
   const traces = {};
   async function send(role, extra = '', custom = null) {
+    signal?.throwIfAborted();
     const definition = custom
       ? { label: `Specialist · ${custom.name}`, prompt: `You are an independent specialist agent named ${custom.name}. Apply this expertise and approach: ${custom.instructions}. Solve the user’s request directly, use the lead plan as context, check details, and state uncertainty. Return useful findings.` }
       : ROLES[role];
@@ -80,6 +81,7 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
       messages: [{ role: 'user', text: `${definition.prompt}${role === 'analyst' && specialist ? `\n\nAct as the ${specialist.name}. Apply this expertise and perspective: ${specialist.instructions}` : ''}\n${toolGuidance} Never claim a tool action succeeded unless its result confirms it.\n\nUser request:\n${taskText}${extra ? `\n\n${extra}` : ''}`, context }],
       dispatch,
       executeTool,
+      signal,
       writeAccess: canWrite,
       browserAccess: canBrowse,
       browserFillAccess: canBrowse && browserFillAccess,
@@ -106,6 +108,7 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
     } else plan = plannerResult;
   }
   catch (error) {
+    if (signal?.aborted) throw error;
     plan = `The planning step failed (${error.message || 'unknown error'}). Continue independently from the user request and available evidence.`;
     if (autoSelectSpecialists) custom = rankSpecialists(taskText, candidates);
     onProgress({ stage: 'warning', label: 'Planner failed · specialists will continue independently' });
@@ -121,6 +124,7 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
     }),
   ];
   let outcomes = await Promise.allSettled(jobs.map((job) => job.run(plan)));
+  signal?.throwIfAborted();
   const failed = jobs.filter((_job, index) => outcomes[index].status === 'rejected');
   if (failed.length) {
     onProgress({ stage: 'replanning', label: `Lead · replanning after ${failed.length} failed step${failed.length === 1 ? '' : 's'}` });
@@ -129,9 +133,11 @@ async function runTeamWorkflow({ messages, dispatch, executeTool, onProgress = (
       const revised = await send('planner', `The previous plan was:\n${plan}\n\nThese specialist steps failed:\n${failures}\n\nRevise the plan so the failed steps can make another attempt. Preserve useful completed work and keep the retry focused.`);
       if (revised.trim()) plan = revised;
     } catch (error) {
+      if (signal?.aborted) throw error;
       onProgress({ stage: 'warning', label: `Replanning failed · retrying with the existing plan (${error.message || 'unknown error'})` });
     }
     const retries = await Promise.all(failed.map(async (job) => {
+      signal?.throwIfAborted();
       const firstError = outcomes[jobs.indexOf(job)].reason?.message || 'unknown error';
       onProgress({ stage: 'retry', label: `${job.label} · retrying once with the revised plan` });
       try {

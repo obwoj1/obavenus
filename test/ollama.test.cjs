@@ -36,6 +36,18 @@ test('Ollama local model discovery reports installed tags and offline status', a
   assert.match(offline.error, /Start the Ollama app/);
 });
 
+test('Ollama propagates Stop as a user cancellation', async () => {
+  const controller = new AbortController();
+  const pending = requestOllamaResponse({
+    model: 'qwen3:8b', messages: [{ role: 'user', text: 'Wait' }], signal: controller.signal,
+    fetchImpl: (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+      setImmediate(() => controller.abort());
+    }),
+  });
+  await assert.rejects(pending, (error) => error.name === 'AbortError' && /stopped/.test(error.message));
+});
+
 test('Ollama conversations reject unsafe message roles, paths and oversized attached context', async () => {
   assert.throws(() => makeMessages([{ role: 'tool', text: 'bad' }]), /unsupported message/);
   assert.throws(() => makeMessages([{ role: 'user', text: 'x', context: [{ name: '../secret', content: 'x' }] }]), /invalid/);
