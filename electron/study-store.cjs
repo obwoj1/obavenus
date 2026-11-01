@@ -57,7 +57,7 @@ function normalizeStudyData(value) {
       dueAt: assignment.dueAt === null || assignment.dueAt === undefined || assignment.dueAt === '' ? null : Number(assignment.dueAt),
       status: ['todo', 'in-progress', 'done'].includes(assignment.status) ? assignment.status : 'todo',
       remindedDueAt: Number.isFinite(assignment.remindedDueAt) ? assignment.remindedDueAt : null,
-      steps: steps.map((step) => ({ id: uniqueId(step.id, 'Plan step'), text: cleanText(step.text, 'Plan step', 300), done: step.done === true })),
+      steps: steps.map((step) => ({ id: uniqueId(step.id, 'Plan step'), text: cleanText(step.text, 'Plan step', 300), done: step.done === true, planDate: typeof step.planDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(step.planDate) ? step.planDate : '' })),
       createdAt: Number.isFinite(assignment.createdAt) ? assignment.createdAt : Date.now(),
     };
   });
