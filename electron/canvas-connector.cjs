@@ -21,7 +21,7 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
       const envelope = JSON.parse(await readFile(filePath, 'utf8'));
       if (typeof envelope.encrypted !== 'string' || !safeStorage?.isEncryptionAvailable()) throw new Error('Secure Canvas credential storage is unavailable on this Mac.');
       const config = JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted, 'base64')));
-      return { baseUrl: cleanCanvasBaseUrl(config.baseUrl), token: config.token };
+      return { baseUrl: cleanCanvasBaseUrl(envelope.baseUrl || config.baseUrl), token: config.token };
     } catch (error) {
       if (error.code === 'ENOENT') return null;
       throw error;
@@ -34,7 +34,7 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
     const temporary = `${filePath}.${randomUUID()}.tmp`;
     try {
       const encrypted = safeStorage.encryptString(JSON.stringify(config)).toString('base64');
-      await writeFile(temporary, JSON.stringify({ encrypted }), { mode: 0o600 });
+      await writeFile(temporary, JSON.stringify({ version: 1, baseUrl: config.baseUrl, encrypted }), { mode: 0o600 });
       await rename(temporary, filePath);
     } catch (error) {
       await require('node:fs/promises').unlink(temporary).catch(() => {});
@@ -81,8 +81,14 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
 
   return {
     async status() {
-      const config = await readConfig();
-      return config ? { connected: true, baseUrl: config.baseUrl } : { connected: false, baseUrl: '' };
+      try {
+        const envelope = JSON.parse(await readFile(filePath, 'utf8'));
+        if (typeof envelope.encrypted !== 'string') throw new Error('Saved Canvas connection is invalid.');
+        return { connected: true, baseUrl: cleanCanvasBaseUrl(envelope.baseUrl || '') };
+      } catch (error) {
+        if (error.code === 'ENOENT') return { connected: false, baseUrl: '' };
+        throw error;
+      }
     },
     connect,
     async disconnect() {
