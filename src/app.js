@@ -1918,6 +1918,28 @@ function renderStudySpace() {
   renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
 }
 
+async function refreshStudyMcpServerStatus(message = '') {
+  const status = await window.obavenus.getStudyMcpServerStatus();
+  const toggle = document.querySelector('#study-mcp-server-toggle');
+  toggle.textContent = status.running ? 'Stop local server' : 'Start local server';
+  document.querySelector('#study-mcp-server-info').hidden = !status.running;
+  document.querySelector('#study-mcp-server-copy').hidden = !status.running;
+  document.querySelector('#study-mcp-server-rotate').hidden = !status.running;
+  if (!status.running) {
+    document.querySelector('#study-mcp-server-config').hidden = true;
+    document.querySelector('#study-mcp-server-config').value = '';
+  }
+  document.querySelector('#study-mcp-server-status').textContent = message || (status.running ? `Running at ${status.endpoint} · bearer protected · loopback only` : 'Off');
+}
+
+async function showStudyMcpCredentials(message = '') {
+  const config = await window.obavenus.getStudyMcpServerCredentials();
+  const textarea = document.querySelector('#study-mcp-server-config');
+  textarea.value = JSON.stringify({ url: config.endpoint, headers: { Authorization: config.authorization } }, null, 2);
+  textarea.hidden = false;
+  document.querySelector('#study-mcp-server-status').textContent = message || 'Connection settings revealed on this Mac. Treat the bearer token like a password.';
+}
+
 function renderStudyQuiz() {
   const panel = document.querySelector('#study-quiz');
   panel.replaceChildren();
@@ -1988,10 +2010,35 @@ document.querySelector('#study-nav').addEventListener('click', async () => {
     renderStudySpace();
     refreshCanvasStatus().catch(() => {});
     refreshMcpServers().catch(() => {});
+    refreshStudyMcpServerStatus().catch(() => {});
     studyDialog.showModal();
   } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
 });
 document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+document.querySelector('#study-mcp-server-toggle').addEventListener('click', async () => {
+  try {
+    const current = await window.obavenus.getStudyMcpServerStatus();
+    const result = current.running ? await window.obavenus.disableStudyMcpServer() : await window.obavenus.enableStudyMcpServer();
+    await refreshStudyMcpServerStatus(result.running ? 'Running. Only bearer-authenticated loopback MCP requests are accepted.' : 'Stopped. Saved client tokens cannot connect while the server is off.');
+  } catch (error) { document.querySelector('#study-mcp-server-status').textContent = error.message || 'Could not update the local Study MCP server.'; }
+});
+document.querySelector('#study-mcp-server-info').addEventListener('click', () => showStudyMcpCredentials());
+document.querySelector('#study-mcp-server-copy').addEventListener('click', async () => {
+  try {
+    await showStudyMcpCredentials();
+    await navigator.clipboard.writeText(document.querySelector('#study-mcp-server-config').value);
+    document.querySelector('#study-mcp-server-status').textContent = 'MCP connection settings copied. Keep the bearer token private.';
+  } catch (error) { document.querySelector('#study-mcp-server-status').textContent = error.message || 'Could not copy MCP connection settings.'; }
+});
+document.querySelector('#study-mcp-server-rotate').addEventListener('click', async () => {
+  try {
+    const config = await window.obavenus.rotateStudyMcpServerToken();
+    const textarea = document.querySelector('#study-mcp-server-config');
+    textarea.value = JSON.stringify({ url: config.endpoint, headers: { Authorization: config.authorization } }, null, 2);
+    textarea.hidden = false;
+    document.querySelector('#study-mcp-server-status').textContent = 'Token rotated. Previous client credentials are revoked; update your MCP client settings.';
+  } catch (error) { document.querySelector('#study-mcp-server-status').textContent = error.message || 'Could not rotate the MCP token.'; }
+});
 document.querySelector('#study-reminders-enabled').addEventListener('change', async (event) => {
   const enabled = event.currentTarget.checked;
   try {
