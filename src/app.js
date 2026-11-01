@@ -1694,6 +1694,7 @@ let studyData = null;
 let studySaveQueue = Promise.resolve();
 let activeStudyQuiz = null;
 const studyAssignmentAnalysis = new Map();
+let editingStudyNoteId = '';
 const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [] });
 
 function setStudyStatus(message = '') {
@@ -1836,8 +1837,10 @@ function renderStudySpace() {
     const meta = document.createElement('small'); meta.textContent = course?.name || 'Personal note';
     const body = document.createElement('p'); body.textContent = note.body;
     const use = document.createElement('button'); use.type = 'button'; use.dataset.useNote = note.id; use.textContent = 'Use in assistant chat';
+    const edit = document.createElement('button'); edit.type = 'button'; edit.dataset.editNote = note.id; edit.textContent = 'Edit note';
+    const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.deleteNote = note.id; remove.textContent = 'Delete note';
     const exportButton = document.createElement('button'); exportButton.type = 'button'; exportButton.dataset.exportNote = note.id; exportButton.textContent = 'Export Word';
-    card.append(title, meta, body, use, exportButton); noteList.append(card);
+    card.append(title, meta, body, use, edit, exportButton, remove); noteList.append(card);
   }
 
   const deckList = document.querySelector('#study-deck-list'); deckList.replaceChildren();
@@ -2222,11 +2225,39 @@ document.querySelector('#study-assignment-list').addEventListener('submit', asyn
 document.querySelector('#study-note-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   try {
-    studyData.notes.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-note-course').value, title: document.querySelector('#study-note-title').value, body: document.querySelector('#study-note-body').value, updatedAt: Date.now() });
-    await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Note saved locally.');
+    const note = studyData.notes.find((item) => item.id === editingStudyNoteId);
+    if (note) {
+      note.courseId = document.querySelector('#study-note-course').value;
+      note.title = document.querySelector('#study-note-title').value;
+      note.body = document.querySelector('#study-note-body').value;
+      note.updatedAt = Date.now();
+    } else studyData.notes.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-note-course').value, title: document.querySelector('#study-note-title').value, body: document.querySelector('#study-note-body').value, updatedAt: Date.now() });
+    await persistStudySpace(); event.currentTarget.reset(); editingStudyNoteId = ''; document.querySelector('#study-note-cancel').hidden = true; document.querySelector('#study-note-submit').textContent = 'Save note'; setStudyStatus(note ? 'Study note updated.' : 'Note saved locally.');
   } catch (error) { setStudyStatus(error.message || 'Could not save this note.'); }
 });
 document.querySelector('#study-note-list').addEventListener('click', async (event) => {
+  const editId = event.target.closest('[data-edit-note]')?.dataset.editNote;
+  if (editId) {
+    const note = studyData.notes.find((item) => item.id === editId); if (!note) return;
+    editingStudyNoteId = editId;
+    document.querySelector('#study-note-course').value = note.courseId;
+    document.querySelector('#study-note-title').value = note.title;
+    document.querySelector('#study-note-body').value = note.body;
+    document.querySelector('#study-note-submit').textContent = 'Update note';
+    document.querySelector('#study-note-cancel').hidden = false;
+    document.querySelector('#study-note-title').focus();
+    return;
+  }
+  const deleteId = event.target.closest('[data-delete-note]')?.dataset.deleteNote;
+  if (deleteId) {
+    const note = studyData.notes.find((item) => item.id === deleteId); if (!note) return;
+    if (!window.confirm(`Delete “${note.title}” from Study notes?`)) return;
+    studyData.notes = studyData.notes.filter((item) => item.id !== deleteId);
+    if (editingStudyNoteId === deleteId) { editingStudyNoteId = ''; document.querySelector('#study-note-form').reset(); }
+    try { await persistStudySpace(); setStudyStatus('Study note deleted.'); }
+    catch (error) { setStudyStatus(error.message || 'Could not delete this note.'); }
+    return;
+  }
   const exportId = event.target.closest('[data-export-note]')?.dataset.exportNote;
   if (exportId) {
     const note = studyData.notes.find((item) => item.id === exportId);
@@ -2241,6 +2272,12 @@ document.querySelector('#study-note-list').addEventListener('click', async (even
   const note = studyData.notes.find((item) => item.id === id); if (!note) return;
   promptInput.value = `Use this local study note as reference:\n\n# ${note.title}\n\n${note.body}\n\nExplain or quiz me on this material.`;
   studyDialog.close(); promptInput.focus();
+});
+document.querySelector('#study-note-cancel').addEventListener('click', () => {
+  editingStudyNoteId = '';
+  document.querySelector('#study-note-form').reset();
+  document.querySelector('#study-note-submit').textContent = 'Save note';
+  document.querySelector('#study-note-cancel').hidden = true;
 });
 document.querySelector('#study-deck-form').addEventListener('submit', async (event) => {
   event.preventDefault();
