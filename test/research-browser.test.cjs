@@ -38,6 +38,19 @@ test('browser control is only activated after the native approval callback appro
   assert.equal(pageScripts, 3);
 });
 
+test('research browser exposes a bounded local JPEG capture for OCR', async () => {
+  class FakeBrowserWindow {
+    constructor() { this.destroyed = false; this.webContents = { isLoading: () => false, setWindowOpenHandler: () => {}, on: () => {}, capturePage: async () => ({ toJPEG: (quality) => { assert.equal(quality, 68); return Buffer.from([0xff, 0xd8, 0xff, 0xd9]); } }) }; }
+    isDestroyed() { return this.destroyed; }
+    async loadURL() {}
+  }
+  const browser = createResearchBrowser({ BrowserWindow: FakeBrowserWindow });
+  await browser.open('https://example.com');
+  const capture = await browser.captureVisibleTab();
+  assert.equal(capture.mimeType, 'image/jpeg');
+  assert.equal(capture.bytes.subarray(0, 2).toString('hex'), 'ffd8');
+});
+
 test('research browser preserves its isolated login session and can explicitly clear it', async () => {
   let options;
   const cleared = [];

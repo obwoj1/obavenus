@@ -182,10 +182,10 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     selectOption: async (label, option) => ({ approved: true, label, option }),
     setChecked: async (label, checked) => ({ approved: true, label, checked }),
   };
-  const allowed = createAgentToolExecutor({ browserAccess: true, browser });
+  const allowed = createAgentToolExecutor({ browserAccess: true, browser, ocrImage: async () => 'Screenshot text' });
   assert.deepEqual(await allowed('browser_list_tabs'), { tabs: [{ title: 'Course', url: 'https://school.example/course', active: false }] });
   assert.deepEqual(await allowed('browser_select_tab', { url: 'https://school.example/course' }), { selected: true, url: 'https://school.example/course' });
-  assert.match((await allowed('browser_read_screenshot_text')).error, /paired Chrome/);
+  assert.deepEqual(await allowed('browser_read_screenshot_text'), { text: 'Screenshot text', extractedLocally: true, source: 'visible browser screenshot OCR' });
   await assert.rejects(allowed('browser_select_tab', { url: 'x'.repeat(2_001) }), /2,000/);
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
   assert.equal((await allowed('browser_read_page')).text, 'Public page text');
@@ -214,7 +214,7 @@ test('paired Chrome screenshot OCR stays local and returns bounded recognized te
     ocrImage: async (bytes) => { received = bytes; return 'Canvas-rendered course instructions'; },
   });
   assert.deepEqual(await executor('browser_read_screenshot_text'), {
-    text: 'Canvas-rendered course instructions', extractedLocally: true, source: 'visible Chrome tab screenshot OCR',
+    text: 'Canvas-rendered course instructions', extractedLocally: true, source: 'visible browser screenshot OCR',
   });
   assert.equal(received.toString(), 'jpeg');
 });
@@ -228,7 +228,7 @@ test('browser form entry and choices are exposed only for paired Chrome and enfo
   const researchTools = [];
   await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, dispatch: async (_messages, options) => { researchTools.push(...options.tools); return 'Done'; } });
   assert.equal(researchTools.some((tool) => tool.name === 'browser_fill_field'), false);
-  assert.equal(researchTools.some((tool) => tool.name === 'browser_read_screenshot_text'), false);
+  assert.equal(researchTools.some((tool) => tool.name === 'browser_read_screenshot_text'), true);
   assert.equal(researchTools.some((tool) => tool.name === 'browser_select_option'), false);
   assert.equal(researchTools.some((tool) => tool.name === 'browser_set_checked'), false);
   const chromeTools = [];

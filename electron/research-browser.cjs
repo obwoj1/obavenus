@@ -27,6 +27,14 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     const active = current();
     return active.webContents.executeJavaScript(`(() => ({ title: document.title.slice(0, 300), url: location.href, text: (document.body?.innerText || '').slice(0, 20000) }))()`);
   }
+  async function captureVisibleTab() {
+    const active = current();
+    if (typeof active.webContents.capturePage !== 'function') throw new Error('Screenshot capture is unavailable in this Research Browser window.');
+    const image = await active.webContents.capturePage();
+    const bytes = Buffer.from(image.toJPEG(68));
+    if (!bytes.length || bytes.length > 4 * 1024 * 1024) throw new RangeError('The visible page screenshot exceeds the 4 MB local OCR limit.');
+    return { mimeType: 'image/jpeg', bytes };
+  }
   async function followLink(text) {
     if (typeof text !== 'string' || !text.trim() || text.length > 200) throw new TypeError('Link text must be 1–200 characters.');
     const active = current();
@@ -55,7 +63,7 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     await session.clearCache();
     return { cleared: true };
   }
-  return { open, readPage, followLink, clickControl, clearSession };
+  return { open, readPage, captureVisibleTab, followLink, clickControl, clearSession };
 }
 
 module.exports = { createResearchBrowser, validateHttpUrl };
