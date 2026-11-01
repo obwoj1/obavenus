@@ -100,8 +100,10 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
       if (!config) throw new Error('Connect Canvas in Study settings before syncing.');
       const courses = await pages(config, `${config.baseUrl}/api/v1/courses?enrollment_state=active&per_page=100`);
       const data = await studyStore.load();
+      if (!Array.isArray(data.modules)) data.modules = [];
       let importedCourses = 0;
       let importedAssignments = 0;
+      let syncedModules = 0;
       for (const canvasCourse of courses.filter((course) => Number.isInteger(course.id) && course.name)) {
         let course = data.courses.find((item) => String(item.canvasId || '') === String(canvasCourse.id));
         if (!course) {
@@ -124,9 +126,29 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
           if (existing) Object.assign(existing, record);
           else { data.assignments.push(record); importedAssignments += 1; }
         }
+        const modules = await pages(config, `${config.baseUrl}/api/v1/courses/${canvasCourse.id}/modules?include[]=items&per_page=100`);
+        for (const canvasModule of modules.filter((item) => Number.isInteger(item.id) && item.name)) {
+          let items = Array.isArray(canvasModule.items) ? canvasModule.items : [];
+          if (!items.length && canvasModule.items_url) items = await pages(config, canvasModule.items_url);
+          const record = {
+            id: randomUUID(), courseId: course.id, canvasId: String(canvasModule.id),
+            title: String(canvasModule.name).slice(0, 200),
+            position: Number.isInteger(canvasModule.position) ? canvasModule.position : 0,
+            items: items.filter((entry) => Number.isInteger(entry.id)).slice(0, 300).map((entry) => ({
+              canvasId: String(entry.id), title: String(entry.title || entry.type || 'Untitled item').slice(0, 240),
+              type: String(entry.type || 'Unknown').slice(0, 40), position: Number.isInteger(entry.position) ? entry.position : 0,
+              locked: entry.locked_for_user === true || entry.content_details?.locked_for_user === true,
+            })),
+            updatedAt: now(),
+          };
+          const existing = data.modules.find((entry) => entry.courseId === course.id && entry.canvasId === record.canvasId);
+          if (existing) Object.assign(existing, record, { id: existing.id });
+          else data.modules.push(record);
+          syncedModules += 1;
+        }
       }
       await studyStore.save(data);
-      return { courses: importedCourses, assignments: importedAssignments, syncedAt: now() };
+      return { courses: importedCourses, assignments: importedAssignments, modules: syncedModules, syncedAt: now() };
     },
   };
 }

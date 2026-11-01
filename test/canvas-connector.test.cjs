@@ -24,13 +24,14 @@ test('Canvas credentials are encrypted, hidden from status, and sync idempotentl
     requests.push({ url: String(url), authorization: options.headers.Authorization });
     if (String(url).endsWith('/users/self/profile')) return { ok: true, status: 200, json: async () => ({ name: 'Student' }), headers: { get: () => '' } };
     if (String(url).includes('/courses?')) return { ok: true, status: 200, json: async () => [{ id: 17, name: 'Biology', term: { name: 'Fall' } }], headers: { get: () => '' } };
+    if (String(url).includes('/modules?')) return { ok: true, status: 200, json: async () => [{ id: 41, name: 'Week 1', position: 1, items: [{ id: 42, title: 'Cell structure', type: 'Page', position: 1 }, { id: 43, title: 'Lab handout.pdf', type: 'File', position: 2, locked_for_user: true }] }], headers: { get: () => '' } };
     return { ok: true, status: 200, json: async () => [{ id: 29, name: 'Lab report', description: '<p>Use <b>course data</b>.</p>', due_at: '2026-11-15T23:59:00Z' }], headers: { get: () => '' } };
   };
   const secureStorage = encryptedStorage();
   secureStorage.decryptString = (value) => { decryptCalls += 1; return Buffer.from(value).toString(); };
   const connector = createCanvasConnector({ filePath, safeStorage: secureStorage, fetchImpl, now: () => 100 });
   const study = {
-    data: { version: 1, courses: [], assignments: [], notes: [], decks: [] },
+    data: { version: 1, courses: [], assignments: [], notes: [], decks: [], modules: [] },
     async load() { return structuredClone(this.data); },
     async save(value) { this.data = structuredClone(value); return this.data; },
   };
@@ -41,10 +42,12 @@ test('Canvas credentials are encrypted, hidden from status, and sync idempotentl
     assert.equal(decryptCalls, 0, 'opening Study status must not unlock the Canvas token');
     const envelope = await readFile(filePath, 'utf8');
     assert.equal(envelope.includes('secret-token'), false);
-    assert.deepEqual(await connector.sync(study), { courses: 1, assignments: 1, syncedAt: 100 });
+    assert.deepEqual(await connector.sync(study), { courses: 1, assignments: 1, modules: 1, syncedAt: 100 });
     assert.equal(study.data.courses[0].name, 'Biology');
     assert.equal(study.data.assignments[0].instructions, 'Use course data.');
-    assert.deepEqual(await connector.sync(study), { courses: 0, assignments: 0, syncedAt: 100 });
+    assert.equal(study.data.modules[0].title, 'Week 1');
+    assert.equal(study.data.modules[0].items[1].locked, true);
+    assert.deepEqual(await connector.sync(study), { courses: 0, assignments: 0, modules: 1, syncedAt: 100 });
     assert.equal(study.data.assignments.length, 1);
     assert.ok(requests.every((request) => request.authorization === 'Bearer secret-token'));
     await connector.disconnect();
