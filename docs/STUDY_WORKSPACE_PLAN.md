@@ -1,0 +1,29 @@
+# Study workspace parity
+
+Obavenus is an original desktop product. This plan uses the visible Talvra workflow at `hwrk.help` as a feature reference; it does not copy Talvra's source, assets, or private service endpoints.
+
+## Capabilities observed
+
+- A study dashboard with due-soon, overdue, review, and today's-plan summaries.
+- Course spaces containing modules, files, assignments, and course-specific study materials.
+- Assignment pages that summarize instructions, requirements, grading criteria, skills, questions for the instructor, related documents, and a step plan.
+- An AI homework workspace that creates and refines a draft, attaches deliverable files, and supports review before the student submits it themselves.
+- Search across course documents with page-level references, plus a question-and-answer mode grounded in those documents.
+- Study aids made from course files: notes, flashcards, and quizzes, followed by a spaced-review queue.
+- Due-date reminders, quiet hours, a daily digest, and a study plan.
+- An MCP endpoint for using study material from compatible AI clients, with a user-controlled hand-in boundary.
+
+## Existing Obavenus building blocks
+
+Obavenus already reads PDF, Word, Excel, and PowerPoint text locally, OCRs scanned PDFs, keeps encrypted per-project memory and conversation history, streams selected-provider responses, schedules local agent work, creates Office artifacts, and exposes an MCP-like tool workflow internally. These are reusable foundations, not proof that the study features below are complete.
+
+## Implementation order
+
+1. Build an optional local Study space: courses, manual assignments and due dates, checklists, notes, imported study files, and local search. Keep state encrypted and files on this Mac.
+2. Add study-aid workflows over selected local files: explain with citations to page/slide, make notes, generate and edit flashcards, quiz mode, and a spaced-review queue. Use the configured provider or local Ollama; keep source references with generated content.
+3. Add assignment support: requirement extraction, a student-editable plan and draft, artifact generation, and a review checklist. Do not submit work automatically.
+4. Add optional external integrations last: Canvas sync and email reminders/digests, with clear scopes and per-connection controls.
+
+## Current status
+
+The local project/document and provider workflows exist. The dedicated encrypted Study space, flashcard/review data model, course/assignment planner, and Canvas/email integrations remain unimplemented. Assistant Markdown rendering is being added as a general prerequisite for readable cited study answers and structured drafts.

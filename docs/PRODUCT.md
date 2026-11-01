@@ -6,6 +6,8 @@ Obavenus is an original Electron desktop app inspired by the broad product categ
 
 Start with a macOS desktop assistant that combines AI chat with a project workspace. Keep the first version small enough to run locally, then add capabilities in independently reviewable steps.
 
+Obavenus is also expanding toward an optional local-first study workspace. The observed feature scope and staged implementation order are tracked in [STUDY_WORKSPACE_PLAN.md](STUDY_WORKSPACE_PLAN.md).
+
 ## Design boundaries
 
 - Treat REA output as technical evidence about the installed app, not as source code to copy.

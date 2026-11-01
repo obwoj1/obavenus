@@ -365,7 +365,8 @@ async function renderSpaces() {
 function addMessage(text, kind) {
   const message = document.createElement('div');
   message.className = `message ${kind}`;
-  message.textContent = text;
+  if (kind === 'assistant-message') window.ObavenusMarkdown.renderInto(message, text);
+  else message.textContent = text;
   form.insertAdjacentElement('beforebegin', message);
   return message;
 }
@@ -705,7 +706,7 @@ window.obavenus.onRunDelta(({ runId, delta }) => {
   activeReplyMessage.text += delta;
   if (activeConversationId === activeReplyConversationId) {
     const bubble = [...conversation.querySelectorAll('.message.assistant-message')].at(-1);
-    if (bubble) bubble.textContent = activeReplyMessage.text;
+    if (bubble) window.ObavenusMarkdown.renderInto(bubble, activeReplyMessage.text);
   }
 });
 window.obavenus.onAgentProgress((progress) => {

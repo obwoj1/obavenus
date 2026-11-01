@@ -90,6 +90,22 @@
       .message-context { display: block; margin-top: 8px; color: #c1a9ff; font-size: 10px; }
       .user-message { background: #20212a; }
       .assistant-message { color: #aaa9b3; }
+      .assistant-message { white-space: normal; overflow-wrap: anywhere; }
+      .assistant-message > :first-child { margin-top: 0; }
+      .assistant-message > :last-child { margin-bottom: 0; }
+      .assistant-message p, .assistant-message li, .assistant-message blockquote { line-height: 1.75; }
+      .assistant-message h1, .assistant-message h2, .assistant-message h3, .assistant-message h4, .assistant-message h5, .assistant-message h6 { margin: 1.15em 0 .45em; color: inherit; font-weight: 700; letter-spacing: -.02em; }
+      .assistant-message h1 { font-size: 1.55em; }
+      .assistant-message h2 { font-size: 1.35em; }
+      .assistant-message h3, .assistant-message h4 { font-size: 1.15em; }
+      .assistant-message ul, .assistant-message ol { margin: .65em 0; padding-left: 1.6em; }
+      .assistant-message li + li { margin-top: .3em; }
+      .assistant-message blockquote { margin: .8em 0; padding: .15em .9em; border-left: 3px solid #8ca88e; color: #738176; }
+      .assistant-message code { padding: .12em .35em; border-radius: 5px; background: #eaf0e8; color: #38523d; font: .92em ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .assistant-message pre { max-width: 100%; margin: .8em 0; padding: 12px 14px; overflow: auto; border: 1px solid #dfe7dc; border-radius: 10px; background: #f4f7f1; }
+      .assistant-message pre code { padding: 0; background: transparent; color: inherit; white-space: pre; }
+      .assistant-message a { color: #456f4d; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+      .assistant-message hr { border: 0; border-top: 1px solid #dce5da; }
       @media (max-width: 1100px) { .content { grid-template-columns: minmax(0, 1fr); } .context { display: none; } }
       :root { color-scheme: light; background: #f5f7f2; color: #28352d; }
       body, main { background: #f5f7f2; }
@@ -291,6 +307,10 @@
       body[data-theme="dusk"] .send, body[data-theme="dusk"] .settings-actions .primary { background: linear-gradient(135deg, #9be4aa, #58a66d); color: #102117; }
       body[data-theme="dusk"] .user-message { background: #26392d; color: #e3f0e5; }
       body[data-theme="dusk"] .assistant-message { color: #c0d2c3; }
+      body[data-theme="dusk"] .assistant-message blockquote { color: #a6bbaa; }
+      body[data-theme="dusk"] .assistant-message code, body[data-theme="dusk"] .assistant-message pre { background: #15221a; color: #d2e3d5; border-color: #31473a; }
+      body[data-theme="dusk"] .assistant-message a { color: #a5dfb0; }
+      body[data-theme="dusk"] .assistant-message hr { border-color: #31473a; }
       body[data-theme="dusk"] .agent-trace, body[data-theme="dusk"] .file-preview { background: #15221a; color: #d2e3d5; border-color: var(--sage-line); }
       body[data-theme="dusk"] dialog { background: #17231b; color: var(--sage-ink); border-color: var(--sage-line); }
       body[data-theme="dusk"] .profile-form p, body[data-theme="dusk"] .profile-form small { color: var(--sage-muted); }
@@ -457,6 +477,7 @@
     <dialog id="agents-dialog" aria-labelledby="agents-title"><section class="settings"><h2 id="agents-title">Specialist agent profiles</h2><p>Create expert profiles, then choose up to twelve for a team run. Selected specialists work in parallel and send their findings to the lead agent.</p><div id="custom-agent-list" class="gmail-results"></div><form id="custom-agent-form"><input id="custom-agent-id" type="hidden" /><label for="custom-agent-name">Name</label><input id="custom-agent-name" maxlength="60" required placeholder="e.g. Federal hiring analyst" /><label for="custom-agent-instructions">Expertise and approach</label><textarea id="custom-agent-instructions" maxlength="2500" required placeholder="Describe the expertise and point of view for this specialist."></textarea><div class="settings-actions"><button type="button" id="agent-new">New profile</button><button type="button" id="agents-close">Close</button><button class="primary" type="submit">Save profile</button></div><small id="agent-status" role="status" aria-live="polite"></small></form></section></dialog>
     <dialog id="remote-machines-dialog" aria-labelledby="remote-machines-title"><section class="settings"><h2 id="remote-machines-title">Remote machines</h2><p>Save SSH host aliases from ~/.ssh/config. Obavenus checks the connection using your current SSH key and known-host settings. Alias names are encrypted locally; keys remain in your SSH setup.</p><div id="remote-machine-list" class="gmail-results"></div><form id="remote-machine-form"><input id="remote-machine-id" type="hidden" /><label for="remote-machine-name">Machine name</label><input id="remote-machine-name" maxlength="60" required placeholder="e.g. Build server" /><label for="remote-machine-host">SSH host alias</label><input id="remote-machine-host" maxlength="80" autocomplete="off" required placeholder="e.g. buildbox" /><div class="settings-actions"><button type="button" id="remote-machine-test">Test connection</button><button type="button" id="remote-machines-close">Close</button><button class="primary" type="submit">Save machine</button></div><small id="remote-machine-status" role="status" aria-live="polite"></small></form></section></dialog>
     <dialog id="remote-jobs-dialog" aria-labelledby="remote-jobs-title"><section class="settings"><h2 id="remote-jobs-title">Remote jobs</h2><p>Background CLI jobs keep running on the selected SSH machine after Obavenus closes. Their output and local tracking record are encrypted on this Mac. Reconnect to refresh status or stop a running job.</p><div id="remote-job-list" class="gmail-results"></div><div class="settings-actions"><button type="button" id="remote-jobs-refresh">Refresh list</button><button type="button" id="remote-jobs-close">Close</button></div></section></dialog>
+    <script src="./markdown.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
