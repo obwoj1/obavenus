@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { TOOL_DEFINITIONS, GIT_TOOLS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
 
-test('team agents get read-only Git status and bounded staged and unstaged diffs', async () => {
+test('team agents get read-only Git status, diffs, and scoped commit history', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-git-tools-'));
   const git = (args) => execFileSync('git', args, { cwd: root, stdio: 'ignore' });
   try {
@@ -31,7 +31,10 @@ test('team agents get read-only Git status and bounded staged and unstaged diffs
     assert.match(diff.stagedDiff, /staged version/);
     assert.match(diff.unstagedDiff, /unstaged version/);
     assert.doesNotMatch(diff.stagedDiff + diff.unstagedDiff, /new file/);
-    assert.deepEqual(GIT_TOOLS.map((tool) => tool.name), ['get_project_git_status', 'read_project_git_diff']);
+    const history = await executor('read_project_git_history');
+    assert.equal(history.isRepository, true);
+    assert.match(history.commits, /initial/);
+    assert.deepEqual(GIT_TOOLS.map((tool) => tool.name), ['get_project_git_status', 'read_project_git_diff', 'read_project_git_history']);
 
     const nested = path.join(root, 'nested');
     await mkdir(nested);
@@ -51,6 +54,7 @@ test('Git tools are available to read-only team agent calls', async () => {
   });
   assert.ok(tools.some((tool) => tool.name === 'get_project_git_status'));
   assert.ok(tools.some((tool) => tool.name === 'read_project_git_diff'));
+  assert.ok(tools.some((tool) => tool.name === 'read_project_git_history'));
   assert.ok(!tools.some((tool) => /git.*write|commit/i.test(tool.name)));
 });
 

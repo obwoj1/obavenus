@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const MAX_STATUS_BYTES = 12 * 1024;
 const MAX_DIFF_BYTES = 20 * 1024;
+const MAX_HISTORY_BYTES = 12 * 1024;
 const MAX_BUFFER_BYTES = 512 * 1024;
 
 function gitEnvironment(source = process.env) {
@@ -74,4 +75,15 @@ async function getGitDiff(projectPath) {
   }
 }
 
-module.exports = { getGitStatus, getGitDiff, MAX_STATUS_BYTES, MAX_DIFF_BYTES };
+async function getGitHistory(projectPath) {
+  try {
+    const history = await runBoundedGit(projectPath, ['log', '-12', '--date=short', '--format=%h %ad %s', '--', '.'], MAX_HISTORY_BYTES);
+    return { isRepository: true, commits: history.text, truncated: history.truncated };
+  } catch (error) {
+    if (/not a git repository/i.test(`${error.stderr || ''} ${error.message || ''}`)) return { isRepository: false, commits: '' };
+    if (error.code === 'ETIMEDOUT') return { error: 'Git history exceeded its 5 second limit.' };
+    throw new Error(`Could not read Git history: ${(error.stderr || error.message || 'Git failed').trim().slice(0, 500)}`);
+  }
+}
+
+module.exports = { getGitStatus, getGitDiff, getGitHistory, MAX_STATUS_BYTES, MAX_DIFF_BYTES, MAX_HISTORY_BYTES };

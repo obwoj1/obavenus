@@ -1,6 +1,6 @@
 const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
 const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
-const { getGitStatus, getGitDiff } = require('./git-tools.cjs');
+const { getGitStatus, getGitDiff, getGitHistory } = require('./git-tools.cjs');
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
@@ -26,6 +26,7 @@ const MEMORY_TOOLS = [
 const GIT_TOOLS = [
   { name: 'get_project_git_status', description: 'Read the selected project Git branch and changed/untracked file names. This is read-only.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'read_project_git_diff', description: 'Read bounded staged and unstaged Git diffs for the selected project. This is read-only; untracked file contents are read with the project file tool.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'read_project_git_history', description: 'Read up to twelve recent Git commit summaries affecting the selected project folder. This is read-only.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
 ];
 
 const TOOL_DEFINITIONS = [
@@ -104,6 +105,10 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
     if (name === 'read_project_git_diff') {
       if (!projectPath) return { error: 'No project folder is open.' };
       return getGitDiff(projectPath);
+    }
+    if (name === 'read_project_git_history') {
+      if (!projectPath) return { error: 'No project folder is open.' };
+      return getGitHistory(projectPath);
     }
     if (name === 'read_project_memory') {
       if (!projectPath || !projectMemory) return { memory: '', note: 'No project memory is available.' };
