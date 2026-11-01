@@ -5,7 +5,7 @@ const { scheduleReview } = require('./study-review.cjs');
 const { generateStudyAids } = require('./study-generation.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
-const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
+const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [] });
 
 function cleanText(value, label, max, { optional = false } = {}) {
   if (optional && (value === undefined || value === null)) return '';
@@ -25,7 +25,8 @@ function normalizeStudyData(value) {
   const notes = Array.isArray(value.notes) ? value.notes : [];
   const decks = Array.isArray(value.decks) ? value.decks : [];
   const sources = Array.isArray(value.sources) ? value.sources : [];
-  if (courses.length > 100 || assignments.length > 1000 || notes.length > 1000 || decks.length > 100 || sources.length > 40) throw new RangeError('Study space has reached its local item limit.');
+  const modules = Array.isArray(value.modules) ? value.modules : [];
+  if (courses.length > 100 || assignments.length > 1000 || notes.length > 1000 || decks.length > 100 || sources.length > 40 || modules.length > 1000) throw new RangeError('Study space has reached its local item limit.');
   const ids = new Set();
   const uniqueId = (id, label) => {
     validId(id, label);
@@ -100,8 +101,27 @@ function normalizeStudyData(value) {
       updatedAt: Number.isFinite(source.updatedAt) ? source.updatedAt : Date.now(),
     };
   });
+  const normalizedModules = modules.map((module) => {
+    const courseId = validId(module.courseId, 'Canvas module course');
+    if (!courseIds.has(courseId)) throw new TypeError('Canvas modules must belong to a saved course.');
+    if (!Array.isArray(module.items) || module.items.length > 300) throw new RangeError('A Canvas module can have up to 300 items.');
+    return {
+      id: uniqueId(module.id, 'Canvas module'), courseId,
+      canvasId: cleanText(module.canvasId, 'Canvas module ID', 40),
+      title: cleanText(module.title, 'Canvas module title', 200),
+      position: Number.isInteger(module.position) ? Math.max(0, module.position) : 0,
+      items: module.items.map((item) => ({
+        canvasId: cleanText(String(item.canvasId ?? ''), 'Canvas module item ID', 40),
+        title: cleanText(item.title, 'Canvas module item title', 240),
+        type: cleanText(item.type, 'Canvas module item type', 40),
+        position: Number.isInteger(item.position) ? Math.max(0, item.position) : 0,
+        locked: item.locked === true,
+      })),
+      updatedAt: Number.isFinite(module.updatedAt) ? module.updatedAt : Date.now(),
+    };
+  });
   if (normalizedSources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) > 4 * 1024 * 1024) throw new RangeError('Imported study text is over its 4 MB local limit.');
-  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources };
+  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules };
 }
 
 function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
