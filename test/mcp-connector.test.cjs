@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { mkdtemp, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { cleanMcpUrl, createMcpConnector, readOnlyTool } = require('../electron/mcp-connector.cjs');
+const { cleanMcpUrl, createMcpConnector, validTool, readOnlyTool } = require('../electron/mcp-connector.cjs');
 
 function secureStorage() {
   return { isEncryptionAvailable: () => true, encryptString: (value) => Buffer.from(value), decryptString: (value) => Buffer.from(value).toString() };
@@ -22,9 +22,12 @@ test('MCP server URLs require HTTPS and cannot contain user credentials', () => 
 test('read-only MCP annotation is required while no-argument tools remain usable', () => {
   assert.equal(readOnlyTool({ name: 'list_courses', annotations: { readOnlyHint: true, openWorldHint: true }, inputSchema: { type: 'object' } }), true);
   assert.equal(readOnlyTool({ name: 'submit_work', annotations: { readOnlyHint: false }, inputSchema: { type: 'object', properties: {} } }), false);
+  assert.equal(readOnlyTool({ name: 'delete_file', annotations: { readOnlyHint: true, destructiveHint: true }, inputSchema: { type: 'object' } }), false);
+  assert.equal(validTool({ name: 'submit_work', annotations: { readOnlyHint: false }, inputSchema: { type: 'object', properties: {} } }), true);
+  assert.equal(validTool({ name: 'bad', inputSchema: { type: 'array' } }), false);
 });
 
-test('remote MCP credentials stay encrypted and only read-only tools reach the assistant', async (t) => {
+test('MCP tools reach the assistant and every non-read-only call requires exact native approval', async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-mcp-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const filePath = path.join(directory, 'mcp.enc');
@@ -37,18 +40,35 @@ test('remote MCP credentials stay encrypted and only read-only tools reach the a
     ] });
     return jsonRpcResponse(request, { content: [{ type: 'text', text: 'Page 3: enzyme activity.' }] });
   };
-  const connector = createMcpConnector({ filePath, safeStorage: secureStorage(), fetchImpl });
+  const approvals = [];
+  const connector = createMcpConnector({ filePath, safeStorage: secureStorage(), fetchImpl, confirmWriteAction: async (action) => { approvals.push(action); return false; } });
   const saved = await connector.addServer({ name: 'Courseware', url: 'https://school.example.edu/mcp', token: 'secret-mcp-token' });
   assert.equal(saved.readOnlyTools.length, 1);
+  assert.deepEqual(saved.writeTools, ['submit_assignment']);
   assert.equal((await readFile(filePath, 'utf8')).includes('secret-mcp-token'), false);
   assert.deepEqual((await connector.listServers())[0].readOnlyTools, ['search_course']);
+  assert.deepEqual((await connector.listServers())[0].writeTools, ['submit_assignment']);
   const exposed = await connector.getAgentTools();
-  assert.equal(exposed.definitions.length, 1);
+  assert.equal(exposed.definitions.length, 2);
   assert.match(exposed.definitions[0].name, /^mcp_[a-f0-9]+_search_course$/);
+  assert.match(exposed.definitions[1].description, /WRITE ACTION.*approval for every call/);
   const output = await exposed.execute(exposed.definitions[0].name, { query: 'enzyme' });
   assert.match(output.text, /Page 3/);
+  const beforeDeclinedAction = calls.length;
+  const declined = await exposed.execute(exposed.definitions[1].name, { assignment_id: 'A7', answer: 'review me' });
+  assert.equal(declined.isError, true);
+  assert.equal(calls.length, beforeDeclinedAction);
+  assert.deepEqual(approvals, [{ serverName: 'Courseware', serverUrl: 'https://school.example.edu/mcp', toolName: 'submit_assignment', description: '', arguments: '{"assignment_id":"A7","answer":"review me"}' }]);
+  const approvedConnector = createMcpConnector({ filePath, safeStorage: secureStorage(), fetchImpl, confirmWriteAction: async () => true });
+  const approvedTools = await approvedConnector.getAgentTools();
+  const approved = await approvedTools.execute(approvedTools.definitions[1].name, { assignment_id: 'A7', answer: 'review me' });
+  assert.equal(approved.isError, false);
+  assert.equal(calls.at(-1).request.method, 'tools/call');
   assert.ok(calls.every(({ headers }) => headers.Authorization === 'Bearer secret-mcp-token'));
   assert.equal(calls.at(-1).headers['MCP-Protocol-Version'], '2026-07-28');
+  const beforeOversizedAction = calls.length;
+  await assert.rejects(exposed.execute(exposed.definitions[1].name, { payload: 'x'.repeat(4_100) }), /4 KB approval dialog limit/);
+  assert.equal(calls.length, beforeOversizedAction);
   assert.equal((await connector.removeServer(saved.id)).length, 0);
 });
 

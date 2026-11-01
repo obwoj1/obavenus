@@ -2428,9 +2428,10 @@ async function refreshMcpServers(message = '') {
     const name = document.createElement('strong'); name.textContent = server.name;
     const tools = document.createElement('small');
     const toolCount = server.readOnlyTools?.length || 0;
+    const writeCount = server.writeTools?.length || 0;
     const resourceCount = server.resources?.length || 0;
     const templateCount = server.resourceTemplates?.length || 0;
-    tools.textContent = `${server.url} · ${toolCount} read-only tools · ${resourceCount} resources · ${templateCount} resource templates`;
+    tools.textContent = `${server.url} · ${toolCount} read-only tools · ${writeCount} actions require approval each time · ${resourceCount} resources · ${templateCount} resource templates`;
     details.append(name, tools);
     const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.removeMcp = server.id; remove.textContent = 'Disconnect';
     row.append(details, remove); list.append(row);
@@ -2439,7 +2440,7 @@ async function refreshMcpServers(message = '') {
 }
 document.querySelector('#study-mcp-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const status = document.querySelector('#study-mcp-status'); status.textContent = 'Checking server and discovering read-only tools and resources…';
+  const status = document.querySelector('#study-mcp-status'); status.textContent = 'Checking server and discovering tools and resources…';
   try {
     const server = await window.obavenus.addMcpServer({
       name: document.querySelector('#study-mcp-name').value,
@@ -2448,8 +2449,8 @@ document.querySelector('#study-mcp-form').addEventListener('submit', async (even
     });
     document.querySelector('#study-mcp-token').value = '';
     event.currentTarget.reset();
-    const total = server.readOnlyTools.length + server.resources.length + server.resourceTemplates.length;
-    await refreshMcpServers(total ? `Connected ${server.name} · ${server.readOnlyTools.length} read-only tools · ${server.resources.length} resources · ${server.resourceTemplates.length} templates.` : `Connected ${server.name}. It exposes no supported read-only tools or resources.`);
+    const total = server.readOnlyTools.length + (server.writeTools?.length || 0) + server.resources.length + server.resourceTemplates.length;
+    await refreshMcpServers(total ? `Connected ${server.name} · ${server.readOnlyTools.length} read-only tools · ${server.writeTools?.length || 0} approval-gated actions · ${server.resources.length} resources · ${server.resourceTemplates.length} templates.` : `Connected ${server.name}. It exposes no supported tools or resources.`);
   } catch (error) { status.textContent = error.message || 'Could not connect this MCP service.'; }
 });
 document.querySelector('#study-mcp-list').addEventListener('click', async (event) => {

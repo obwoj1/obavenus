@@ -17,11 +17,14 @@ function cleanMcpUrl(value) {
   return url.toString();
 }
 
-function readOnlyTool(tool) {
+function validTool(tool) {
   if (!tool || typeof tool.name !== 'string' || !/^[a-zA-Z0-9_.-]{1,80}$/.test(tool.name)) return false;
-  if (tool.annotations?.readOnlyHint !== true || tool.annotations?.destructiveHint === true) return false;
   if (!tool.inputSchema || tool.inputSchema.type !== 'object' || (tool.inputSchema.properties !== undefined && (typeof tool.inputSchema.properties !== 'object' || Array.isArray(tool.inputSchema.properties)))) return false;
   return Buffer.byteLength(JSON.stringify(tool.inputSchema)) <= 24_000;
+}
+
+function readOnlyTool(tool) {
+  return validTool(tool) && tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint !== true;
 }
 
 function cleanResource(resource) {
@@ -89,7 +92,7 @@ async function readResponseBody(response) {
   return Buffer.concat(chunks, size).toString('utf8');
 }
 
-function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetch }) {
+function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetch, confirmWriteAction = async () => false }) {
   let cachedConfig;
   async function readConfig() {
     if (cachedConfig) return cachedConfig;
@@ -110,7 +113,7 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
     const temporary = `${filePath}.${randomUUID()}.tmp`;
     try {
       const encrypted = safeStorage.encryptString(JSON.stringify(config)).toString('base64');
-      const servers = config.servers.map(({ id, name, url, tools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, tools, resources, resourceTemplates }));
+      const servers = config.servers.map(({ id, name, url, tools = [], writeTools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, tools, writeTools, resources, resourceTemplates }));
       await writeFile(temporary, JSON.stringify({ version: 1, servers, encrypted }), { mode: 0o600 });
       await rename(temporary, filePath);
       cachedConfig = config;
@@ -237,7 +240,7 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
     async listServers() {
       try {
         const envelope = JSON.parse(await readFile(filePath, 'utf8'));
-        return Array.isArray(envelope.servers) ? envelope.servers.map(({ id, name, url, tools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, readOnlyTools: tools, resources, resourceTemplates })) : [];
+        return Array.isArray(envelope.servers) ? envelope.servers.map(({ id, name, url, tools = [], writeTools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, readOnlyTools: tools, writeTools, resources, resourceTemplates })) : [];
       } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
     },
     async addServer({ name, url, token = '' }) {
@@ -249,11 +252,12 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
       if (current.servers.some((server) => server.url === config.url)) throw new Error('That MCP server URL is already connected.');
       const { connection, tools } = await listTools(config);
       config.tools = tools.filter(readOnlyTool).map((tool) => tool.name);
+      config.writeTools = tools.filter((tool) => validTool(tool) && !readOnlyTool(tool)).map((tool) => tool.name);
       try { Object.assign(config, await discoverCatalog(config, connection)); }
       catch { config.resources = []; config.resourceTemplates = []; }
       current.servers.push(config);
       await writeConfig(current);
-      return { id: config.id, name: config.name, url: config.url, readOnlyTools: config.tools, resources: config.resources, resourceTemplates: config.resourceTemplates };
+      return { id: config.id, name: config.name, url: config.url, readOnlyTools: config.tools, writeTools: config.writeTools, resources: config.resources, resourceTemplates: config.resourceTemplates };
     },
     async removeServer(id) {
       const current = await readConfig();
@@ -274,10 +278,12 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
           let catalog = { resources: [], resourceTemplates: [] };
           try { catalog = await discoverCatalog(server, connection); }
           catch (error) { failures.push(`${server.name} resources: ${error.message || 'discovery failed'}`); }
-          for (const tool of tools.filter(readOnlyTool)) {
+          for (const tool of tools.filter(validTool)) {
+            const readOnly = readOnlyTool(tool);
             const exposedName = `mcp_${server.id.replace(/-/g, '').slice(0, 12)}_${tool.name}`.slice(0, 64);
-            definitions.push({ name: exposedName, description: `[${server.name}] ${String(tool.description || tool.title || tool.name).slice(0, 700)}`, parameters: { ...tool.inputSchema, properties: tool.inputSchema.properties || {} } });
-            mapping.set(exposedName, { server, connection, tool });
+            const actionLabel = readOnly ? '' : 'WRITE ACTION · Requires your approval for every call. ';
+            definitions.push({ name: exposedName, description: `${actionLabel}[${server.name}] ${String(tool.description || tool.title || tool.name).slice(0, 700)}`, parameters: { ...tool.inputSchema, properties: tool.inputSchema.properties || {} } });
+            mapping.set(exposedName, { server, connection, tool, readOnly });
           }
           if (catalog.resources.length || catalog.resourceTemplates.length) {
             const exposedName = `mcp_${server.id.replace(/-/g, '').slice(0, 12)}_read_resource`;
@@ -295,10 +301,16 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
         const entry = mapping.get(name);
         if (!entry) throw new Error('This MCP tool is no longer available. Refresh the connection and try again.');
         if (!entry.tool) return readRemoteResource(entry.server, entry.connection, entry.resources, entry.resourceTemplates, args?.uri);
+        if (!entry.readOnly) {
+          const serializedArgs = JSON.stringify(args);
+          if (Buffer.byteLength(serializedArgs) > 4_000) throw new RangeError('MCP write arguments exceed the 4 KB approval dialog limit.');
+          const approved = await confirmWriteAction({ serverName: entry.server.name, serverUrl: entry.server.url, toolName: entry.tool.name, description: String(entry.tool.description || entry.tool.title || '').slice(0, 500), arguments: serializedArgs });
+          if (approved !== true) return { text: 'The user declined this MCP write action. No server call was made.', isError: true };
+        }
         return callRemote(entry.server, entry.connection, entry.tool.name, args);
       } };
     },
   };
 }
 
-module.exports = { MCP_VERSION, cleanMcpUrl, readOnlyTool, createMcpConnector };
+module.exports = { MCP_VERSION, cleanMcpUrl, validTool, readOnlyTool, createMcpConnector };

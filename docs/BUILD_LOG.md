@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.105: Configured MCP write actions are available with native per-call approval showing the server, operation, and exact bounded arguments; declined calls never reach the server.
 - 0.1.104: Clarified in the scheduler dialog and setup guide that closing the macOS window leaves Obavenus running in the Dock; quitting pauses local schedules until the next launch.
 - 0.1.103: Existing Word and PowerPoint files support undoable, exact unique text replacement within one formatted run; surrounding formatting is preserved.
 - 0.1.102: Added local screenshot OCR to the isolated Research Browser as well as paired Chrome; screenshots stay on-device and only bounded recognized text enters agent context.

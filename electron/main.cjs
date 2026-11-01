@@ -205,7 +205,18 @@ async function cleanStaleStudyExtractionTemps() {
 }
 
 function getMcpConnector() {
-  if (!mcpConnector) mcpConnector = createMcpConnector({ filePath: path.join(app.getPath('userData'), 'mcp-connections.enc'), safeStorage });
+  if (!mcpConnector) mcpConnector = createMcpConnector({
+    filePath: path.join(app.getPath('userData'), 'mcp-connections.enc'), safeStorage,
+    confirmWriteAction: async (action) => {
+      const result = await dialog.showMessageBox({
+        type: 'warning', title: 'Approve MCP write action?',
+        message: `${action.serverName} wants to run “${action.toolName}”.`,
+        detail: `${action.serverUrl}\n\n${action.description || 'This operation may change data on the connected service.'}\n\nExact arguments (JSON):\n${action.arguments}`,
+        buttons: ['Cancel', 'Run action'], defaultId: 0, cancelId: 0,
+      });
+      return result.response === 1;
+    },
+  });
   return mcpConnector;
 }
 
