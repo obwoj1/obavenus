@@ -52,6 +52,7 @@
 
 ## Next
 
+- 0.1.93: Paired Chrome agents can check a labelled checkbox or select a radio option after a native confirmation showing its current and requested state. Ambiguous/hidden options and radio clearing are rejected; site-triggered behavior is disclosed.
 - 0.1.92: Added combined team modes for signed-in Chrome or the isolated Research Browser plus project writes, so agents can research and deliver artifacts in the same run. Writing requires an open project and remains confined to that folder.
 - 0.1.91: Paired Chrome agents can choose an exact option in a uniquely labelled dropdown after a native confirmation. Ambiguous fields/options and stale-page approvals are rejected; selection behavior and boundaries are documented.
 - 0.1.90: Selected project files can be opened with the Mac's default app from their local preview. Main-process path resolution blocks traversal and symlink targets.
