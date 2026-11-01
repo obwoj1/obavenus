@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.99: Spreadsheet previews now show cell addresses beside values, giving the agent a grounded coordinate for precise workbook edits.
 - 0.1.98: Project-write runs can update up to 200 typed cells in an existing `.xlsx` workbook, read saved values back, and undo the change. Formula-like text stays inert and updates stop if the workbook changes during preparation.
 - 0.1.97: Updated the Chrome bridge popup and setup guide for multi-tab research and explicit site-access behavior.
 - 0.1.96: Paired Chrome runs can list up to 40 regular web tabs and switch to a unique exact-URL match, allowing research across already-open signed-in pages. Tab operations are restricted to explicit Chrome mode.
