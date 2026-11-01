@@ -44,6 +44,25 @@ test('team workflow plans, runs independent specialists in parallel, then synthe
   assert.ok(calls.slice(1, 3).every((call) => call.includes('Lead plan:')));
 });
 
+test('selected workflow instructions reach the lead, every specialist, and synthesis', async () => {
+  const seen = [];
+  const workflowContext = 'Shared Obavenus workflows for this run. Apply each where relevant:\n- Cite sources: Keep every conclusion linked to evidence.';
+  await runTeamWorkflow({
+    messages: [{ role: 'user', text: `Prepare a researched brief.\n\n${workflowContext}` }],
+    specialists: [{ name: 'Researcher', instructions: 'Find reliable sources.' }],
+    dispatch: async (messages) => {
+      const prompt = messages[0].text;
+      seen.push(prompt);
+      if (prompt.includes('You are the lead agent.')) return 'Plan.';
+      if (prompt.includes('You are an independent specialist agent named')) return 'Research findings.';
+      if (prompt.includes('You are an independent reviewer.')) return 'Review findings.';
+      return 'Final brief.';
+    },
+  });
+  assert.equal(seen.length, 5);
+  assert.ok(seen.every((prompt) => prompt.includes('Cite sources: Keep every conclusion linked to evidence.')));
+});
+
 test('team workflow rejects a conversation without a user message', async () => {
   await assert.rejects(runTeamWorkflow({ messages: [{ role: 'assistant', text: 'hello' }], dispatch: async () => '' }), /needs a user request/);
 });

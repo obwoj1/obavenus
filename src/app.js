@@ -42,6 +42,8 @@ const profileDialog = document.querySelector('#profile-dialog');
 const profileForm = document.querySelector('#profile-form');
 const themeChoice = document.querySelector('#theme-choice');
 const THEME_KEY = 'obavenus.theme.v1';
+const WORKFLOW_SELECTION_KEY = 'obavenus.workflowSelection.v1';
+const MAX_SELECTED_WORKFLOWS = 3;
 
 function setTheme(theme) {
   const supported = ['sage', 'dusk', 'mist'].includes(theme) ? theme : 'sage';
@@ -713,17 +715,14 @@ form.addEventListener('submit', async (event) => {
   promptInput.value = '';
 
   try {
-    const selectedSkillId = document.querySelector('#skill-choice').value;
-    const skillCatalog = selectedSkillId ? await window.obavenus.getSkills() : [];
-    const selectedSkill = skillCatalog.find((skill) => skill.id === selectedSkillId);
+    const selectedWorkflowIds = getSelectedWorkflowIds();
+    const workflowCatalog = selectedWorkflowIds.length ? await window.obavenus.getSkills() : [];
+    const selectedWorkflows = workflowCatalog.filter((skill) => selectedWorkflowIds.includes(skill.id));
     if (localProvider) {
       const messages = current.messages
         .filter((message) => message.status !== 'pending' && message.status !== 'error')
         .map(({ role, text, context }) => ({ role, text, context }));
-      if (selectedSkill) {
-        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
-        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
-      }
+      attachSelectedWorkflows(messages, selectedWorkflows);
       pendingReply.text = await window.obavenus.runLocalAgent(localProvider, messages, localWriteAccess, activeRunId);
       pendingReply.status = 'complete';
       return;
@@ -732,10 +731,7 @@ form.addEventListener('submit', async (event) => {
       const messages = current.messages
         .filter((message) => message.status !== 'pending' && message.status !== 'error')
         .map(({ role, text, context }) => ({ role, text, context }));
-      if (selectedSkill) {
-        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
-        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
-      }
+      attachSelectedWorkflows(messages, selectedWorkflows);
       const machineId = document.querySelector('#remote-machine-choice').value;
       const remotePath = document.querySelector('#remote-project-path').value.trim();
       if (document.querySelector('#remote-background').checked) {
@@ -766,10 +762,7 @@ form.addEventListener('submit', async (event) => {
       const messages = current.messages
         .filter((message) => !message.localOnly && message.status !== 'pending')
         .map(({ role, text, context }) => ({ role, text, context }));
-      if (selectedSkill) {
-        const lastUser = [...messages].reverse().find((message) => message.role === 'user');
-        if (lastUser) lastUser.text += `\n\nSelected Obavenus workflow: ${selectedSkill.name}. ${selectedSkill.instructions}`;
-      }
+      attachSelectedWorkflows(messages, selectedWorkflows);
       if (teamMode) {
         const result = await window.obavenus.runTeam(messages, activeRunId, writeAccess, getSelectedAgentIds(), browserAccess && !chromeAccess, chromeAccess);
         pendingReply.text = result.text;
@@ -1223,12 +1216,50 @@ document.querySelector('#workflow-form').addEventListener('submit', async (event
   } catch (error) { status.textContent = error.message || 'Could not save workflow.'; }
 });
 async function refreshSkills(selectedId = '') {
-  const select = document.querySelector('#skill-choice');
+  const options = document.querySelector('#workflow-options');
+  const currentSelection = getSelectedWorkflowIds();
+  let preferredSelection = typeof selectedId === 'string' && selectedId ? [selectedId] : Array.isArray(selectedId) ? selectedId : currentSelection;
+  if (!preferredSelection.length) {
+    try { preferredSelection = JSON.parse(localStorage.getItem(WORKFLOW_SELECTION_KEY) || '[]'); } catch { preferredSelection = []; }
+  }
   const skills = await window.obavenus.getSkills();
-  select.replaceChildren(new Option('No workflow', ''));
-  skills.forEach((skill) => select.add(new Option(skill.name, skill.id)));
-  if (selectedId) select.value = selectedId;
+  const selectedIds = Array.isArray(preferredSelection) ? preferredSelection.filter((id) => typeof id === 'string' && skills.some((skill) => skill.id === id)).slice(0, MAX_SELECTED_WORKFLOWS) : [];
+  const selected = new Set(selectedIds);
+  options.replaceChildren();
+  skills.forEach((skill) => {
+    const label = document.createElement('label');
+    const control = document.createElement('input');
+    control.type = 'checkbox'; control.value = skill.id; control.checked = selected.has(skill.id);
+    const name = document.createElement('span');
+    name.append(control, document.createTextNode(skill.name));
+    label.append(name);
+    if (skill.custom) { const badge = document.createElement('small'); badge.textContent = 'Custom'; label.append(badge); }
+    options.append(label);
+  });
+  updateWorkflowPicker();
 }
+function getSelectedWorkflowIds() {
+  return [...document.querySelectorAll('#workflow-options input[type="checkbox"]:checked')].map((input) => input.value);
+}
+function updateWorkflowPicker() {
+  const selected = getSelectedWorkflowIds();
+  document.querySelector('#workflow-picker-label').textContent = selected.length ? `${selected.length} workflow${selected.length === 1 ? '' : 's'} · shared across agents` : 'Choose workflows';
+  document.querySelectorAll('#workflow-options input[type="checkbox"]').forEach((input) => { input.disabled = !input.checked && selected.length >= MAX_SELECTED_WORKFLOWS; });
+  try {
+    if (selected.length) localStorage.setItem(WORKFLOW_SELECTION_KEY, JSON.stringify(selected.slice(0, MAX_SELECTED_WORKFLOWS)));
+    else localStorage.removeItem(WORKFLOW_SELECTION_KEY);
+  } catch {}
+}
+function attachSelectedWorkflows(messages, workflows) {
+  if (!Array.isArray(workflows) || !workflows.length) return;
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+  if (!lastUser) return;
+  lastUser.text += `\n\nShared Obavenus workflows for this run. Apply each where relevant:\n${workflows.map((workflow) => `- ${workflow.name}: ${workflow.instructions}`).join('\n')}`;
+}
+document.querySelector('#workflow-options').addEventListener('change', (event) => {
+  if (getSelectedWorkflowIds().length > MAX_SELECTED_WORKFLOWS && event.target.matches('input[type="checkbox"]')) event.target.checked = false;
+  updateWorkflowPicker();
+});
 async function renderWorkflowLibrary() {
   const list = document.querySelector('#workflow-list');
   const skills = await window.obavenus.getSkills();
@@ -1255,8 +1286,8 @@ async function renderWorkflowLibrary() {
       remove.textContent = 'Delete';
       remove.addEventListener('click', async () => {
         await window.obavenus.deleteSkill(skill.id);
-        if (document.querySelector('#skill-choice').value === skill.id) document.querySelector('#skill-choice').value = '';
-        await refreshSkills();
+        const selected = getSelectedWorkflowIds().filter((id) => id !== skill.id);
+        await refreshSkills(selected);
         await renderWorkflowLibrary();
       });
       card.append(edit, remove);
