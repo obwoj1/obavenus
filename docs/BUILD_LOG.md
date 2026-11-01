@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.103: Existing Word and PowerPoint files support undoable, exact unique text replacement within one formatted run; surrounding formatting is preserved.
 - 0.1.102: Added local screenshot OCR to the isolated Research Browser as well as paired Chrome; screenshots stay on-device and only bounded recognized text enters agent context.
 - 0.1.101: Paired Chrome can capture a bounded JPEG of its active ordinary web tab in 40 KB chunks; Obavenus performs local OCR and provides only the recognized text to the agent.
 - 0.1.100: Added unique exact-text replacement for UTF-8 project files, gated by project-write mode with undo and concurrency checking.

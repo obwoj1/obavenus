@@ -1,7 +1,8 @@
 const { collectProjectContext, searchProjectText, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
-const { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
+const { buildSpreadsheet, updateSpreadsheet, replaceOfficeText, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
 const { buildDiagram } = require('./diagrams.cjs');
 const { getGitStatus, getGitDiff, getGitHistory } = require('./git-tools.cjs');
+const path = require('node:path');
 
 const WRITE_PROJECT_FILE = {
   name: 'write_project_file',
@@ -24,6 +25,15 @@ const PATCH_PROJECT_TEXT = {
   parameters: { type: 'object', properties: {
     path: { type: 'string', description: 'Relative text-file path inside the selected project.' },
     oldText: { type: 'string', description: 'Exact non-empty text that must occur once, up to 20,000 characters.' },
+    newText: { type: 'string', description: 'Replacement text, up to 20,000 characters.' },
+  }, required: ['path', 'oldText', 'newText'], additionalProperties: false },
+};
+const PATCH_OFFICE_TEXT = {
+  name: 'replace_office_text',
+  description: 'Replace one exact, unique passage inside a Word document or PowerPoint slide while preserving the surrounding formatting. The passage must be contained in one formatted text run. Requires project-write mode and supports undo.',
+  parameters: { type: 'object', properties: {
+    path: { type: 'string', description: 'Relative existing .docx or .pptx path inside the selected project.' },
+    oldText: { type: 'string', description: 'Exact text in one formatted run, up to 20,000 characters.' },
     newText: { type: 'string', description: 'Replacement text, up to 20,000 characters.' },
   }, required: ['path', 'oldText', 'newText'], additionalProperties: false },
 };
@@ -178,6 +188,17 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const result = await writeWithUndo(args.path, updated, (options) => writeProjectFile(projectPath, args.path, updated, options), snapshot.beforeHash);
       return { ...result, saved: true, replacements: 1 };
     }
+    if (name === 'replace_office_text') {
+      if (!projectPath || !writeAccess) return { error: 'Office document edits are disabled for this run. Select a project and enable project-write mode.' };
+      if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative .docx or .pptx path.');
+      const extension = path.extname(args.path).toLowerCase();
+      if (!['.docx', '.pptx'].includes(extension)) throw new TypeError('This tool edits Word (.docx) and PowerPoint (.pptx) files.');
+      const snapshot = await snapshotProjectFile(projectPath, args.path, 8 * 1024 * 1024);
+      if (snapshot.created) throw new Error('That Office document does not exist. Read the current file and retry with an existing path.');
+      const edited = await replaceOfficeText({ bytes: snapshot.beforeBytes, extension, oldText: args.oldText, newText: args.newText });
+      const result = await writeWithUndo(args.path, edited.bytes, (options) => writeProjectBinaryArtifact(projectPath, args.path, edited.bytes, [extension], 8 * 1024 * 1024, options), snapshot.beforeHash);
+      return { ...result, saved: true, replacements: edited.replacements, format: edited.format };
+    }
     if (name === 'create_diagram') {
       if (!projectPath || !writeAccess) return { error: 'Diagram creation is disabled for this run. Select a project and enable project-write mode.' };
       if (typeof args.path !== 'string' || args.path.length > 500) throw new TypeError('Provide a relative .svg diagram path.');
@@ -287,7 +308,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   while (calls < maxCalls) {
     signal?.throwIfAborted();
     const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab'].includes(tool.name) || browserFillAccess) : [];
-    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, PATCH_PROJECT_TEXT, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
+    const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, PATCH_PROJECT_TEXT, PATCH_OFFICE_TEXT, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;
     if (!response?.toolCalls?.length) return response?.text || '';

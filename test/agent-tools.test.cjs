@@ -5,7 +5,7 @@ const { execFileSync } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
 const ExcelJS = require('exceljs');
-const { buildSpreadsheet } = require('../electron/artifacts.cjs');
+const { buildSpreadsheet, buildDocument } = require('../electron/artifacts.cjs');
 const { TOOL_DEFINITIONS, GIT_TOOLS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
 
 test('team agents get read-only Git status, diffs, and scoped commit history', async () => {
@@ -150,6 +150,25 @@ test('updating an existing workbook is gated, undoable, and returns saved cell v
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(target);
     assert.equal(workbook.getWorksheet('Budget').getCell('B2').value, 340);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Word text edits are gated, undoable, and exposed only in project-write mode', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-docx-edit-'));
+  try {
+    const target = path.join(root, 'brief.docx');
+    await writeFile(target, await buildDocument({ title: 'Hiring brief', sections: [{ text: 'Compare the posted roles.' }] }));
+    const denied = createAgentToolExecutor({ projectPath: root });
+    assert.match((await denied('replace_office_text', { path: 'brief.docx', oldText: 'Compare the posted roles.', newText: 'Review three roles.' })).error, /disabled/);
+    let undoSnapshot;
+    const allowed = createAgentToolExecutor({ projectPath: root, writeAccess: true, projectUndo: { record: async (entry) => { undoSnapshot = entry; return 'undo-token'; } } });
+    const result = await allowed('replace_office_text', { path: 'brief.docx', oldText: 'Compare the posted roles.', newText: 'Review three roles.' });
+    assert.equal(result.format, 'Word document');
+    assert.equal(result.undoToken, 'undo-token');
+    assert.equal(undoSnapshot.beforeBytes.subarray(0, 2).toString(), 'PK');
+    const tools = [];
+    await runToolAgent({ messages: [{ role: 'user', text: 'edit' }], executeTool: async () => {}, writeAccess: true, dispatch: async (_messages, options) => { tools.push(...options.tools); return 'Done'; } });
+    assert.equal(tools.some((tool) => tool.name === 'replace_office_text'), true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

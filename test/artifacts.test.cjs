@@ -1,7 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const ExcelJS = require('exceljs');
-const { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
+const { buildSpreadsheet, updateSpreadsheet, replaceOfficeText, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
+const JSZip = require('jszip');
 
 test('native spreadsheet generation creates a frozen workbook and neutralizes formula-like text', async () => {
   const data = await buildSpreadsheet({ sheets: [{ name: 'Open roles', headers: ['Role', 'Salary'], rows: [['=HYPERLINK("bad")', 172000]] }] });
@@ -38,6 +39,23 @@ test('native Word and PowerPoint generators return Office Open XML packages', as
   assert.equal(pptx.subarray(0, 2).toString(), 'PK');
   assert.ok(docx.length > 1000);
   assert.ok(pptx.length > 1000);
+});
+
+test('Word and PowerPoint text replacement preserves package XML and requires one exact formatted run', async () => {
+  const docx = await buildDocument({ title: 'Hiring brief', sections: [{ heading: 'Summary', text: 'Compare the posted roles.' }] });
+  const edited = await replaceOfficeText({ bytes: docx, extension: '.docx', oldText: 'Compare the posted roles.', newText: 'Compare the three engineering offers.' });
+  const archive = await JSZip.loadAsync(edited.bytes);
+  const documentXml = await archive.file('word/document.xml').async('string');
+  assert.match(documentXml, /Compare the three engineering offers\./);
+  assert.deepEqual({ replacements: edited.replacements, format: edited.format }, { replacements: 1, format: 'Word document' });
+  await assert.rejects(replaceOfficeText({ bytes: docx, extension: '.docx', oldText: 'SummaryCompare', newText: 'Combined text' }), /one Word or PowerPoint text run/);
+  const pptx = await buildPresentation({ title: 'Hiring brief', slides: [{ title: 'Summary', bullets: ['Compare salary and duties.'] }] });
+  const changed = await replaceOfficeText({ bytes: pptx, extension: '.pptx', oldText: 'Compare salary and duties.', newText: 'Compare salary, benefits, and duties.' });
+  const slides = await JSZip.loadAsync(changed.bytes);
+  assert.match(await slides.file('ppt/slides/slide1.xml').async('string'), /Compare salary, benefits, and duties\./);
+  const duplicate = await buildDocument({ title: 'Repeated phrase', sections: [{ text: 'Repeated phrase' }] });
+  await assert.rejects(replaceOfficeText({ bytes: duplicate, extension: '.docx', oldText: 'Repeated phrase', newText: 'Unique phrase' }), /more than once/);
+  await assert.rejects(replaceOfficeText({ bytes: docx, extension: '.docx', oldText: 'Summary', newText: 'Summary' }), /identical/);
 });
 
 test('native office generators enforce bounded schemas before building files', async () => {

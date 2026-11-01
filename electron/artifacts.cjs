@@ -1,6 +1,7 @@
 const ExcelJS = require('exceljs');
 const { Document, HeadingLevel, Packer, Paragraph, TextRun } = require('docx');
 const pptxgen = require('pptxgenjs');
+const JSZip = require('jszip');
 
 const OFFICE_EXTENSIONS = Object.freeze({ spreadsheet: ['.xlsx'], document: ['.docx'], presentation: ['.pptx'] });
 const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
@@ -79,6 +80,58 @@ async function updateSpreadsheet({ bytes, sheet: sheetName, cells }) {
   return { bytes: output, updated: verified.map(({ address }) => ({ address, value: resultSheet.getCell(address).value })) };
 }
 
+function decodeXmlText(value) {
+  return value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code))).replace(/&#x([\da-f]+);/gi, (_match, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function encodeXmlText(value) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+async function replaceOfficeText({ bytes, extension, oldText, newText }) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 1 || bytes.length > MAX_ARTIFACT_BYTES) throw new RangeError('Open an existing Office file up to 8 MB.');
+  if (!['.docx', '.pptx'].includes(extension)) throw new TypeError('Text replacement supports Word (.docx) and PowerPoint (.pptx) files.');
+  if (typeof oldText !== 'string' || !oldText.trim() || oldText.length > 20_000 || typeof newText !== 'string' || newText.length > 20_000 || newText.includes('\0')) throw new TypeError('Provide an exact non-empty passage and replacement text up to 20,000 characters.');
+  if (oldText === newText) throw new TypeError('The replacement is identical to the existing text.');
+  let archive;
+  try { archive = await JSZip.loadAsync(bytes, { checkCRC32: false, createFolders: false }); } catch { throw new TypeError('The selected file is not a readable Office document.'); }
+  const entries = Object.entries(archive.files).filter(([, entry]) => !entry.dir);
+  if (entries.length > 5_000) throw new RangeError('Office archive contains too many entries.');
+  let expanded = 0;
+  for (const [name, entry] of entries) {
+    if (name.split('/').some((part) => part === '..')) throw new TypeError('Office archive contains an unsafe path.');
+    expanded += entry._data?.uncompressedSize || 0;
+    if (expanded > 40 * 1024 * 1024) throw new RangeError('Office archive expands beyond the 40 MB editing limit.');
+  }
+  const target = extension === '.docx' ? /^word\/document\.xml$/ : /^ppt\/slides\/slide\d+\.xml$/;
+  const nodes = extension === '.docx' ? /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g : /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g;
+  let matches = 0;
+  const edits = [];
+  for (const [name, entry] of entries) {
+    if (!target.test(name)) continue;
+    const xml = await entry.async('string');
+    let changed = false;
+    const updated = xml.replace(nodes, (whole, rawText) => {
+      const text = decodeXmlText(rawText);
+      let index = text.indexOf(oldText);
+      if (index < 0) return whole;
+      const count = text.split(oldText).length - 1;
+      matches += count;
+      if (matches > 1 || count > 1) return whole;
+      const replaced = text.slice(0, index) + newText + text.slice(index + oldText.length);
+      changed = true;
+      return whole.replace(rawText, encodeXmlText(replaced));
+    });
+    if (changed) edits.push({ name, xml: updated });
+  }
+  if (matches === 0) throw new Error('The exact text was not found within one formatted text run. Select a shorter passage contained in one Word or PowerPoint text run.');
+  if (matches > 1) throw new Error('The exact text occurs more than once. Include more surrounding text so the target is unique.');
+  for (const edit of edits) archive.file(edit.name, edit.xml);
+  const output = Buffer.from(await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } }));
+  if (output.length > MAX_ARTIFACT_BYTES) throw new RangeError('The edited Office file exceeds the 8 MB limit.');
+  return { bytes: output, replacements: 1, format: extension === '.docx' ? 'Word document' : 'PowerPoint presentation' };
+}
+
 async function buildDocument({ title, sections }) {
   const documentTitle = boundedText(title, 'Document title', 180);
   if (!Array.isArray(sections) || sections.length > 30) throw new TypeError('A document can contain up to 30 sections.');
@@ -122,4 +175,4 @@ async function buildPresentation({ title, slides }) {
   return output;
 }
 
-module.exports = { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS, MAX_ARTIFACT_BYTES };
+module.exports = { buildSpreadsheet, updateSpreadsheet, replaceOfficeText, buildDocument, buildPresentation, OFFICE_EXTENSIONS, MAX_ARTIFACT_BYTES };
