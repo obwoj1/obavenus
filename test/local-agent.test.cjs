@@ -41,7 +41,7 @@ test('signed-in Claude Code can use the selected model in safe one-response mode
   assert.ok(calls[0].args.includes('--model'));
   assert.ok(calls[0].args.includes('claude-sonnet-4-6'));
   assert.ok(calls[0].args.includes('--permission-mode'));
-  assert.throws(() => agent.run({ provider: 'claude', model: '--dangerously-skip-permissions', messages: [{ role: 'user', text: 'No.' }] }), /valid local Claude model ID/);
+  await assert.rejects(agent.run({ provider: 'claude', model: '--dangerously-skip-permissions', messages: [{ role: 'user', text: 'No.' }] }), /valid local model ID/);
 });
 
 test('Claude account sign-in uses the supported Claude Code auth command and returns only safe status', async () => {
@@ -80,7 +80,7 @@ test('Grok account sign-in invokes the official browser flow and checks models w
     process.nextTick(() => { child.stdout.end(args[0] === '--help' ? 'Commands: login logout models' : 'grok-4.7'); child.stderr.end(); child.emit('close', 0); });
     return child;
   };
-  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl });
+  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, findExecutableCandidatesImpl: () => [], spawnImpl });
   assert.deepEqual(await agent.signInGrok(), { installed: true, compatible: true, loggedIn: true });
   assert.deepEqual(calls.map(({ args }) => args), [['--help'], ['models'], ['login'], ['--help'], ['models']]);
   assert.ok(calls.every(({ options }) => options.env.XAI_API_KEY === undefined && options.shell === false));
@@ -88,21 +88,53 @@ test('Grok account sign-in invokes the official browser flow and checks models w
 
 test('Grok account sign-in refuses an unrelated command named grok', async () => {
   const calls = [];
-  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: () => '/fake/grok', spawnImpl: fakeSpawn(calls, { output: 'Usage: grok [options]' }) });
+  const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: () => '/fake/grok', findExecutableCandidatesImpl: () => [], spawnImpl: fakeSpawn(calls, { output: 'Usage: grok [options]' }) });
   assert.deepEqual(await agent.grokAuthStatus(), { installed: true, compatible: false, loggedIn: false, error: 'A different grok command is installed. Install the official Grok Build CLI from x.ai to use account sign-in.' });
   await assert.rejects(agent.signInGrok(), /different grok command is installed/);
   assert.equal(calls.length, 2);
 });
 
+test('Grok Build discovery skips a conflicting grok executable earlier on PATH', async () => {
+  const calls = [];
+  const spawnImpl = (command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough(); child.kill = () => {};
+    process.nextTick(() => {
+      const output = args[0] === '--help'
+        ? command.endsWith('/official-grok') ? 'Commands: login logout models' : 'Usage: grok [options]'
+        : 'grok-4.7';
+      child.stdout.end(output); child.stderr.end(); child.emit('close', 0);
+    });
+    return child;
+  };
+  const agent = createLocalAgent({
+    env: { PATH: '/fake' },
+    findExecutableImpl: () => '/fake/wrong-grok',
+    findExecutableCandidatesImpl: () => ['/fake/wrong-grok', '/fake/official-grok'],
+    spawnImpl,
+  });
+  assert.deepEqual(await agent.grokAuthStatus(), { installed: true, compatible: true, loggedIn: true });
+  assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
+    ['/fake/wrong-grok', ['--help']], ['/fake/official-grok', ['--help']], ['/fake/official-grok', ['models']],
+  ]);
+});
+
 test('Grok account chats run without an API-key environment variable and keep tools read-only', async () => {
   const calls = [];
-  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn(calls) });
+  const spawnImpl = (command, args, options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough(); child.kill = () => {};
+    process.nextTick(() => { child.stdout.end(args[0] === '--help' ? 'Commands: login logout models' : args[0] === 'models' ? 'grok-4.7' : 'answer'); child.stderr.end(); child.emit('close', 0); });
+    return child;
+  };
+  const agent = createLocalAgent({ env: { PATH: '/fake', XAI_API_KEY: 'must-not-leak' }, findExecutableImpl: (bin) => `/fake/${bin}`, findExecutableCandidatesImpl: () => [], spawnImpl });
   await agent.run({ provider: 'grok', model: 'grok-4.7', messages: [{ role: 'user', text: 'Explain this.' }] });
-  assert.equal(calls[0].options.env.XAI_API_KEY, undefined);
-  assert.ok(calls[0].args.includes('--sandbox') && calls[0].args.includes('read-only'));
-  assert.ok(calls[0].args.includes('--permission-mode') && calls[0].args.includes('dontAsk'));
-  assert.ok(calls[0].args.includes('--deny') && calls[0].args.includes('Bash'));
-  assert.ok(calls[0].args.includes('Edit'));
+  assert.ok(calls.every(({ options }) => options.env.XAI_API_KEY === undefined));
+  const runCall = calls.find(({ args }) => args.includes('-p'));
+  assert.ok(runCall.args.includes('--sandbox') && runCall.args.includes('read-only'));
+  assert.ok(runCall.args.includes('--permission-mode') && runCall.args.includes('dontAsk'));
+  assert.ok(runCall.args.includes('--deny') && runCall.args.includes('Bash'));
+  assert.ok(runCall.args.includes('Edit'));
 });
 
 test('Codex uses read-only sandbox and feeds the prompt over stdin', async () => {
@@ -145,12 +177,12 @@ test('project-edit mode uses provider-specific edit controls and requires a sele
   assert.ok(COMMANDS.codex.args('prompt', true).includes('workspace-write'));
   assert.ok(COMMANDS.gemini.args('prompt', true).includes('auto_edit'));
   const agent = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn([]) });
-  assert.throws(() => agent.run({ provider: 'codex', messages: [{ role: 'user', text: 'Edit' }], writeAccess: true }), /Choose a project folder/);
+  await assert.rejects(agent.run({ provider: 'codex', messages: [{ role: 'user', text: 'Edit' }], writeAccess: true }), /Choose a project folder/);
 });
 
 test('local CLI errors are useful and attachment paths are validated', async () => {
   const missing = createLocalAgent({ env: { PATH: '' }, findExecutableImpl: () => null, spawnImpl: fakeSpawn([]) });
-  assert.throws(() => missing.run({ provider: 'gemini', messages: [{ role: 'user', text: 'Hi' }] }), /not found/);
+  await assert.rejects(missing.run({ provider: 'gemini', messages: [{ role: 'user', text: 'Hi' }] }), /not found/);
   const configured = createLocalAgent({ env: { PATH: '/fake' }, findExecutableImpl: (bin) => `/fake/${bin}`, spawnImpl: fakeSpawn([]) });
-  assert.throws(() => configured.run({ provider: 'claude', messages: [{ role: 'user', text: 'Hi', context: [{ name: '../secret', content: 'x' }] }] }), /invalid/);
+  await assert.rejects(configured.run({ provider: 'claude', messages: [{ role: 'user', text: 'Hi', context: [{ name: '../secret', content: 'x' }] }] }), /invalid/);
 });
