@@ -5,7 +5,7 @@ const { scheduleReview } = require('./study-review.cjs');
 const { generateStudyAids } = require('./study-generation.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
-const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [], remindersEnabled: false });
+const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [], remindersEnabled: false, quietHoursEnabled: false, quietStart: '22:00', quietEnd: '08:00' });
 
 function cleanText(value, label, max, { optional = false } = {}) {
   if (optional && (value === undefined || value === null)) return '';
@@ -125,7 +125,9 @@ function normalizeStudyData(value) {
     };
   });
   if (normalizedSources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) > 4 * 1024 * 1024) throw new RangeError('Imported study text is over its 4 MB local limit.');
-  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules, remindersEnabled: value.remindersEnabled === true };
+  const quietStart = typeof value.quietStart === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.quietStart) ? value.quietStart : '22:00';
+  const quietEnd = typeof value.quietEnd === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value.quietEnd) ? value.quietEnd : '08:00';
+  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources, modules: normalizedModules, remindersEnabled: value.remindersEnabled === true, quietHoursEnabled: value.quietHoursEnabled === true, quietStart, quietEnd };
 }
 
 function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
@@ -202,6 +204,16 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
       return serialize(async () => {
         const data = await read();
         data.remindersEnabled = enabled;
+        return write(data);
+      });
+    },
+    async setQuietHours({ enabled, start, end }) {
+      if (typeof enabled !== 'boolean' || typeof start !== 'string' || typeof end !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end) || start === end) throw new TypeError('Set valid, different quiet-hour start and end times.');
+      return serialize(async () => {
+        const data = await read();
+        data.quietHoursEnabled = enabled;
+        data.quietStart = start;
+        data.quietEnd = end;
         return write(data);
       });
     },

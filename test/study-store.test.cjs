@@ -87,6 +87,10 @@ test('due reminder preference and sent timestamp persist only in encrypted study
   const saved = await store.markReminderSent(assignmentId, dueAt);
   assert.equal(saved.remindersEnabled, true);
   assert.equal(saved.assignments[0].remindedDueAt, dueAt);
+  const withQuietHours = await store.setQuietHours({ enabled: true, start: '21:30', end: '07:45' });
+  assert.equal(withQuietHours.quietHoursEnabled, true);
+  assert.equal(withQuietHours.quietStart, '21:30');
+  await assert.rejects(store.setQuietHours({ enabled: true, start: '07:00', end: '07:00' }), /different quiet-hour/);
   assert.equal((await readFile(filePath, 'utf8')).includes('Lab report'), false);
   await assert.rejects(store.setRemindersEnabled('yes'), /must be enabled or disabled/);
 });
