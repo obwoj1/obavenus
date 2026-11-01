@@ -37,6 +37,7 @@
 
 ## Next
 
+- 0.1.70: Added an opt-in, bearer-authenticated localhost MCP server for read-only Study course, assignment, file-search, resource, and flashcard access. The token is encrypted with OS-backed storage, the service binds to loopback, and assignment drafts and submission actions are excluded.
 - 0.1.69: Assignment workspaces can import bounded reference files into OS-encrypted local storage and include extracted text in the editable assistant prompt; users can remove files, and Canvas sync preserves attachment references.
 - 0.1.68: Added a one-click assignment review checklist seeded from explicit requirements and rubric text, with editable student checks and final pre-submission review.
 - 0.1.67: Assignment scans now show explicitly detected rubric criteria and named skills, plus locally generated clarification questions for student review.
