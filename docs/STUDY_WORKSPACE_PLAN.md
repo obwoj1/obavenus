@@ -19,11 +19,11 @@ Obavenus already reads PDF, Word, Excel, and PowerPoint text locally, OCRs scann
 
 ## Implementation order
 
-1. Build an optional local Study space: courses, manual assignments and due dates, checklists, notes, imported study files, and local search. Keep state encrypted and files on this Mac.
+1. Build an optional local Study space: courses, assignments and due dates, checklists, notes, imported study files, and local search. Keep state encrypted and files on this Mac.
 2. Add study-aid workflows over selected local files: explain with citations to page/slide, make notes, generate and edit flashcards, quiz mode, and a spaced-review queue. Use the configured provider or local Ollama; keep source references with generated content.
 3. Add assignment support: requirement extraction, a student-editable plan and draft, artifact generation, and a review checklist. Do not submit work automatically.
-4. Add optional external integrations last: Canvas sync and email reminders/digests, with clear scopes and per-connection controls.
+4. Add optional external integrations with clear scopes and per-connection controls: Canvas, compatible MCP services such as Cengage where the school exposes a supported connector, then email reminders/digests.
 
 ## Current status
 
-Obavenus now has an encrypted local Study interface for courses, assignments with checklist steps and due dates, notes, flashcard decks, and a deterministic spaced-review queue. Manual assignments and notes are not synced to Canvas, and study aids are not yet generated from course files. File-grounded notes/cards/quizzes, richer assignment analysis, and Canvas/email integrations remain to be built. Assistant Markdown rendering is in place as a foundation for readable cited answers and structured drafts.
+Obavenus now has an encrypted local Study interface for courses, assignments with checklist steps and due dates, notes, flashcard decks, and a deterministic spaced-review queue. Canvas can be connected with a personal access token encrypted using the operating-system credential store; the first sync imports active courses and assignments and updates matching imported records. Canvas submission is not implemented. File-grounded notes/cards/quizzes, richer assignment analysis, MCP connections to external learning sites, search with page references, reminders, and email digests remain to be built. Assistant Markdown rendering is in place as a foundation for readable cited answers and structured drafts.

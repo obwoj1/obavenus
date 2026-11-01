@@ -35,6 +35,7 @@ function normalizeStudyData(value) {
     id: uniqueId(course.id, 'Course'),
     name: cleanText(course.name, 'Course name', 120),
     term: cleanText(course.term, 'Course term', 80, { optional: true }),
+    canvasId: cleanText(course.canvasId, 'Canvas course ID', 40, { optional: true }),
     createdAt: Number.isFinite(course.createdAt) ? course.createdAt : Date.now(),
   }));
   const courseIds = new Set(normalizedCourses.map((course) => course.id));
@@ -47,6 +48,7 @@ function normalizeStudyData(value) {
     return {
       id,
       courseId,
+      canvasId: cleanText(assignment.canvasId, 'Canvas assignment ID', 40, { optional: true }),
       title: cleanText(assignment.title, 'Assignment title', 200),
       instructions: cleanText(assignment.instructions, 'Assignment instructions', 20_000, { optional: true }),
       dueAt: assignment.dueAt === null || assignment.dueAt === undefined || assignment.dueAt === '' ? null : Number(assignment.dueAt),

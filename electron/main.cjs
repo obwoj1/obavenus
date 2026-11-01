@@ -33,6 +33,7 @@ const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
 const { createStudyStore } = require('./study-store.cjs');
 const { dueCards } = require('./study-review.cjs');
+const { createCanvasConnector } = require('./canvas-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -73,6 +74,7 @@ let chromeBridge;
 let remoteMachineStore;
 let remoteJobStore;
 let studyStore;
+let canvasConnector;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -86,6 +88,11 @@ function getConversationStore() {
 function getStudyStore() {
   if (!studyStore) studyStore = createStudyStore({ filePath: path.join(app.getPath('userData'), 'study-space.enc'), safeStorage });
   return studyStore;
+}
+
+function getCanvasConnector() {
+  if (!canvasConnector) canvasConnector = createCanvasConnector({ filePath: path.join(app.getPath('userData'), 'canvas.enc'), safeStorage });
+  return canvasConnector;
 }
 
 function getRemoteMachineStore() {
@@ -359,6 +366,10 @@ ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
 ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
+ipcMain.handle('study:canvas-status', () => getCanvasConnector().status());
+ipcMain.handle('study:canvas-connect', (_event, credentials) => getCanvasConnector().connect(credentials));
+ipcMain.handle('study:canvas-disconnect', () => getCanvasConnector().disconnect());
+ipcMain.handle('study:canvas-sync', () => getCanvasConnector().sync(getStudyStore()));
 ipcMain.handle('conversation:export', async (_event, conversation) => {
   const markdown = formatConversationMarkdown(conversation);
   const result = await dialog.showSaveDialog({
