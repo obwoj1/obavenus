@@ -18,6 +18,11 @@ function validId(value, label) {
   return value;
 }
 
+function validArtifactSize(value) {
+  if (!Number.isInteger(value) || value < 1 || value > 10 * 1024 * 1024) throw new RangeError('Assignment attachment has an invalid file size.');
+  return value;
+}
+
 function normalizeStudyData(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Study data must be an object.');
   const courses = Array.isArray(value.courses) ? value.courses : [];
@@ -47,7 +52,9 @@ function normalizeStudyData(value) {
     const courseId = validId(assignment.courseId, 'Assignment course');
     if (!courseIds.has(courseId)) throw new TypeError('Every assignment must belong to a saved course.');
     const steps = Array.isArray(assignment.steps) ? assignment.steps : [];
+    const artifacts = Array.isArray(assignment.artifacts) ? assignment.artifacts : [];
     if (steps.length > 100) throw new RangeError('An assignment can have up to 100 plan steps.');
+    if (artifacts.length > 10) throw new RangeError('An assignment can have up to 10 attached files.');
     return {
       id,
       courseId,
@@ -55,6 +62,12 @@ function normalizeStudyData(value) {
       title: cleanText(assignment.title, 'Assignment title', 200),
       instructions: cleanText(assignment.instructions, 'Assignment instructions', 20_000, { optional: true }),
       draft: cleanText(assignment.draft, 'Assignment draft', 50_000, { optional: true }),
+      artifacts: artifacts.map((artifact) => ({
+        id: uniqueId(artifact.id, 'Assignment attachment'),
+        name: cleanText(artifact.name, 'Assignment attachment name', 240),
+        size: validArtifactSize(artifact.size),
+        createdAt: Number.isFinite(artifact.createdAt) ? artifact.createdAt : Date.now(),
+      })),
       dueAt: assignment.dueAt === null || assignment.dueAt === undefined || assignment.dueAt === '' ? null : Number(assignment.dueAt),
       status: ['todo', 'in-progress', 'done'].includes(assignment.status) ? assignment.status : 'todo',
       remindedDueAt: Number.isFinite(assignment.remindedDueAt) ? assignment.remindedDueAt : null,
@@ -62,6 +75,7 @@ function normalizeStudyData(value) {
       createdAt: Number.isFinite(assignment.createdAt) ? assignment.createdAt : Date.now(),
     };
   });
+  if (normalizedAssignments.reduce((total, assignment) => total + assignment.artifacts.reduce((sum, artifact) => sum + artifact.size, 0), 0) > 50 * 1024 * 1024) throw new RangeError('Study attachments have reached the 50 MB local limit.');
   if (normalizedAssignments.some((assignment) => assignment.dueAt !== null && !Number.isFinite(assignment.dueAt))) throw new TypeError('Assignment due dates must be valid timestamps.');
   const normalizedNotes = notes.map((note) => {
     const courseId = note.courseId ? validId(note.courseId, 'Note course') : '';

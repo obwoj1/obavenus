@@ -149,7 +149,7 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
             id: existing?.id || randomUUID(), courseId: course.id, canvasId: String(item.id),
             title: String(item.name).slice(0, 200), instructions: plainText(item.description),
             dueAt: item.due_at ? Date.parse(item.due_at) : null,
-            status: existing?.status || 'todo', steps: existing?.steps || [], draft: existing?.draft || '', createdAt: existing?.createdAt || now(),
+            status: existing?.status || 'todo', steps: existing?.steps || [], draft: existing?.draft || '', artifacts: existing?.artifacts || [], createdAt: existing?.createdAt || now(),
           };
           if (existing) Object.assign(existing, record);
           else { data.assignments.push(record); importedAssignments += 1; }

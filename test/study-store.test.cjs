@@ -29,7 +29,7 @@ test('study space is encrypted, persists courses, plans, notes, and cards', asyn
   const moduleId = '10000000-0000-4000-8000-000000000007';
   const saved = await store.save({
     ...withSource,
-    assignments: [{ id: assignmentId, courseId, title: 'Problem set', instructions: 'Show your work.', draft: 'My editable first draft.', dueAt: 200, steps: [{ id: stepId, text: 'Read the prompt', done: false, planDate: '2026-11-01' }] }],
+    assignments: [{ id: assignmentId, courseId, title: 'Problem set', instructions: 'Show your work.', draft: 'My editable first draft.', artifacts: [{ id: '10000000-0000-4000-8000-000000000008', name: 'example.pdf', size: 128, createdAt: 90 }], dueAt: 200, steps: [{ id: stepId, text: 'Read the prompt', done: false, planDate: '2026-11-01' }] }],
     notes: [{ id: noteId, courseId, title: 'Variance', body: 'E[X²] − E[X]²' }],
     decks: [{ id: deckId, courseId, title: 'Definitions', cards: [{ id: cardId, front: 'Variance?', back: 'Expected squared deviation.' }] }],
     modules: [{ id: moduleId, courseId, canvasId: '51', title: 'Week one', position: 1, items: [{ canvasId: '52', contentId: '53', title: 'Lecture slides', type: 'File', position: 1, locked: false }] }],
@@ -40,6 +40,7 @@ test('study space is encrypted, persists courses, plans, notes, and cards', asyn
   assert.equal(saved.assignments[0].steps[0].done, false);
   assert.equal(saved.assignments[0].steps[0].planDate, '2026-11-01');
   assert.equal(saved.assignments[0].draft, 'My editable first draft.');
+  assert.deepEqual(saved.assignments[0].artifacts.map(({ name, size }) => ({ name, size })), [{ name: 'example.pdf', size: 128 }]);
   assert.equal(saved.decks[0].cards[0].ease, 2.5);
   assert.equal(saved.sources[0].name, 'Week 1.pdf');
   assert.equal(saved.modules[0].items[0].title, 'Lecture slides');

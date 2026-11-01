@@ -1,5 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, shell, session } = require('electron');
-const { readFile, writeFile, mkdir, unlink, cp, mkdtemp, rm } = require('node:fs/promises');
+const { readFile, writeFile, mkdir, unlink, cp, mkdtemp, rm, lstat, readdir } = require('node:fs/promises');
 const { WebSocketServer } = require('ws');
 const path = require('node:path');
 const os = require('node:os');
@@ -34,6 +34,7 @@ const { readResumeFile } = require('./resume-file.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
 const { createStudyStore } = require('./study-store.cjs');
+const { createStudyArtifactStore, MAX_ARTIFACT_BYTES } = require('./study-artifacts.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
@@ -85,6 +86,7 @@ let chromeBridge;
 let remoteMachineStore;
 let remoteJobStore;
 let studyStore;
+let studyArtifactStore;
 let canvasConnector;
 let mcpConnector;
 let studyReminderTimer;
@@ -103,6 +105,11 @@ function getConversationStore() {
 function getStudyStore() {
   if (!studyStore) studyStore = createStudyStore({ filePath: path.join(app.getPath('userData'), 'study-space.enc'), safeStorage });
   return studyStore;
+}
+
+function getStudyArtifactStore() {
+  if (!studyArtifactStore) studyArtifactStore = createStudyArtifactStore({ directory: path.join(app.getPath('userData'), 'study-artifacts'), safeStorage });
+  return studyArtifactStore;
 }
 
 function getStudyDigestScheduler() {
@@ -152,7 +159,7 @@ function getCanvasConnector() {
 async function extractCanvasStudyFile(name, bytes) {
   const extension = path.extname(path.basename(name)).toLowerCase();
   if (!['.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.md', '.csv', '.json', '.html', '.png', '.jpg', '.jpeg', '.webp'].includes(extension)) throw new Error('Canvas file type is not supported for local text extraction.');
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-canvas-'));
+  const directory = await mkdtemp(path.join(os.tmpdir(), `obavenus-study-extract-${process.pid}-`));
   const temporaryName = `course-file${extension}`;
   try {
     await writeFile(path.join(directory, temporaryName), bytes, { mode: 0o600 });
@@ -160,6 +167,17 @@ async function extractCanvasStudyFile(name, bytes) {
     if (result.truncated) throw new Error('Canvas file text exceeds the local extraction limit.');
     return result;
   } finally { await rm(directory, { recursive: true, force: true }); }
+}
+
+async function cleanStaleStudyExtractionTemps() {
+  const names = await readdir(os.tmpdir()).catch(() => []);
+  for (const name of names) {
+    const match = name.match(/^obavenus-study-extract-(\d+)-/);
+    if (!match || Number(match[1]) === process.pid) continue;
+    try { process.kill(Number(match[1]), 0); continue; }
+    catch (error) { if (error.code !== 'ESRCH') continue; }
+    await rm(path.join(os.tmpdir(), name), { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 function getMcpConnector() {
@@ -435,6 +453,57 @@ ipcMain.handle('conversations:load', () => getConversationStore().load());
 ipcMain.handle('conversations:save', (_event, conversations) => getConversationStore().save(conversations));
 ipcMain.handle('study:load', () => getStudyStore().load());
 ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
+ipcMain.handle('study:attach-assignment-file', async (_event, assignmentId) => {
+  const before = await getStudyStore().load();
+  const target = before.assignments.find((item) => item.id === assignmentId);
+  if (!target) throw new Error('That assignment is no longer in the Study space.');
+  if (target.artifacts.length >= 10) throw new RangeError('An assignment can have up to 10 attached files.');
+  const picked = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Assignment references', extensions: ['pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv', 'json', 'html', 'png', 'jpg', 'jpeg', 'webp'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const filePath = picked.filePaths[0];
+  const details = await lstat(filePath);
+  if (!details.isFile() || details.isSymbolicLink()) throw new TypeError('Choose a regular local file, not a link or special item.');
+  if (details.size < 1 || details.size > MAX_ARTIFACT_BYTES) throw new RangeError('Assignment files must be between 1 byte and 10 MB.');
+  const name = path.basename(filePath);
+  const bytes = await readFile(filePath);
+  const extracted = await extractCanvasStudyFile(name, bytes);
+  if (!extracted.content?.trim()) throw new TypeError('No readable text was found in this file.');
+  const current = await getStudyStore().load();
+  const assignment = current.assignments.find((item) => item.id === assignmentId);
+  if (!assignment) throw new Error('That assignment is no longer in the Study space.');
+  const totalBytes = current.assignments.reduce((sum, item) => sum + item.artifacts.reduce((subtotal, artifact) => subtotal + artifact.size, 0), 0);
+  if (totalBytes + bytes.length > 50 * 1024 * 1024) throw new RangeError('Study attachments have reached the 50 MB local limit.');
+  if (assignment.artifacts.length >= 10) throw new RangeError('An assignment can have up to 10 attached files.');
+  const saved = await getStudyArtifactStore().save({ name, bytes, content: extracted.content.slice(0, 120_000) });
+  assignment.artifacts.push({ ...saved, createdAt: Date.now() });
+  try { return { data: await getStudyStore().save(current), attachment: saved }; }
+  catch (error) { await getStudyArtifactStore().remove(saved.id).catch(() => {}); throw error; }
+});
+ipcMain.handle('study:remove-assignment-file', async (_event, { assignmentId, artifactId }) => {
+  const data = await getStudyStore().load();
+  const assignment = data.assignments.find((item) => item.id === assignmentId);
+  if (!assignment || !assignment.artifacts.some((item) => item.id === artifactId)) throw new Error('That assignment attachment is no longer available.');
+  assignment.artifacts = assignment.artifacts.filter((item) => item.id !== artifactId);
+  const saved = await getStudyStore().save(data);
+  await getStudyArtifactStore().remove(artifactId);
+  return saved;
+});
+ipcMain.handle('study:read-assignment-files', async (_event, assignmentId) => {
+  const data = await getStudyStore().load();
+  const assignment = data.assignments.find((item) => item.id === assignmentId);
+  if (!assignment) throw new Error('That assignment is no longer in the Study space.');
+  let remaining = 24_000;
+  const contents = [];
+  for (const item of assignment.artifacts.slice(0, 6)) {
+    if (!remaining) break;
+    const file = await getStudyArtifactStore().read(item.id);
+    if (file.bytes.length !== item.size) throw new Error(`The saved attachment size changed for ${item.name}.`);
+    const content = file.content.slice(0, Math.min(6_000, remaining));
+    if (content.trim()) contents.push({ name: item.name, content });
+    remaining -= content.length;
+  }
+  return contents;
+});
 ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
 ipcMain.handle('study:generate-aids', (_event, sourceId) => getStudyStore().generateAids(sourceId));
 ipcMain.handle('study:build-quiz', async (_event, deckId) => {
@@ -823,6 +892,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  await cleanStaleStudyExtractionTemps();
   await getChromeBridge().start().catch((error) => console.warn('Chrome bridge unavailable:', error.message));
   await recoverInterruptedTasks();
   scheduleNextTask().catch(() => {});

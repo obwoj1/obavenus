@@ -37,6 +37,7 @@
 
 ## Next
 
+- 0.1.69: Assignment workspaces can import bounded reference files into OS-encrypted local storage and include extracted text in the editable assistant prompt; users can remove files, and Canvas sync preserves attachment references.
 - 0.1.68: Added a one-click assignment review checklist seeded from explicit requirements and rubric text, with editable student checks and final pre-submission review.
 - 0.1.67: Assignment scans now show explicitly detected rubric criteria and named skills, plus locally generated clarification questions for student review.
 - 0.1.66: Added an opt-in daily Study digest scheduler that creates one Gmail draft while Obavenus is running, respects quiet hours, stores schedule state encrypted, and never sends messages.
