@@ -1,5 +1,7 @@
 # Build log
 
+- Composer layout: replaced the fragile wrapping action row with a responsive grid. Keyboard guidance now gets a full-width row, export/schedule/send stay aligned at desktop and compact widths, and phone layouts stack the send action cleanly.
+
 ## 2026-10-23 — Project start
 
 - Created the local Git repository for `Obavenus` on branch `main`.

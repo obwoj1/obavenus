@@ -217,9 +217,9 @@
       .composer-controls { display: grid; grid-template-columns: minmax(190px, 1.15fr) minmax(155px, .8fr) minmax(200px, 1fr); align-items: center; gap: 8px; min-width: 0; }
       .composer-controls > * { min-width: 0; }
       .composer-controls select { width: 100%; }
-      .composer-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 9px; }
-      .composer-hint { flex: 1 1 auto; min-width: 220px; color: #718074; font-size: 10px; line-height: 1.45; white-space: nowrap; }
-      .composer-actions > button { flex: 0 0 auto; white-space: nowrap; }
+      .composer-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 9px; }
+      .composer-hint { min-width: 0; color: #718074; font-size: 10px; line-height: 1.45; }
+      .composer-actions > button { min-width: 0; white-space: nowrap; }
       .composer-more { margin-top: 10px; border-top: 1px solid #edf1ea; }
       .composer-more > summary { width: fit-content; padding: 9px 2px 2px; color: #607563; font-size: 11px; cursor: pointer; list-style: none; }
       .composer-more > summary::-webkit-details-marker { display: none; }
@@ -258,16 +258,23 @@
         #schedule-panel button { grid-column: 2; justify-self: start; }
         #remote-controls { grid-template-columns: minmax(0, 1fr); }
       }
+      @media (max-width: 1180px) {
+        .composer-actions { grid-template-columns: minmax(0, 1fr) auto auto; justify-content: stretch; }
+        .composer-hint { grid-column: 1 / -1; grid-row: 1; }
+        .composer-actions > #conversation-export { grid-column: 1; }
+        .composer-actions > #schedule-toggle { grid-column: 2; }
+        .composer-actions > #cancel-run { grid-column: 2; }
+        .composer-actions > .send { grid-column: 3; }
+      }
       @media (max-width: 560px) {
         .composer-controls { grid-template-columns: minmax(0, 1fr); }
         .composer-controls .agent-picker { grid-column: auto; }
-        .composer-actions { justify-content: stretch; gap: 8px; }
-        .composer-hint { flex: 1 0 100%; min-width: 0; }
-        .composer-actions > button { flex: 1 1 auto; }
-      }
-      @media (max-width: 1180px) {
-        .composer-actions { justify-content: flex-start; }
-        .composer-hint { order: 2; flex-basis: 100%; min-width: 0; white-space: normal; }
+        .composer-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .composer-hint { grid-column: 1 / -1; }
+        .composer-actions > #conversation-export { grid-column: 1; }
+        .composer-actions > #schedule-toggle, .composer-actions > #cancel-run { grid-column: 2; }
+        .composer-actions > .send { grid-column: 1 / -1; }
+        .composer-actions > button { width: 100%; }
       }
       .send, .settings-actions .primary { padding: 10px 16px; border-radius: 10px; background: #55765b; color: #fff; font-size: 12px; }
       .send:hover, .settings-actions .primary:hover, .workspace button:hover { background: #3e6247; }
