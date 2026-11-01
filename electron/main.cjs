@@ -42,6 +42,7 @@ const { suggestAssignmentSteps } = require('./assignment-planner.cjs');
 const { analyzeAssignment } = require('./assignment-analysis.cjs');
 const { buildStudyDigest } = require('./study-digest.cjs');
 const { isWithinQuietHours } = require('./study-reminders.cjs');
+const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -427,6 +428,19 @@ ipcMain.handle('study:build-quiz', async (_event, deckId) => {
 ipcMain.handle('study:suggest-assignment-steps', (_event, instructions) => suggestAssignmentSteps(instructions));
 ipcMain.handle('study:analyze-assignment', (_event, assignment) => analyzeAssignment(assignment));
 ipcMain.handle('study:build-digest', async () => buildStudyDigest(await getStudyStore().load()));
+ipcMain.handle('study:export-note', async (_event, { title, body }) => {
+  if (typeof title !== 'string' || title.length > 180 || typeof body !== 'string' || body.length > 20_000) throw new TypeError('Study note export requires a title and text under 20,000 characters.');
+  const safeTitle = String(title || '').replace(/[\\/:*?"<>|\0-\x1f]/g, '-').trim().slice(0, 100) || 'Study draft';
+  const result = await dialog.showSaveDialog({
+    title: 'Export study note as Word',
+    defaultPath: path.join(app.getPath('documents'), `${safeTitle}.docx`),
+    filters: [{ name: 'Word document', extensions: ['docx'] }],
+  });
+  if (result.canceled || !result.filePath) return { cancelled: true };
+  const document = await buildDocument({ title: safeTitle, sections: [{ text: body }] });
+  await writeFile(result.filePath, document, { mode: 0o600 });
+  return { cancelled: false, filePath: result.filePath };
+});
 ipcMain.handle('study:set-reminders', async (_event, enabled) => {
   const data = await getStudyStore().setRemindersEnabled(enabled);
   const remindersSent = enabled ? await checkStudyReminders() : 0;
