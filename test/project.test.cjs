@@ -24,7 +24,7 @@ function makeTextPdf(text) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf, 'latin1');
 }
-const { describeProject, readProjectFile, collectProjectContext, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_INSTRUCTION_BYTES } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_INSTRUCTION_BYTES } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -181,6 +181,31 @@ test('project guidance attaches to the latest user message without mutating hist
   assert.match(guided.at(-1).text, /Review this[\s\S]*Run focused tests/);
   assert.equal(messages.at(-1).text, 'Review this');
   assert.equal(appendProjectInstructions(messages, []), messages);
+});
+
+test('literal project search returns stable line matches and skips hidden folders, dependencies, and symlinks', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-text-search-'));
+  const projectPath = path.join(root, 'project');
+  await mkdir(path.join(projectPath, 'src'), { recursive: true });
+  await mkdir(path.join(projectPath, 'node_modules', 'pkg'), { recursive: true });
+  await mkdir(path.join(projectPath, '.cache'), { recursive: true });
+  await writeFile(path.join(root, 'outside.js'), 'buildIndex outside');
+  try {
+    await writeFile(path.join(projectPath, 'src', 'a.js'), 'export function buildIndex() {}\n// used by the search test');
+    await writeFile(path.join(projectPath, 'src', 'b.js'), 'BUILDINDEX();');
+    await writeFile(path.join(projectPath, 'node_modules', 'pkg', 'dep.js'), 'buildIndex dependency');
+    await writeFile(path.join(projectPath, '.cache', 'cached.js'), 'buildIndex cache');
+    const { symlink } = require('node:fs/promises');
+    await symlink(path.join(root, 'outside.js'), path.join(projectPath, 'src', 'external.js'));
+
+    const result = await searchProjectText(projectPath, 'buildIndex');
+    assert.deepEqual(result.matches.map(({ path: name, line }) => [name, line]), [
+      [path.join('src', 'a.js'), 1], [path.join('src', 'b.js'), 1],
+    ]);
+    assert.equal(result.filesScanned, 2);
+    assert.equal(result.truncated, false);
+    await assert.rejects(searchProjectText(projectPath, 'x'.repeat(301)), /300 characters/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('project agent tools read nested text only and reject traversal and symlinks', async () => {

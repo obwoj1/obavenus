@@ -14,6 +14,8 @@ const MAX_PROJECT_INSTRUCTION_BYTES = 24 * 1024;
 const PROJECT_INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md'];
 const MAX_INDEXED_FILES = 1200;
 const MAX_SCANNED_BYTES = 5 * 1024 * 1024;
+const MAX_PROJECT_SEARCH_MATCHES = 40;
+const MAX_PROJECT_SEARCH_QUERY_CHARS = 300;
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'vendor', 'dist', 'build', 'release', '.next', '.turbo']);
 const MAX_AGENT_WRITE_BYTES = 256 * 1024;
 const TEXT_EXTENSIONS = new Set(['.cjs', '.css', '.csv', '.html', '.js', '.jsx', '.json', '.md', '.mjs', '.py', '.rs', '.sh', '.toml', '.ts', '.tsx', '.txt', '.tsv', '.yaml', '.yml']);
@@ -250,6 +252,33 @@ async function collectProjectContext(projectPath, query) {
   return selected;
 }
 
+async function searchProjectText(projectPath, query) {
+  if (typeof query !== 'string' || !query.trim() || query.length > MAX_PROJECT_SEARCH_QUERY_CHARS) throw new TypeError('Search text must contain 1 to 300 characters.');
+  const root = await realpath(projectPath);
+  const indexed = await listProjectFiles(root, MAX_INDEXED_FILES);
+  const matches = [];
+  let filesScanned = 0;
+  let bytesScanned = 0;
+  let truncated = indexed.truncated;
+  const needle = query.trim().toLowerCase();
+  for (const name of indexed.files) {
+    if (matches.length >= MAX_PROJECT_SEARCH_MATCHES || bytesScanned >= MAX_SCANNED_BYTES) { truncated = true; break; }
+    if (!TEXT_EXTENSIONS.has(path.extname(name).toLowerCase())) continue;
+    const details = await lstat(path.join(root, name)).catch(() => null);
+    if (!details?.isFile() || details.isSymbolicLink() || details.size > MAX_PROJECT_FILE_BYTES || bytesScanned + details.size > MAX_SCANNED_BYTES) continue;
+    const file = await readProjectRelativeFile(root, name).catch(() => null);
+    if (!file) continue;
+    filesScanned += 1;
+    bytesScanned += details.size;
+    for (const [index, line] of file.content.split(/\r?\n/).entries()) {
+      if (!line.toLowerCase().includes(needle)) continue;
+      matches.push({ path: name, line: index + 1, text: line.slice(0, 300) });
+      if (matches.length >= MAX_PROJECT_SEARCH_MATCHES) { truncated = true; break; }
+    }
+  }
+  return { query: query.trim(), matches, filesScanned, bytesScanned, truncated };
+}
+
 async function collectProjectInstructions(projectPath) {
   const root = await realpath(projectPath);
   const instructions = [];
@@ -427,4 +456,4 @@ async function listProjectFiles(projectPath, limit = 500) {
   return { files, truncated: files.length === limit };
 }
 
-module.exports = { describeProject, readProjectFile, collectProjectContext, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_PROJECT_INSTRUCTION_BYTES, MAX_AGENT_WRITE_BYTES, MAX_OCR_PAGES, IMAGE_EXTENSIONS };
+module.exports = { describeProject, readProjectFile, collectProjectContext, searchProjectText, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_FILE_BYTES, MAX_OFFICE_FILE_BYTES, MAX_OFFICE_UNCOMPRESSED_BYTES, MAX_EXTRACTED_TEXT_CHARACTERS, MAX_CONTEXT_FILES, MAX_CONTEXT_BYTES, MAX_PROJECT_INSTRUCTION_BYTES, MAX_PROJECT_SEARCH_MATCHES, MAX_PROJECT_SEARCH_QUERY_CHARS, MAX_AGENT_WRITE_BYTES, MAX_OCR_PAGES, IMAGE_EXTENSIONS };

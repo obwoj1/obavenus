@@ -1,4 +1,4 @@
-const { collectProjectContext, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
+const { collectProjectContext, searchProjectText, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
 const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
 const { getGitStatus, getGitDiff, getGitHistory } = require('./git-tools.cjs');
 
@@ -39,6 +39,11 @@ const TOOL_DEFINITIONS = [
     name: 'search_project_files',
     description: 'Search the selected project for files relevant to a natural-language query. Returns a small bounded set of matching text files.',
     parameters: { type: 'object', properties: { query: { type: 'string', description: 'The topic, symbol, or behavior to find.' } }, required: ['query'], additionalProperties: false },
+  },
+  {
+    name: 'search_project_text',
+    description: 'Find exact literal text in readable source and documentation files in the selected project. Returns bounded line-numbered matches and never searches hidden folders, dependencies, or symlinks.',
+    parameters: { type: 'object', properties: { query: { type: 'string', description: 'A literal string to find, up to 300 characters.' } }, required: ['query'], additionalProperties: false },
   },
   {
     name: 'read_project_file',
@@ -92,6 +97,10 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       if (!projectPath) return { error: 'No project folder is open.' };
       if (typeof args.query !== 'string' || args.query.length > 300) throw new TypeError('Search query must be 300 characters or fewer.');
       return collectProjectContext(projectPath, args.query);
+    }
+    if (name === 'search_project_text') {
+      if (!projectPath) return { error: 'No project folder is open.' };
+      return searchProjectText(projectPath, args.query);
     }
     if (name === 'read_project_file') {
       if (!projectPath) return { error: 'No project folder is open.' };

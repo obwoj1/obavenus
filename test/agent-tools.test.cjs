@@ -58,6 +58,17 @@ test('Git tools are available to read-only team agent calls', async () => {
   assert.ok(!tools.some((tool) => /git.*write|commit/i.test(tool.name)));
 });
 
+test('team agents can call deterministic line-numbered project text search', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-search-tool-'));
+  await mkdir(path.join(root, 'src'));
+  try {
+    await writeFile(path.join(root, 'src', 'entry.js'), 'start\nregisterWorkflow("review")\nend');
+    const executor = createAgentToolExecutor({ projectPath: root });
+    const result = await executor('search_project_text', { query: 'registerWorkflow' });
+    assert.deepEqual(result.matches.map(({ path: name, line }) => [name, line]), [['src/entry.js', 2]]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('career and code tools are available and GitHub inspection requires explicit profile sharing', async () => {
   assert.ok(TOOL_DEFINITIONS.some((tool) => tool.name === 'inspect_github_profile'));
   let requests = 0;
