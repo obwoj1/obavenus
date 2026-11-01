@@ -56,17 +56,27 @@ function makeChoice({ label, type = 'checkbox', checked = false }) {
   };
 }
 
-function makeBridge(fields, selects = [], choices = []) {
+function makeBridge(fields, selects = [], choices = [], openTabs = null) {
   let onMessage;
   let socket;
   const responses = [];
   const tab = { id: 7, url: 'https://example.com/apply' };
+  const tabs = openTabs || [{ ...tab, title: 'Application', active: true }];
   const location = { href: tab.url, assign: () => {} };
   const chrome = {
     runtime: { onMessage: { addListener: (fn) => { onMessage = fn; } } },
     storage: { local: { set: () => {} } },
     action: { setBadgeText: () => {}, setBadgeBackgroundColor: () => {} },
-    tabs: { query: async () => [tab], get: async () => tab },
+    tabs: {
+      query: async () => tabs,
+      get: async (id) => tabs.find((item) => item.id === id),
+      update: async (id, changes) => {
+        for (const item of tabs) item.active = item.id === id && changes.active === true;
+        const selected = tabs.find((item) => item.id === id);
+        tab.id = selected.id; tab.url = selected.url; location.href = selected.url;
+        return selected;
+      },
+    },
     scripting: { executeScript: async ({ func, args }) => [{ result: func(...args) }] },
   };
   class FakeWebSocket {
@@ -104,9 +114,35 @@ function makeBridge(fields, selects = [], choices = []) {
       await socket.onmessage({ data: JSON.stringify({ type: 'paired', accepted: true }) });
     },
     send,
-    setUrl(url) { tab.url = url; location.href = url; },
+    setUrl(url) {
+      tab.url = url; location.href = url;
+      const active = tabs.find((item) => item.active);
+      if (active) active.url = url;
+    },
   };
 }
+
+test('Chrome extension lists ordinary web tabs and selects one exact URL', async () => {
+  const tabs = [
+    { id: 7, url: 'https://example.com/apply', title: 'Application', active: true },
+    { id: 8, url: 'https://school.example/course', title: 'Course home', active: false },
+    { id: 9, url: 'chrome://extensions', title: 'Extensions', active: false },
+    { id: 10, url: 'https://school.example/course', title: 'Duplicate course', active: false },
+  ];
+  const bridge = makeBridge([], [], [], tabs);
+  await bridge.connect();
+  assert.deepEqual(await bridge.send({ id: 'tabs', command: 'listTabs' }), { tabs: [
+    { url: 'https://example.com/apply', title: 'Application', active: true },
+    { url: 'https://school.example/course', title: 'Course home', active: false },
+    { url: 'https://school.example/course', title: 'Duplicate course', active: false },
+  ] });
+  assert.match((await bridge.send({ id: 'duplicate', command: 'selectTab', args: { url: 'https://school.example/course' } })).error, /More than one open tab/);
+  tabs.splice(3, 1);
+  assert.deepEqual(await bridge.send({ id: 'selected', command: 'selectTab', args: { url: 'https://school.example/course' } }), { selected: true, url: 'https://school.example/course', title: 'Course home' });
+  assert.equal(tabs[1].active, true);
+  assert.equal(tabs[0].active, false);
+  assert.match((await bridge.send({ id: 'unsafe', command: 'selectTab', args: { url: 'javascript:alert(1)' } })).error, /Only ordinary/);
+});
 
 test('Chrome extension fills one approved ordinary labelled field without submitting', async () => {
   const email = makeField({ label: 'Email', type: 'email' });
