@@ -13,6 +13,7 @@ const BROWSER_TOOLS = [
   { name: 'browser_follow_link', description: 'Follow a visible link by its text and navigate to the linked page. This only navigates; it does not activate buttons or submit forms.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible link text.' } }, required: ['text'], additionalProperties: false } },
   { name: 'browser_click_control', description: 'Request approval to activate a visible button in the selected browser. Obavenus displays a native confirmation describing the page and control; it activates only if approved. Never claim an action completed when declined.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible button or control label.' } }, required: ['text'], additionalProperties: false } },
   { name: 'browser_fill_field', description: 'Request native approval to fill a uniquely labelled visible text, email, search, telephone, URL, number, or multi-line field in paired Chrome. The approval shows the page, field, and exact text. This never submits a form. Password, verification-code, and credential fields are not supported.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Exact visible label, aria-label, or placeholder of one normal text field.' }, value: { type: 'string', description: 'Text to enter, at most 2,000 characters.' } }, required: ['label', 'value'], additionalProperties: false } },
+  { name: 'browser_select_option', description: 'Request native approval to choose one exact enabled option in a uniquely labelled visible dropdown in paired Chrome. The confirmation shows the page, field, and option; the site may react to the selection. This does not press a submit button.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Exact visible label or aria-label of one dropdown.' }, option: { type: 'string', description: 'Exact visible text of the enabled option to choose, up to 200 characters.' } }, required: ['label', 'option'], additionalProperties: false } },
 ];
 const OFFICE_TOOLS = [
   { name: 'create_spreadsheet', description: 'Create a native Excel workbook in the selected project folder. Provide sheet names, column headings, and typed rows. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .xlsx path, such as reports/summary.xlsx.' }, sheets: { type: 'array', description: '1–10 worksheets; each has name, headers and rows.', items: { type: 'object', properties: { name: { type: 'string' }, headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } } } }, required: ['name', 'headers', 'rows'], additionalProperties: false } } }, required: ['path', 'sheets'], additionalProperties: false } },
@@ -164,6 +165,11 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       if (typeof args.label !== 'string' || args.label.length > 200 || typeof args.value !== 'string' || args.value.length > 2_000) throw new TypeError('Provide a field label and at most 2,000 characters to fill.');
       return browser.fillField(args.label, args.value);
     }
+    if (name === 'browser_select_option') {
+      if (!browserFillAccess || !browserAccess || typeof browser.selectOption !== 'function') return { error: 'Approved dropdown selection is available only with paired Chrome access.' };
+      if (typeof args.label !== 'string' || args.label.length > 200 || typeof args.option !== 'string' || args.option.length > 200) throw new TypeError('Provide a dropdown label and option, each at most 200 characters.');
+      return browser.selectOption(args.label, args.option);
+    }
     if (name === 'search_gmail') {
       if (typeof args.query !== 'string' || args.query.length > 300) throw new TypeError('Gmail query must be 300 characters or fewer.');
       return searchGmail(args.query);
@@ -201,7 +207,7 @@ async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}
   let calls = 0;
   while (calls < maxCalls) {
     signal?.throwIfAborted();
-    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => tool.name !== 'browser_fill_field' || browserFillAccess) : [];
+    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option'].includes(tool.name) || browserFillAccess) : [];
     const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;

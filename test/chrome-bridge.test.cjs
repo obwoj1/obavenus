@@ -20,12 +20,13 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
   const commands = [];
   let allowAction = false;
   let allowFill = false;
+  let allowSelection = false;
   const confirmations = [];
   const bridge = createChromeBridge({
     WebSocketServer,
     port: 0,
     confirmPairing: async () => true,
-    confirmAction: async (action) => { confirmations.push(action); return action.action === 'fill' ? allowFill : allowAction; },
+    confirmAction: async (action) => { confirmations.push(action); return action.action === 'fill' ? allowFill : action.action === 'select' ? allowSelection : allowAction; },
   });
   try {
     const status = await bridge.start();
@@ -46,8 +47,12 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
             ? { found: true, label: 'Continue', pageUrl: 'https://example.com/form' }
             : message.command === 'findField'
               ? { found: true, label: 'Email', fieldType: 'email', pageUrl: 'https://example.com/form' }
+              : message.command === 'findSelect'
+                ? { found: true, label: 'Department', pageUrl: 'https://example.com/form', options: ['Engineering', 'Research'] }
               : message.command === 'fillField'
                 ? { filled: true, label: 'Email', pageUrl: 'https://example.com/form', submitted: false }
+                : message.command === 'selectOption'
+                  ? { selected: 'Engineering', label: 'Department', pageUrl: 'https://example.com/form' }
                 : { clicked: true, label: 'Continue' };
           client.send(JSON.stringify({ id: message.id, result }));
         }
@@ -67,6 +72,12 @@ test('Chrome bridge pairs with the pinned extension and requires approval before
     assert.deepEqual(commands.slice(-3), ['findField', 'findField', 'fillField']);
     assert.deepEqual(confirmations.at(-1), { found: true, label: 'Email', fieldType: 'email', pageUrl: 'https://example.com/form', action: 'fill', value: 'person@example.com' });
     await assert.rejects(bridge.fillField('Email', 'x'.repeat(2001)), /2,000/);
+    assert.deepEqual(await bridge.selectOption('Department', 'Engineering'), { approved: false, message: 'The user declined to change the Chrome selection.' });
+    allowSelection = true;
+    assert.deepEqual(await bridge.selectOption('Department', 'Engineering'), { selected: 'Engineering', label: 'Department', pageUrl: 'https://example.com/form' });
+    assert.deepEqual(commands.slice(-3), ['findSelect', 'findSelect', 'selectOption']);
+    assert.deepEqual(confirmations.at(-1), { found: true, label: 'Department', pageUrl: 'https://example.com/form', options: ['Engineering', 'Research'], action: 'select', optionLabel: 'Engineering' });
+    await assert.rejects(bridge.selectOption('Department', 'x'.repeat(201)), /option text/);
     client.close();
   } finally { await bridge.close(); }
 });

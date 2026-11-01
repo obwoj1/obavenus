@@ -75,6 +75,17 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       if (!await confirmAction(action)) return { approved: false, message: 'The user declined to fill the Chrome field.' };
       return request('fillField', { label: text, pageUrl: field.pageUrl, fieldLabel: field.label, fieldType: field.fieldType, value: rawValue });
     },
+    selectOption: async (label, optionLabel) => {
+      const fieldLabel = String(label || '').trim();
+      const selectedOption = String(optionLabel || '').trim();
+      if (!fieldLabel || !selectedOption) throw new TypeError('Provide a select label and option text.');
+      if (fieldLabel.length > 200 || selectedOption.length > 200) throw new TypeError('Dropdown labels and option text must be at most 200 characters.');
+      const field = await request('findSelect', { label: fieldLabel });
+      if (!field.found) return field;
+      if (!field.options.includes(selectedOption)) return { found: false, message: 'That exact enabled option is not available in the selected field.' };
+      if (!await confirmAction({ ...field, action: 'select', optionLabel: selectedOption })) return { approved: false, message: 'The user declined to change the Chrome selection.' };
+      return request('selectOption', { pageUrl: field.pageUrl, fieldLabel: field.label, optionLabel: selectedOption });
+    },
     close: async () => {
       for (const resolve of pending.values()) resolve({ error: 'Obavenus is closing.' });
       pending.clear(); socket?.close(); socket = null; paired = false;

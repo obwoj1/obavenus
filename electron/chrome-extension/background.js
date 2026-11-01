@@ -3,6 +3,7 @@ let reconnectTimer;
 let desiredConnection = false;
 let approvedControl;
 let approvedField;
+let approvedSelection;
 
 function setState(connected) {
   chrome.storage.local.set({ connected });
@@ -70,6 +71,19 @@ async function inspect(tab, action, argument) {
       const el = fields[0];
       return { found: true, pageUrl: location.href, label: norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label') || el.getAttribute('placeholder')), fieldType: el.tagName === 'TEXTAREA' ? 'textarea' : (el.getAttribute('type') || 'text').toLowerCase() };
     }
+    const visibleSelects = () => [...document.querySelectorAll('select')].filter((el) => {
+      const label = norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label'));
+      return !el.disabled && !el.multiple && label && el.getClientRects().length;
+    });
+    if (kind === 'findSelect') {
+      const wanted = norm(value.label).toLowerCase();
+      const selects = visibleSelects().filter((el) => norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')).toLowerCase() === wanted);
+      if (selects.length !== 1) return { found: false, message: selects.length ? 'More than one visible dropdown has that exact label.' : 'No normal visible dropdown has that exact label.' };
+      const el = selects[0];
+      const allOptions = [...el.options].filter((option) => !option.disabled).map((option) => norm(option.textContent)).filter(Boolean);
+      const options = allOptions.filter((option, index) => allOptions.indexOf(option) === index && allOptions.lastIndexOf(option) === index).slice(0, 40);
+      return { found: true, pageUrl: location.href, label: norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')), selected: norm(el.selectedOptions?.[0]?.textContent), options };
+    }
     if (kind === 'clickControl') {
       if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
       const controls = [...document.querySelectorAll('button,input[type=button],input[type=submit],[role=button]')].filter((el) => {
@@ -94,6 +108,18 @@ async function inspect(tab, action, argument) {
       field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value.value || null }));
       field.dispatchEvent(new Event('change', { bubbles: true }));
       return { filled: field.value === value.value, label: value.fieldLabel, pageUrl: location.href, submitted: false };
+    }
+    if (kind === 'selectOption') {
+      if (location.href !== value.pageUrl) return { error: 'The active page changed after approval. Review it and try again.' };
+      const selects = visibleSelects().filter((el) => norm([...(el.labels || [])].map((item) => item.innerText).join(' ') || el.getAttribute('aria-label')) === value.fieldLabel);
+      if (selects.length !== 1) return { error: 'The approved dropdown is no longer unique and available.' };
+      const select = selects[0];
+      const options = [...select.options].filter((option) => !option.disabled && norm(option.textContent) === value.optionLabel);
+      if (options.length !== 1) return { error: 'The approved option is no longer unique and available.' };
+      select.value = options[0].value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return { selected: norm(options[0].textContent), label: value.fieldLabel, pageUrl: location.href };
     }
     return { error: 'Unsupported Chrome command.' };
   }, args: [action, argument] });
@@ -129,6 +155,20 @@ async function execute(command, args) {
     approvedField = null;
     return filled;
   }
+  if (command === 'findSelect') {
+    approvedSelection = { tabId: tab.id, pageUrl: tab.url, label: String(args.label || '').slice(0, 200) };
+    const found = await inspect(tab, 'findSelect', approvedSelection);
+    approvedSelection = found.found ? { ...approvedSelection, label: found.label, pageUrl: found.pageUrl } : null;
+    return found;
+  }
+  if (command === 'selectOption') {
+    if (!approvedSelection || approvedSelection.tabId !== tab.id || approvedSelection.pageUrl !== args.pageUrl || approvedSelection.label !== args.fieldLabel) throw new Error('The approved Chrome tab or dropdown changed. Review it and request approval again.');
+    const pinnedTab = await chrome.tabs.get(approvedSelection.tabId);
+    if (pinnedTab.url !== approvedSelection.pageUrl) throw new Error('The approved Chrome page has changed.');
+    const selected = await inspect(pinnedTab, 'selectOption', args);
+    approvedSelection = null;
+    return selected;
+  }
   if (command === 'clickControl') {
     if (!approvedControl || approvedControl.tabId !== tab.id || approvedControl.pageUrl !== args.pageUrl || approvedControl.label !== args.label) throw new Error('The approved Chrome tab or control changed. Review it and request approval again.');
     const pinnedTab = await chrome.tabs.get(approvedControl.tabId);
@@ -141,7 +181,7 @@ async function execute(command, args) {
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'connect') { connect(); sendResponse({ connecting: true }); }
-  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; approvedField = null; setState(false); sendResponse({ disconnected: true }); }
+  if (message?.type === 'disconnect') { desiredConnection = false; clearTimeout(reconnectTimer); socket?.close(); socket = null; approvedControl = null; approvedField = null; approvedSelection = null; setState(false); sendResponse({ disconnected: true }); }
   if (message?.type === 'state') sendResponse({ connected: socket?.readyState === WebSocket.OPEN });
   return true;
 });

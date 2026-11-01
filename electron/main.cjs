@@ -309,13 +309,16 @@ function getChromeBridge() {
       let host = 'this page';
       try { host = new URL(control.pageUrl).hostname; } catch {}
       const filling = control.action === 'fill';
+      const selecting = control.action === 'select';
       const result = await dialog.showMessageBox({
-        type: 'warning', title: filling ? 'Approve Chrome field entry?' : 'Approve Chrome page action?',
-        message: filling ? `The agent wants to fill “${control.label}” on ${host}.` : `The agent wants to activate “${control.label}” on ${host}.`,
+        type: 'warning', title: filling ? 'Approve Chrome field entry?' : selecting ? 'Approve Chrome selection?' : 'Approve Chrome page action?',
+        message: filling ? `The agent wants to fill “${control.label}” on ${host}.` : selecting ? `The agent wants to choose “${control.optionLabel}” in “${control.label}” on ${host}.` : `The agent wants to activate “${control.label}” on ${host}.`,
         detail: filling
           ? `${control.pageUrl}\n\nField text to enter:\n${control.value || '(clear this field)'}\n\nThis fills the field only. It does not submit the form.`
-          : `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
-        buttons: ['Cancel', filling ? 'Fill field' : 'Approve action'], defaultId: 0, cancelId: 0,
+          : selecting
+            ? `${control.pageUrl}\n\nReview that exact tab before approving. The site may react to this selection; Obavenus will not press a submit button.`
+            : `${control.pageUrl}\n\nReview that exact tab before approving. This may submit information or change account data.`,
+        buttons: ['Cancel', filling ? 'Fill field' : selecting ? 'Choose option' : 'Approve action'], defaultId: 0, cancelId: 0,
       });
       return result.response === 1;
     },

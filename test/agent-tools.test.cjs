@@ -122,6 +122,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     readPage: async () => ({ url: 'https://example.com', text: 'Public page text' }),
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
     clickControl: async (text) => ({ approved: true, label: text }),
+    selectOption: async (label, option) => ({ approved: true, label, option }),
   };
   const allowed = createAgentToolExecutor({ browserAccess: true, browser });
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
@@ -131,20 +132,28 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.deepEqual(visited, ['https://example.com']);
 });
 
-test('browser form filling is exposed only for paired Chrome and enforces text bounds', async () => {
-  const browser = { fillField: async (label, value) => ({ approved: true, label, value, submitted: false }) };
+test('browser form entry and dropdown selection are exposed only for paired Chrome and enforce bounds', async () => {
+  const browser = {
+    fillField: async (label, value) => ({ approved: true, label, value, submitted: false }),
+    selectOption: async (label, option) => ({ approved: true, label, option }),
+  };
   const researchTools = [];
   await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, dispatch: async (_messages, options) => { researchTools.push(...options.tools); return 'Done'; } });
   assert.equal(researchTools.some((tool) => tool.name === 'browser_fill_field'), false);
+  assert.equal(researchTools.some((tool) => tool.name === 'browser_select_option'), false);
   const chromeTools = [];
   await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, browserFillAccess: true, dispatch: async (_messages, options) => { chromeTools.push(...options.tools); return 'Done'; } });
   assert.equal(chromeTools.some((tool) => tool.name === 'browser_fill_field'), true);
+  assert.equal(chromeTools.some((tool) => tool.name === 'browser_select_option'), true);
 
   const denied = createAgentToolExecutor({ browserAccess: true, browser, browserFillAccess: false });
   assert.match((await denied('browser_fill_field', { label: 'Email', value: 'a@example.com' })).error, /paired Chrome/);
   const allowed = createAgentToolExecutor({ browserAccess: true, browserFillAccess: true, browser });
   assert.deepEqual(await allowed('browser_fill_field', { label: 'Email', value: 'a@example.com' }), { approved: true, label: 'Email', value: 'a@example.com', submitted: false });
   await assert.rejects(allowed('browser_fill_field', { label: 'Email', value: 'x'.repeat(2001) }), /2,000/);
+  assert.match((await denied('browser_select_option', { label: 'Department', option: 'Engineering' })).error, /paired Chrome/);
+  assert.deepEqual(await allowed('browser_select_option', { label: 'Department', option: 'Engineering' }), { approved: true, label: 'Department', option: 'Engineering' });
+  await assert.rejects(allowed('browser_select_option', { label: 'x'.repeat(201), option: 'Engineering' }), /200 characters/);
 });
 
 test('connected MCP read-only tools join the agent tool list and dispatch to their connector', async () => {
