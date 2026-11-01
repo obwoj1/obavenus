@@ -407,6 +407,12 @@ function renderMessages() {
       attached.textContent = `Attached project files: ${message.context.map((file) => file.name).join(', ')}`;
       rendered.append(attached);
     }
+    if (message.role === 'assistant' && message.status !== 'pending' && message.text.trim()) {
+      const saveStudy = document.createElement('button');
+      saveStudy.type = 'button'; saveStudy.className = 'save-study-response'; saveStudy.textContent = 'Save to Study notes';
+      saveStudy.addEventListener('click', () => saveAssistantResponseToStudy(current, message, saveStudy));
+      rendered.append(saveStudy);
+    }
     if (message.agents?.length) {
       const trace = document.createElement('details');
       trace.className = 'agent-trace';
@@ -503,6 +509,23 @@ function renderRecentWork() {
     });
     list.append(button);
   });
+}
+
+async function saveAssistantResponseToStudy(current, message, button) {
+  button.disabled = true;
+  try {
+    const data = await window.obavenus.loadStudySpace();
+    const title = `${current.title} · ${new Date().toLocaleDateString()}`.slice(0, 160);
+    data.notes.push({ id: crypto.randomUUID(), courseId: '', title, body: message.text.slice(0, 50_000), updatedAt: Date.now() });
+    await window.obavenus.saveStudySpace(data);
+    button.textContent = 'Saved to Study';
+    runStatus.hidden = false;
+    runStatus.textContent = 'Assistant response saved as a local Study note. Open Study to export it as Word.';
+  } catch (error) {
+    button.disabled = false;
+    runStatus.hidden = false;
+    runStatus.textContent = error.message || 'Could not save this response to Study notes.';
+  }
 }
 
 document.querySelector('#conversation-search').addEventListener('input', renderRecentWork);
@@ -1813,7 +1836,8 @@ function renderStudySpace() {
     const meta = document.createElement('small'); meta.textContent = course?.name || 'Personal note';
     const body = document.createElement('p'); body.textContent = note.body;
     const use = document.createElement('button'); use.type = 'button'; use.dataset.useNote = note.id; use.textContent = 'Use in assistant chat';
-    card.append(title, meta, body, use); noteList.append(card);
+    const exportButton = document.createElement('button'); exportButton.type = 'button'; exportButton.dataset.exportNote = note.id; exportButton.textContent = 'Export Word';
+    card.append(title, meta, body, use, exportButton); noteList.append(card);
   }
 
   const deckList = document.querySelector('#study-deck-list'); deckList.replaceChildren();
@@ -2202,7 +2226,17 @@ document.querySelector('#study-note-form').addEventListener('submit', async (eve
     await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Note saved locally.');
   } catch (error) { setStudyStatus(error.message || 'Could not save this note.'); }
 });
-document.querySelector('#study-note-list').addEventListener('click', (event) => {
+document.querySelector('#study-note-list').addEventListener('click', async (event) => {
+  const exportId = event.target.closest('[data-export-note]')?.dataset.exportNote;
+  if (exportId) {
+    const note = studyData.notes.find((item) => item.id === exportId);
+    if (!note) return;
+    try {
+      const result = await window.obavenus.exportStudyNote({ title: note.title, body: note.body });
+      if (!result.cancelled) setStudyStatus(`Word document saved to ${result.filePath}.`);
+    } catch (error) { setStudyStatus(error.message || 'Could not export this study note.'); }
+    return;
+  }
   const id = event.target.closest('[data-use-note]')?.dataset.useNote; if (!id) return;
   const note = studyData.notes.find((item) => item.id === id); if (!note) return;
   promptInput.value = `Use this local study note as reference:\n\n# ${note.title}\n\n${note.body}\n\nExplain or quiz me on this material.`;
