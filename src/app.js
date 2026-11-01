@@ -1664,6 +1664,218 @@ async function refreshChatGPTModels() {
   if (!models.some((item) => item.slug === providerModelInput.value)) providerModelInput.value = models[0]?.slug || providerModelInput.value;
 }
 
+const studyDialog = document.querySelector('#study-dialog');
+let studyData = null;
+let studySaveQueue = Promise.resolve();
+const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [] });
+
+function setStudyStatus(message = '') {
+  document.querySelector('#study-status').textContent = message;
+}
+
+function makeStudyOption(label, value = '') {
+  return new Option(label, value);
+}
+
+function refreshStudyCourseChoices() {
+  const courseSelects = ['#study-assignment-course', '#study-note-course', '#study-deck-course'];
+  for (const selector of courseSelects) {
+    const select = document.querySelector(selector);
+    const selected = select.value;
+    select.replaceChildren(makeStudyOption(selector === '#study-assignment-course' ? 'Choose course' : 'No course'));
+    studyData.courses.forEach((course) => select.add(makeStudyOption(course.name, course.id)));
+    if (studyData.courses.some((course) => course.id === selected)) select.value = selected;
+  }
+  const deckSelect = document.querySelector('#study-card-deck');
+  const selectedDeck = deckSelect.value;
+  deckSelect.replaceChildren(makeStudyOption('Choose deck'));
+  studyData.decks.forEach((deck) => deckSelect.add(makeStudyOption(deck.title, deck.id)));
+  if (studyData.decks.some((deck) => deck.id === selectedDeck)) deckSelect.value = selectedDeck;
+}
+
+function renderStudySpace() {
+  if (!studyData) return;
+  refreshStudyCourseChoices();
+  const courseList = document.querySelector('#study-course-list');
+  courseList.replaceChildren();
+  if (!studyData.courses.length) {
+    const empty = document.createElement('p'); empty.textContent = 'Add a course to start a local study space.'; courseList.append(empty);
+  }
+  for (const course of studyData.courses) {
+    const card = document.createElement('article'); card.className = 'study-item';
+    const title = document.createElement('strong'); title.textContent = course.name;
+    const term = document.createElement('small'); term.textContent = course.term || 'Local course';
+    card.append(title, term); courseList.append(card);
+  }
+
+  const assignmentList = document.querySelector('#study-assignment-list');
+  assignmentList.replaceChildren();
+  const orderedAssignments = [...studyData.assignments].sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+  for (const assignment of orderedAssignments) {
+    const card = document.createElement('article'); card.className = 'study-item'; card.dataset.assignmentId = assignment.id;
+    const title = document.createElement('strong'); title.textContent = assignment.title;
+    const course = studyData.courses.find((item) => item.id === assignment.courseId);
+    const meta = document.createElement('small');
+    meta.textContent = `${course?.name || 'Course'} · ${assignment.dueAt ? `Due ${new Date(assignment.dueAt).toLocaleString()}` : 'No due date'} · ${assignment.status === 'done' ? 'Complete' : `${assignment.steps.filter((step) => step.done).length}/${assignment.steps.length} steps`}`;
+    card.append(title, meta);
+    if (assignment.instructions) { const instructions = document.createElement('p'); instructions.textContent = assignment.instructions; card.append(instructions); }
+    for (const step of assignment.steps) {
+      const label = document.createElement('label');
+      const check = document.createElement('input'); check.type = 'checkbox'; check.checked = step.done; check.dataset.stepId = step.id;
+      const text = document.createElement('span'); text.textContent = step.text;
+      label.append(check, text); card.append(label);
+    }
+    const stepForm = document.createElement('form'); stepForm.className = 'study-row'; stepForm.dataset.addStep = 'true';
+    const stepInput = document.createElement('input'); stepInput.maxLength = 300; stepInput.required = true; stepInput.placeholder = 'Add a plan step'; stepInput.setAttribute('aria-label', 'Add an assignment plan step');
+    const addStep = document.createElement('button'); addStep.type = 'submit'; addStep.textContent = 'Add step';
+    stepForm.append(stepInput, addStep);
+    const completion = document.createElement('button'); completion.type = 'button'; completion.dataset.toggleDone = 'true'; completion.textContent = assignment.status === 'done' ? 'Reopen' : 'Mark complete';
+    card.append(stepForm, completion); assignmentList.append(card);
+  }
+
+  const noteList = document.querySelector('#study-note-list'); noteList.replaceChildren();
+  for (const note of [...studyData.notes].sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const card = document.createElement('article'); card.className = 'study-item';
+    const title = document.createElement('strong'); title.textContent = note.title;
+    const course = studyData.courses.find((item) => item.id === note.courseId);
+    const meta = document.createElement('small'); meta.textContent = course?.name || 'Personal note';
+    const body = document.createElement('p'); body.textContent = note.body;
+    const use = document.createElement('button'); use.type = 'button'; use.dataset.useNote = note.id; use.textContent = 'Use in assistant chat';
+    card.append(title, meta, body, use); noteList.append(card);
+  }
+
+  const deckList = document.querySelector('#study-deck-list'); deckList.replaceChildren();
+  for (const deck of studyData.decks) {
+    const card = document.createElement('article'); card.className = 'study-item';
+    const title = document.createElement('strong'); title.textContent = deck.title;
+    const course = studyData.courses.find((item) => item.id === deck.courseId);
+    const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal deck'} · ${deck.cards.length} cards`;
+    card.append(title, meta); deckList.append(card);
+  }
+
+  const now = Date.now();
+  document.querySelector('#study-due-count').textContent = String(studyData.assignments.filter((item) => item.status !== 'done' && item.dueAt >= now && item.dueAt <= now + 7 * 24 * 60 * 60 * 1000).length);
+  document.querySelector('#study-overdue-count').textContent = String(studyData.assignments.filter((item) => item.status !== 'done' && item.dueAt && item.dueAt < now).length);
+  const due = studyData.decks.flatMap((deck) => deck.cards).filter((card) => card.dueAt <= now).length;
+  document.querySelector('#study-review-count').textContent = String(due);
+  renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
+}
+
+async function persistStudySpace() {
+  const snapshot = structuredClone(studyData);
+  const save = studySaveQueue.then(() => window.obavenus.saveStudySpace(snapshot));
+  studySaveQueue = save.catch(() => {});
+  studyData = await save;
+  renderStudySpace();
+}
+
+async function renderStudyReview() {
+  const panel = document.querySelector('#study-review');
+  const due = await window.obavenus.getDueStudyCards();
+  panel.replaceChildren(); panel.hidden = false;
+  if (!due.length) { const empty = document.createElement('small'); empty.textContent = 'You’re all caught up. New cards will appear here when they are due.'; panel.append(empty); return; }
+  const card = due[0];
+  const meta = document.createElement('small'); meta.textContent = `${card.deckTitle} · ${due.length} due`;
+  const front = document.createElement('strong'); front.textContent = card.front;
+  const reveal = document.createElement('button'); reveal.type = 'button'; reveal.textContent = 'Show answer';
+  panel.append(meta, front, reveal);
+  reveal.addEventListener('click', () => {
+    const back = document.createElement('p'); back.textContent = card.back;
+    const ratings = document.createElement('div'); ratings.className = 'study-row';
+    [['Again', 0], ['Hard', 1], ['Good', 2], ['Easy', 3]].forEach(([label, rating]) => {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+      button.addEventListener('click', async () => {
+        try {
+          studyData = await window.obavenus.reviewStudyCard(card.deckId, card.id, rating);
+          setStudyStatus(`Saved review · next due ${new Date(studyData.decks.flatMap((deck) => deck.cards).find((item) => item.id === card.id).dueAt).toLocaleString()}.`);
+          renderStudySpace();
+        } catch (error) { setStudyStatus(error.message || 'Could not save this review.'); }
+      });
+      ratings.append(button);
+    });
+    reveal.remove(); panel.append(back, ratings);
+  });
+}
+
+document.querySelector('#study-nav').addEventListener('click', async () => {
+  try {
+    studyData = await window.obavenus.loadStudySpace();
+    renderStudySpace();
+    studyDialog.showModal();
+  } catch (error) { setStudyStatus(error.message || 'Could not open the local study space.'); studyDialog.showModal(); }
+});
+document.querySelector('#study-close').addEventListener('click', () => studyDialog.close());
+document.querySelector('#study-course-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    studyData = await window.obavenus.createStudyCourse({ name: document.querySelector('#study-course-name').value, term: document.querySelector('#study-course-term').value });
+    event.currentTarget.reset(); setStudyStatus('Course saved in your encrypted local study space.'); renderStudySpace();
+  } catch (error) { setStudyStatus(error.message || 'Could not save this course.'); }
+});
+document.querySelector('#study-assignment-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    const dueInput = document.querySelector('#study-assignment-due').value;
+    studyData.assignments.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-assignment-course').value, title: document.querySelector('#study-assignment-title').value, instructions: document.querySelector('#study-assignment-instructions').value, dueAt: dueInput ? new Date(dueInput).getTime() : null, status: 'todo', steps: [], createdAt: Date.now() });
+    await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Assignment added to your local plan.');
+  } catch (error) { setStudyStatus(error.message || 'Could not save this assignment.'); }
+});
+document.querySelector('#study-assignment-list').addEventListener('change', async (event) => {
+  if (!event.target.matches('input[type="checkbox"][data-step-id]')) return;
+  const card = event.target.closest('[data-assignment-id]');
+  const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId);
+  const step = assignment?.steps.find((item) => item.id === event.target.dataset.stepId);
+  if (!step) return;
+  step.done = event.target.checked;
+  try { await persistStudySpace(); } catch (error) { setStudyStatus(error.message || 'Could not save this plan step.'); }
+});
+document.querySelector('#study-assignment-list').addEventListener('click', async (event) => {
+  const card = event.target.closest('[data-assignment-id]'); if (!card) return;
+  const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId); if (!assignment) return;
+  if (!event.target.closest('[data-toggle-done]')) return;
+  assignment.status = assignment.status === 'done' ? 'todo' : 'done';
+  try { await persistStudySpace(); setStudyStatus(assignment.status === 'done' ? 'Assignment marked complete.' : 'Assignment reopened.'); }
+  catch (error) { setStudyStatus(error.message || 'Could not update assignment status.'); }
+});
+document.querySelector('#study-assignment-list').addEventListener('submit', async (event) => {
+  if (!event.target.matches('form[data-add-step]')) return;
+  event.preventDefault();
+  const card = event.target.closest('[data-assignment-id]');
+  const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId);
+  if (!assignment) return;
+  assignment.steps.push({ id: crypto.randomUUID(), text: event.target.querySelector('input').value, done: false });
+  try { await persistStudySpace(); setStudyStatus('Plan step added.'); } catch (error) { setStudyStatus(error.message || 'Could not add this step.'); }
+});
+document.querySelector('#study-note-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    studyData.notes.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-note-course').value, title: document.querySelector('#study-note-title').value, body: document.querySelector('#study-note-body').value, updatedAt: Date.now() });
+    await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Note saved locally.');
+  } catch (error) { setStudyStatus(error.message || 'Could not save this note.'); }
+});
+document.querySelector('#study-note-list').addEventListener('click', (event) => {
+  const id = event.target.closest('[data-use-note]')?.dataset.useNote; if (!id) return;
+  const note = studyData.notes.find((item) => item.id === id); if (!note) return;
+  promptInput.value = `Use this local study note as reference:\n\n# ${note.title}\n\n${note.body}\n\nExplain or quiz me on this material.`;
+  studyDialog.close(); promptInput.focus();
+});
+document.querySelector('#study-deck-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    studyData.decks.push({ id: crypto.randomUUID(), courseId: document.querySelector('#study-deck-course').value, title: document.querySelector('#study-deck-title').value, cards: [] });
+    await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Flashcard deck created.');
+  } catch (error) { setStudyStatus(error.message || 'Could not create this deck.'); }
+});
+document.querySelector('#study-card-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    const deck = studyData.decks.find((item) => item.id === document.querySelector('#study-card-deck').value);
+    if (!deck) throw new Error('Choose a saved deck first.');
+    deck.cards.push({ id: crypto.randomUUID(), front: document.querySelector('#study-card-front').value, back: document.querySelector('#study-card-back').value, dueAt: Date.now(), intervalDays: 0, repetitions: 0, ease: 2.5, lapses: 0, lastReviewedAt: null });
+    await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Flashcard added and ready to review.');
+  } catch (error) { setStudyStatus(error.message || 'Could not save this flashcard.'); }
+});
+
 refreshSkills().catch(() => {});
 
 window.obavenus.getLastProject().then((project) => {
