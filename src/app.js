@@ -1110,6 +1110,8 @@ remoteMachineForm.addEventListener('submit', async (event) => {
   } catch (error) { remoteMachineStatus.textContent = error.message || 'Could not save that machine.'; }
 });
 const remoteJobsDialog = document.querySelector('#remote-jobs-dialog');
+let remoteJobsRefreshTimer = null;
+let remoteJobsRefreshInFlight = false;
 async function renderRemoteJobs() {
   const list = document.querySelector('#remote-job-list');
   list.replaceChildren();
@@ -1161,12 +1163,33 @@ async function renderRemoteJobs() {
   }
 }
 async function openRemoteJobs() {
-  try { await renderRemoteJobs(); remoteJobsDialog.showModal(); }
+  try {
+    await renderRemoteJobs();
+    remoteJobsDialog.showModal();
+    if (remoteJobsRefreshTimer) clearInterval(remoteJobsRefreshTimer);
+    remoteJobsRefreshTimer = setInterval(async () => {
+      if (remoteJobsRefreshInFlight || !remoteJobsDialog.open) return;
+      remoteJobsRefreshInFlight = true;
+      try {
+        const jobs = await window.obavenus.listRemoteJobs();
+        const dueJobs = jobs.filter((job) => job.status === 'running' || (job.status === 'scheduled' && job.executeAt <= Date.now()));
+        for (const job of dueJobs) {
+          try { await window.obavenus.refreshRemoteJob(job.id); } catch {}
+        }
+        if (dueJobs.length) await renderRemoteJobs();
+      } catch {}
+      finally { remoteJobsRefreshInFlight = false; }
+    }, 10_000);
+  }
   catch (error) { document.querySelector('#run-status').textContent = error.message || 'Could not load remote jobs.'; }
 }
 document.querySelector('#remote-jobs-open').addEventListener('click', openRemoteJobs);
 document.querySelector('#remote-jobs-nav').addEventListener('click', openRemoteJobs);
 document.querySelector('#remote-jobs-refresh').addEventListener('click', () => renderRemoteJobs().catch((error) => { document.querySelector('#remote-job-list').textContent = error.message || 'Could not refresh remote jobs.'; }));
+remoteJobsDialog.addEventListener('close', () => {
+  if (remoteJobsRefreshTimer) clearInterval(remoteJobsRefreshTimer);
+  remoteJobsRefreshTimer = null;
+});
 document.querySelector('#remote-jobs-close').addEventListener('click', () => remoteJobsDialog.close());
 document.querySelector('#research-open').addEventListener('click', async () => {
   const status = document.querySelector('#research-status');
