@@ -35,6 +35,7 @@ const { createStudyStore } = require('./study-store.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
+const { buildPracticeQuiz } = require('./study-generation.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -373,6 +374,11 @@ ipcMain.handle('study:load', () => getStudyStore().load());
 ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
 ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
 ipcMain.handle('study:generate-aids', (_event, sourceId) => getStudyStore().generateAids(sourceId));
+ipcMain.handle('study:build-quiz', async (_event, deckId) => {
+  const data = await getStudyStore().load();
+  const deck = data.decks.find((item) => item.id === deckId);
+  return buildPracticeQuiz(deck);
+});
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));

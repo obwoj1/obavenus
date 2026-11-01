@@ -1669,6 +1669,7 @@ async function refreshChatGPTModels() {
 const studyDialog = document.querySelector('#study-dialog');
 let studyData = null;
 let studySaveQueue = Promise.resolve();
+let activeStudyQuiz = null;
 const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
 
 function setStudyStatus(message = '') {
@@ -1765,7 +1766,8 @@ function renderStudySpace() {
     const title = document.createElement('strong'); title.textContent = deck.title;
     const course = studyData.courses.find((item) => item.id === deck.courseId);
     const meta = document.createElement('small'); meta.textContent = `${course?.name || 'Personal deck'} · ${deck.cards.length} cards`;
-    card.append(title, meta); deckList.append(card);
+    const quiz = document.createElement('button'); quiz.type = 'button'; quiz.dataset.startQuiz = deck.id; quiz.textContent = 'Practice quiz'; quiz.disabled = deck.cards.length < 2;
+    card.append(title, meta, quiz); deckList.append(card);
   }
 
   const now = Date.now();
@@ -1773,7 +1775,36 @@ function renderStudySpace() {
   document.querySelector('#study-overdue-count').textContent = String(studyData.assignments.filter((item) => item.status !== 'done' && item.dueAt && item.dueAt < now).length);
   const due = studyData.decks.flatMap((deck) => deck.cards).filter((card) => card.dueAt <= now).length;
   document.querySelector('#study-review-count').textContent = String(due);
+  renderStudyQuiz();
   renderStudyReview().catch((error) => setStudyStatus(error.message || 'Could not load the review queue.'));
+}
+
+function renderStudyQuiz() {
+  const panel = document.querySelector('#study-quiz');
+  panel.replaceChildren();
+  if (!activeStudyQuiz) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const { questions, index, score, answered } = activeStudyQuiz;
+  if (index >= questions.length) {
+    const result = document.createElement('strong'); result.textContent = `Quiz complete · ${score} / ${questions.length} correct`;
+    const restart = document.createElement('button'); restart.type = 'button'; restart.dataset.quizRestart = 'true'; restart.textContent = 'Close results';
+    panel.append(result, restart); return;
+  }
+  const question = questions[index];
+  const meta = document.createElement('small'); meta.textContent = `Question ${index + 1} of ${questions.length} · ${score} correct`;
+  const prompt = document.createElement('strong'); prompt.textContent = question.prompt;
+  panel.append(meta, prompt);
+  question.options.forEach((option, optionIndex) => {
+    const button = document.createElement('button'); button.type = 'button'; button.dataset.quizOption = String(optionIndex); button.textContent = option;
+    button.disabled = answered;
+    if (answered && optionIndex === question.correctIndex) button.setAttribute('aria-current', 'true');
+    panel.append(button);
+  });
+  if (answered) {
+    const feedback = document.createElement('p'); feedback.textContent = activeStudyQuiz.lastCorrect ? 'Correct.' : `Not quite. Source answer: ${question.explanation}`;
+    const next = document.createElement('button'); next.type = 'button'; next.dataset.quizNext = 'true'; next.textContent = index + 1 === questions.length ? 'See results' : 'Next question';
+    panel.append(feedback, next);
+  }
 }
 
 async function persistStudySpace() {
@@ -2018,6 +2049,35 @@ document.querySelector('#study-card-form').addEventListener('submit', async (eve
     deck.cards.push({ id: crypto.randomUUID(), front: document.querySelector('#study-card-front').value, back: document.querySelector('#study-card-back').value, dueAt: Date.now(), intervalDays: 0, repetitions: 0, ease: 2.5, lapses: 0, lastReviewedAt: null });
     await persistStudySpace(); event.currentTarget.reset(); setStudyStatus('Flashcard added and ready to review.');
   } catch (error) { setStudyStatus(error.message || 'Could not save this flashcard.'); }
+});
+document.querySelector('#study-deck-list').addEventListener('click', async (event) => {
+  const deckId = event.target.closest('[data-start-quiz]')?.dataset.startQuiz;
+  if (!deckId) return;
+  try {
+    activeStudyQuiz = { questions: await window.obavenus.buildStudyQuiz(deckId), index: 0, score: 0, answered: false, lastCorrect: false };
+    renderStudyQuiz();
+  } catch (error) { setStudyStatus(error.message || 'Could not start the quiz.'); }
+});
+document.querySelector('#study-quiz').addEventListener('click', (event) => {
+  if (!activeStudyQuiz) return;
+  const option = event.target.closest('[data-quiz-option]');
+  if (option && !activeStudyQuiz.answered) {
+    activeStudyQuiz.lastCorrect = Number(option.dataset.quizOption) === activeStudyQuiz.questions[activeStudyQuiz.index].correctIndex;
+    if (activeStudyQuiz.lastCorrect) activeStudyQuiz.score += 1;
+    activeStudyQuiz.answered = true;
+    renderStudyQuiz();
+    return;
+  }
+  if (event.target.closest('[data-quiz-next]')) {
+    activeStudyQuiz.index += 1;
+    activeStudyQuiz.answered = false;
+    renderStudyQuiz();
+    return;
+  }
+  if (event.target.closest('[data-quiz-restart]')) {
+    activeStudyQuiz = null;
+    renderStudyQuiz();
+  }
 });
 
 refreshSkills().catch(() => {});

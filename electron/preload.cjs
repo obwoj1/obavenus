@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   saveStudySpace: (data) => ipcRenderer.invoke('study:save', data),
   createStudyCourse: (course) => ipcRenderer.invoke('study:create-course', course),
   generateStudyAids: (sourceId) => ipcRenderer.invoke('study:generate-aids', sourceId),
+  buildStudyQuiz: (deckId) => ipcRenderer.invoke('study:build-quiz', deckId),
   reviewStudyCard: (deckId, cardId, rating, reviewedAt) => ipcRenderer.invoke('study:review-card', { deckId, cardId, rating, reviewedAt }),
   getDueStudyCards: () => ipcRenderer.invoke('study:due-cards'),
   searchStudySources: (query, courseId) => ipcRenderer.invoke('study:search-sources', { query, courseId }),
