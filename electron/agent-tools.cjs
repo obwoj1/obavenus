@@ -1,5 +1,5 @@
 const { collectProjectContext, searchProjectText, listProjectFiles, readProjectRelativeFile, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, hashBytes, MAX_AGENT_WRITE_BYTES } = require('./project.cjs');
-const { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
+const { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS } = require('./artifacts.cjs');
 const { buildDiagram } = require('./diagrams.cjs');
 const { getGitStatus, getGitDiff, getGitHistory } = require('./git-tools.cjs');
 
@@ -31,6 +31,7 @@ const BROWSER_TOOLS = [
 ];
 const OFFICE_TOOLS = [
   { name: 'create_spreadsheet', description: 'Create a native Excel workbook in the selected project folder. Provide sheet names, column headings, and typed rows. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .xlsx path, such as reports/summary.xlsx.' }, sheets: { type: 'array', description: '1–10 worksheets; each has name, headers and rows.', items: { type: 'object', properties: { name: { type: 'string' }, headers: { type: 'array', items: { type: 'string' } }, rows: { type: 'array', items: { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } } } }, required: ['name', 'headers', 'rows'], additionalProperties: false } } }, required: ['path', 'sheets'], additionalProperties: false } },
+  { name: 'update_spreadsheet', description: 'Edit up to 200 cells in one existing .xlsx worksheet in the selected project. Formula-like text is stored as inert text. Returns values read back from the saved workbook. Available only in project-write mode and supports undo.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative existing .xlsx path inside the selected project.' }, sheet: { type: 'string', description: 'Exact worksheet name.' }, cells: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', properties: { address: { type: 'string', description: 'Single cell address such as B12.' }, value: { anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } }, required: ['address', 'value'], additionalProperties: false } } }, required: ['path', 'sheet', 'cells'], additionalProperties: false } },
   { name: 'create_document', description: 'Create a native Word document in the selected project folder. Provide a title and ordered sections. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .docx path, such as reports/brief.docx.' }, title: { type: 'string' }, sections: { type: 'array', items: { type: 'object', properties: { heading: { type: 'string' }, text: { type: 'string' } }, required: ['text'], additionalProperties: false } } }, required: ['path', 'title', 'sections'], additionalProperties: false } },
   { name: 'create_presentation', description: 'Create a native PowerPoint presentation in the selected project folder. Provide a title and ordered slides with concise bullet points. Available only in project-write mode.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'Relative .pptx path, such as reports/briefing.pptx.' }, title: { type: 'string' }, slides: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, subtitle: { type: 'string' }, bullets: { type: 'array', items: { type: 'string' } } }, required: ['bullets'], additionalProperties: false } } }, required: ['path', 'title', 'slides'], additionalProperties: false } },
 ];
@@ -84,8 +85,9 @@ const TOOL_DEFINITIONS = [
 
 function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, executeMcpTool, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
   const changes = [];
-  async function writeWithUndo(relativePath, content, write) {
+  async function writeWithUndo(relativePath, content, write, expectedInitialHash) {
     const snapshot = await snapshotProjectFile(projectPath, relativePath, Math.max(MAX_AGENT_WRITE_BYTES, Buffer.byteLength(content)));
+    if (expectedInitialHash !== undefined && snapshot.beforeHash !== expectedInitialHash) throw new Error('The spreadsheet changed while the edit was being prepared. Read it again before retrying.');
     const options = { expectedAbsent: snapshot.created, expectedBeforeHash: snapshot.beforeHash || undefined };
     const result = await write(options);
     let undoToken = null;
@@ -155,6 +157,15 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const artifact = buildDiagram(args);
       const result = await writeWithUndo(args.path, artifact, (options) => writeProjectBinaryArtifact(projectPath, args.path, artifact, ['.svg'], 256 * 1024, options));
       return { ...result, saved: true, format: 'offline SVG diagram' };
+    }
+    if (name === 'update_spreadsheet') {
+      if (!projectPath || !writeAccess) return { error: 'Spreadsheet editing is disabled for this run. Select a project and enable project-write mode.' };
+      if (typeof args.path !== 'string' || args.path.length > 500 || !args.path.toLowerCase().endsWith('.xlsx')) throw new TypeError('Provide a relative .xlsx spreadsheet path.');
+      const snapshot = await snapshotProjectFile(projectPath, args.path, 8 * 1024 * 1024);
+      if (snapshot.created) throw new Error('That spreadsheet does not exist yet. Create it first or select an existing .xlsx file.');
+      const edited = await updateSpreadsheet({ bytes: snapshot.beforeBytes, sheet: args.sheet, cells: args.cells });
+      const result = await writeWithUndo(args.path, edited.bytes, (options) => writeProjectBinaryArtifact(projectPath, args.path, edited.bytes, ['.xlsx'], 8 * 1024 * 1024, options), snapshot.beforeHash);
+      return { ...result, saved: true, format: 'spreadsheet', sheet: args.sheet, updated: edited.updated };
     }
     if (['create_spreadsheet', 'create_document', 'create_presentation'].includes(name)) {
       if (!projectPath || !writeAccess) return { error: 'Office artifact creation is disabled for this run. Select a project and enable project-write mode.' };

@@ -49,6 +49,36 @@ async function buildSpreadsheet({ sheets }) {
   return output;
 }
 
+async function updateSpreadsheet({ bytes, sheet: sheetName, cells }) {
+  if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_ARTIFACT_BYTES) throw new RangeError('Open an existing spreadsheet up to 8 MB.');
+  const wantedSheet = boundedText(sheetName, 'Worksheet name', 31);
+  if (!Array.isArray(cells) || cells.length < 1 || cells.length > 200) throw new RangeError('Update 1–200 cells per operation.');
+  const workbook = new ExcelJS.Workbook();
+  try { await workbook.xlsx.load(bytes); } catch { throw new TypeError('The selected file is not a readable .xlsx workbook.'); }
+  const worksheet = workbook.getWorksheet(wantedSheet);
+  if (!worksheet) throw new TypeError(`No worksheet is named “${wantedSheet}”.`);
+  const seen = new Set();
+  const verified = [];
+  for (const item of cells) {
+    if (!item || typeof item.address !== 'string' || !/^\$?[A-Z]{1,3}\$?[1-9]\d{0,6}$/i.test(item.address)) throw new TypeError('Use a single spreadsheet cell address such as B12.');
+    const address = item.address.replaceAll('$', '').toUpperCase();
+    if (seen.has(address)) throw new TypeError(`Cell ${address} appears more than once.`);
+    seen.add(address);
+    const column = address.match(/[A-Z]+/)[0].split('').reduce((sum, letter) => sum * 26 + letter.charCodeAt(0) - 64, 0);
+    const row = Number(address.match(/\d+/)[0]);
+    if (column > 200 || row > 100_000) throw new RangeError('Cell updates are limited to columns A–GR and rows 1–100,000.');
+    const value = safeCell(item.value);
+    worksheet.getCell(address).value = value;
+    verified.push({ address, value });
+  }
+  const output = Buffer.from(await workbook.xlsx.writeBuffer());
+  if (output.length > MAX_ARTIFACT_BYTES) throw new RangeError('The updated spreadsheet exceeds the 8 MB artifact limit.');
+  const check = new ExcelJS.Workbook();
+  await check.xlsx.load(output);
+  const resultSheet = check.getWorksheet(wantedSheet);
+  return { bytes: output, updated: verified.map(({ address }) => ({ address, value: resultSheet.getCell(address).value })) };
+}
+
 async function buildDocument({ title, sections }) {
   const documentTitle = boundedText(title, 'Document title', 180);
   if (!Array.isArray(sections) || sections.length > 30) throw new TypeError('A document can contain up to 30 sections.');
@@ -92,4 +122,4 @@ async function buildPresentation({ title, slides }) {
   return output;
 }
 
-module.exports = { buildSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS, MAX_ARTIFACT_BYTES };
+module.exports = { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation, OFFICE_EXTENSIONS, MAX_ARTIFACT_BYTES };

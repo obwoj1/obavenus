@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const ExcelJS = require('exceljs');
-const { buildSpreadsheet, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
+const { buildSpreadsheet, updateSpreadsheet, buildDocument, buildPresentation } = require('../electron/artifacts.cjs');
 
 test('native spreadsheet generation creates a frozen workbook and neutralizes formula-like text', async () => {
   const data = await buildSpreadsheet({ sheets: [{ name: 'Open roles', headers: ['Role', 'Salary'], rows: [['=HYPERLINK("bad")', 172000]] }] });
@@ -12,6 +12,23 @@ test('native spreadsheet generation creates a frozen workbook and neutralizes fo
   assert.equal(sheet.getCell('A2').value, "'=HYPERLINK(\"bad\")");
   assert.equal(sheet.getCell('B2').value, 172000);
   assert.equal(sheet.views[0].ySplit, 1);
+});
+
+test('existing workbooks support bounded typed cell updates and read-back without formula injection', async () => {
+  const original = await buildSpreadsheet({ sheets: [{ name: 'Budget', headers: ['Item', 'Amount'], rows: [['Transit', 25]] }] });
+  const edited = await updateSpreadsheet({ bytes: original, sheet: 'Budget', cells: [
+    { address: 'B2', value: 340 },
+    { address: 'A3', value: '=HYPERLINK("bad")' },
+  ] });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(edited.bytes);
+  const sheet = workbook.getWorksheet('Budget');
+  assert.equal(sheet.getCell('B2').value, 340);
+  assert.equal(sheet.getCell('A3').value, "'=HYPERLINK(\"bad\")");
+  assert.deepEqual(edited.updated, [{ address: 'B2', value: 340 }, { address: 'A3', value: "'=HYPERLINK(\"bad\")" }]);
+  await assert.rejects(updateSpreadsheet({ bytes: original, sheet: 'Missing', cells: [{ address: 'A1', value: 'x' }] }), /No worksheet/);
+  await assert.rejects(updateSpreadsheet({ bytes: original, sheet: 'Budget', cells: [{ address: 'A1:B2', value: 'x' }] }), /single spreadsheet cell/);
+  await assert.rejects(updateSpreadsheet({ bytes: original, sheet: 'Budget', cells: [{ address: 'A1', value: '=SUM(1,2)' }, { address: 'a1', value: 4 }] }), /appears more than once/);
 });
 
 test('native Word and PowerPoint generators return Office Open XML packages', async () => {

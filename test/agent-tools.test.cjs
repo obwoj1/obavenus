@@ -4,6 +4,8 @@ const { mkdtemp, mkdir, readFile, writeFile, rm } = require('node:fs/promises');
 const { execFileSync } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
+const ExcelJS = require('exceljs');
+const { buildSpreadsheet } = require('../electron/artifacts.cjs');
 const { TOOL_DEFINITIONS, GIT_TOOLS, createAgentToolExecutor, runToolAgent } = require('../electron/agent-tools.cjs');
 
 test('team agents get read-only Git status, diffs, and scoped commit history', async () => {
@@ -107,6 +109,26 @@ test('project file writes require per-run authorization and report the exact fil
       { path: path.join('docs', 'plan.md'), bytes: 23, created: true },
       { path: 'architecture.svg', bytes: (await readFile(path.join(root, 'architecture.svg'))).length, created: true },
     ]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('updating an existing workbook is gated, undoable, and returns saved cell values', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-spreadsheet-edit-'));
+  try {
+    const target = path.join(root, 'budget.xlsx');
+    await writeFile(target, await buildSpreadsheet({ sheets: [{ name: 'Budget', headers: ['Item', 'Amount'], rows: [['Transit', 25]] }] }));
+    const denied = createAgentToolExecutor({ projectPath: root });
+    assert.match((await denied('update_spreadsheet', { path: 'budget.xlsx', sheet: 'Budget', cells: [{ address: 'B2', value: 50 }] })).error, /disabled/);
+    let snapshot;
+    const allowed = createAgentToolExecutor({ projectPath: root, writeAccess: true, projectUndo: { record: async (entry) => { snapshot = entry; return 'undo-token'; } } });
+    const result = await allowed('update_spreadsheet', { path: 'budget.xlsx', sheet: 'Budget', cells: [{ address: 'B2', value: 340 }] });
+    assert.equal(result.saved, true);
+    assert.deepEqual(result.updated, [{ address: 'B2', value: 340 }]);
+    assert.equal(result.undoToken, 'undo-token');
+    assert.equal(snapshot.created, false);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(target);
+    assert.equal(workbook.getWorksheet('Budget').getCell('B2').value, 340);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
