@@ -37,6 +37,7 @@
 
 ## Next
 
+- 0.1.68: Added a one-click assignment review checklist seeded from explicit requirements and rubric text, with editable student checks and final pre-submission review.
 - 0.1.67: Assignment scans now show explicitly detected rubric criteria and named skills, plus locally generated clarification questions for student review.
 - 0.1.66: Added an opt-in daily Study digest scheduler that creates one Gmail draft while Obavenus is running, respects quiet hours, stores schedule state encrypted, and never sends messages.
 - 0.1.65: Assignment drafts are editable and encrypted with Study data, can be saved from an assistant response, export to Word, and survive Canvas refresh.

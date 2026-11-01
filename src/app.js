@@ -1832,6 +1832,7 @@ function renderStudySpace() {
         for (const question of analysis.instructorQuestions) { const item = document.createElement('li'); item.textContent = question; questions.append(item); }
         panel.append(questions);
       }
+      const reviewChecklist = document.createElement('button'); reviewChecklist.type = 'button'; reviewChecklist.dataset.buildReviewChecklist = 'true'; reviewChecklist.textContent = 'Add review checklist'; panel.append(reviewChecklist);
       if (details.every(([, values]) => !values.length) && !analysis.dueDate) { const empty = document.createElement('p'); empty.textContent = 'No explicit deliverable, quantity, format, or citation requirement was detected.'; panel.append(empty); }
       card.append(panel);
     }
@@ -2261,6 +2262,20 @@ document.querySelector('#study-assignment-list').addEventListener('click', async
       studyAssignmentAnalysis.set(assignment.id, await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt }));
       renderStudySpace();
     } catch (error) { setStudyStatus(error.message || 'Could not check assignment requirements.'); }
+    return;
+  }
+  if (event.target.closest('[data-build-review-checklist]')) {
+    try {
+      const analysis = studyAssignmentAnalysis.get(assignment.id) || await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt });
+      studyAssignmentAnalysis.set(assignment.id, analysis);
+      const suggestions = await window.obavenus.buildAssignmentReviewChecklist(analysis);
+      const existing = new Set(assignment.steps.map((step) => step.text.toLowerCase()));
+      const additions = suggestions.filter((text) => !existing.has(text.toLowerCase())).map((text) => ({ id: crypto.randomUUID(), text, done: false }));
+      if (!additions.length) { setStudyStatus('The review checklist is already in this assignment.'); return; }
+      assignment.steps.push(...additions);
+      await persistStudySpace();
+      setStudyStatus(`Added ${additions.length} review checklist items. Check each one against the original instructions.`);
+    } catch (error) { setStudyStatus(error.message || 'Could not create the assignment review checklist.'); }
     return;
   }
   const planStepId = event.target.closest('[data-plan-step]')?.dataset.planStep;

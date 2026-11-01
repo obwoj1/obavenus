@@ -30,4 +30,18 @@ function analyzeAssignment({ title = '', instructions = '', dueAt = null } = {})
   return { deliverables, citations, quantityRequirements: [...new Set(quantityRequirements)], formatRequirements, evidence, gradingCriteria, skills, instructorQuestions: instructorQuestions.slice(0, 4), dueDate, analyzedLocally: true };
 }
 
-module.exports = { analyzeAssignment };
+function buildAssignmentReviewChecklist(analysis) {
+  if (!analysis || analysis.analyzedLocally !== true) throw new TypeError('Run the local assignment review before building its checklist.');
+  const items = [];
+  const add = (value) => { const text = `Review: ${value}`.slice(0, 300); if (!items.some((item) => item.toLowerCase() === text.toLowerCase())) items.push(text); };
+  for (const deliverable of analysis.deliverables || []) add(`confirm the required ${deliverable} is complete`);
+  for (const quantity of analysis.quantityRequirements || []) add(`verify the requirement “${quantity}”`);
+  for (const format of analysis.formatRequirements || []) add(`confirm the required ${format} format`);
+  for (const style of analysis.citations || []) add(`check citations against ${style} style`);
+  for (const criterion of analysis.gradingCriteria || []) add(`compare the draft with this rubric text: ${criterion}`);
+  for (const requirement of analysis.evidence || []) add(`compare the draft with this instruction: ${requirement}`);
+  add('proofread the final draft and compare it with the original assignment before submitting');
+  return items.slice(0, 20);
+}
+
+module.exports = { analyzeAssignment, buildAssignmentReviewChecklist };
