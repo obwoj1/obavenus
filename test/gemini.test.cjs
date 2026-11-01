@@ -3,6 +3,7 @@ const { mkdtemp, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { Readable } = require('node:stream');
 const { createGeminiConnector, SCOPES } = require('../electron/gemini.cjs');
 
 test('Gemini Google OAuth uses PKCE, encrypts tokens, and generates content for the selected Cloud project', async () => {
@@ -18,6 +19,7 @@ test('Gemini Google OAuth uses PKCE, encrypts tokens, and generates content for 
     calls.push({ url, options });
     if (url === 'https://oauth2.googleapis.com/token') return { ok: true, json: async () => ({ access_token: 'access-token', refresh_token: 'refresh-token', expires_in: 3600 }) };
     if (url === 'https://openidconnect.googleapis.com/v1/userinfo') return { ok: true, json: async () => ({ email: 'gemini@example.com' }) };
+    if (url.includes(':streamGenerateContent?alt=sse')) return { ok: true, body: Readable.from(['data: {"candidates":[{"content":{"parts":[{"text":"OAuth "}]}}]}\n\n', 'data: {"candidates":[{"content":{"parts":[{"text":"stream"}]}}]}\n\n']) };
     return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'OAuth Gemini reply' }] } }] }) };
   } });
 
@@ -52,6 +54,10 @@ test('Gemini Google OAuth uses PKCE, encrypts tokens, and generates content for 
     });
     assert.deepEqual(toolResult, { text: 'OAuth Gemini reply', toolCalls: [] });
     assert.equal(JSON.parse(calls.at(-1).options.body).tools[0].functionDeclarations[0].name, 'list_project_files');
+    const deltas = [];
+    assert.equal(await connector.generate({ model: 'gemini-3.8-flash', messages: [{ role: 'user', text: 'Stream' }], onDelta: (delta) => deltas.push(delta) }), 'OAuth stream');
+    assert.equal(calls.at(-1).url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse');
+    assert.equal(deltas.join(''), 'OAuth stream');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

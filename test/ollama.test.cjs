@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { Readable } = require('node:stream');
 const { BASE_URL, listOllamaModels, makeMessages, requestOllamaResponse } = require('../electron/ollama.cjs');
 
 test('Ollama chat uses the fixed local endpoint and returns normal assistant text', async () => {
@@ -46,6 +47,21 @@ test('Ollama propagates Stop as a user cancellation', async () => {
     }),
   });
   await assert.rejects(pending, (error) => error.name === 'AbortError' && /stopped/.test(error.message));
+});
+
+test('Ollama streams local model text into the response callback', async () => {
+  let body;
+  const deltas = [];
+  const result = await requestOllamaResponse({
+    model: 'qwen3:8b', messages: [{ role: 'user', text: 'Say hello' }], onDelta: (delta) => deltas.push(delta),
+    fetchImpl: async (_url, options) => {
+      body = JSON.parse(options.body);
+      return { ok: true, body: Readable.from(['{"message":{"content":"Hello"},"done":false}\n', '{"message":{"content":" there"},"done":true}\n']) };
+    },
+  });
+  assert.equal(body.stream, true);
+  assert.equal(result, 'Hello there');
+  assert.equal(deltas.join(''), result);
 });
 
 test('Ollama conversations reject unsafe message roles, paths and oversized attached context', async () => {

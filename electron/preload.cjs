@@ -40,6 +40,11 @@ contextBridge.exposeInMainWorld('obavenus', {
   getLocalAgentStatus: () => ipcRenderer.invoke('local-agent:status'),
   runLocalAgent: (provider, messages, writeAccess = false, runId) => ipcRenderer.invoke('local-agent:run', { provider, messages, writeAccess, runId }),
   cancelRun: (runId) => ipcRenderer.invoke('runs:cancel', runId),
+  onRunDelta: (callback) => {
+    const listener = (_event, update) => callback(update);
+    ipcRenderer.on('runs:delta', listener);
+    return () => ipcRenderer.removeListener('runs:delta', listener);
+  },
   listRemoteMachines: () => ipcRenderer.invoke('remote-machines:list'),
   probeRemoteMachine: (target) => ipcRenderer.invoke('remote-machines:probe', target),
   saveRemoteMachine: (machine) => ipcRenderer.invoke('remote-machines:save', machine),

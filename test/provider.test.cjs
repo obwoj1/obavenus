@@ -3,6 +3,7 @@ const { mkdtemp, readFile, rm } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { Readable } = require('node:stream');
 const { createProviderStore, requestProviderResponse, DEFAULT_MODEL } = require('../electron/provider.cjs');
 
 test('provider store encrypts the key and exposes only safe settings', async () => {
@@ -141,6 +142,28 @@ test('provider API request propagates Stop as cancellation rather than a timeout
     }),
   });
   await assert.rejects(pending, (error) => error.name === 'AbortError' && /stopped/.test(error.message));
+});
+
+test('solo responses stream text deltas for OpenAI, Claude, Gemini, and Grok', async () => {
+  const cases = [
+    ['openai', 'gpt-5.5', 'https://api.openai.com/v1/responses', 'data: {"type":"response.output_text.delta","delta":"Hello"}\n\ndata: {"type":"response.output_text.delta","delta":" there"}\n\n'],
+    ['anthropic', 'claude-sonnet-4-6', 'https://api.anthropic.com/v1/messages', 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}\n\nevent: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":" there"}}\n\n'],
+    ['gemini', 'gemini-3.8-flash', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse', 'data: {"candidates":[{"content":{"parts":[{"text":"Hello"}]}}]}\n\ndata: {"candidates":[{"content":{"parts":[{"text":" there"}]}}]}\n\n'],
+    ['xai', 'grok-4.7', 'https://api.x.ai/v1/chat/completions', 'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: {"choices":[{"delta":{"content":" there"}}]}\n\n'],
+  ];
+  for (const [provider, model, expectedUrl, eventText] of cases) {
+    const deltas = [];
+    let sent;
+    const chunks = Array.from({ length: Math.ceil(eventText.length / 7) }, (_unused, index) => Buffer.from(eventText.slice(index * 7, index * 7 + 7)));
+    const answer = await requestProviderResponse({
+      provider, apiKey: 'test-key', model, messages: [{ role: 'user', text: 'Say hello' }], onDelta: (delta) => deltas.push(delta),
+      fetchImpl: async (url, options) => { sent = { url, body: JSON.parse(options.body) }; return { ok: true, body: Readable.from(chunks) }; },
+    });
+    assert.equal(sent.url, expectedUrl);
+    assert.equal(answer, 'Hello there');
+    assert.equal(deltas.join(''), answer);
+    if (provider !== 'gemini') assert.equal(sent.body.stream, true);
+  }
 });
 
 test('OpenAI request rejects invalid models and oversized conversation context', async () => {

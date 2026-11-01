@@ -13,6 +13,8 @@ let activeConversationId = conversations.at(-1)?.id ?? null;
 let sending = false;
 let pendingContext = [];
 let activeRunId = null;
+let activeReplyMessage = null;
+let activeReplyConversationId = null;
 
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
@@ -522,6 +524,8 @@ form.addEventListener('submit', async (event) => {
     text: 'Thinking…',
     status: 'pending',
   };
+  activeReplyMessage = pendingReply;
+  activeReplyConversationId = current.id;
   current.messages.push(pendingReply);
   sending = true;
   promptInput.disabled = true;
@@ -630,6 +634,8 @@ form.addEventListener('submit', async (event) => {
     form.querySelector('.send').textContent = 'Send ↗';
     cancelRunButton.hidden = true;
     activeRunId = null;
+    activeReplyMessage = null;
+    activeReplyConversationId = null;
     runMode.disabled = false;
     runStatus.hidden = true;
     runStatus.textContent = '';
@@ -652,6 +658,15 @@ document.querySelector('#cancel-run').addEventListener('click', async () => {
 });
 
 let activeTeamRunId = null;
+window.obavenus.onRunDelta(({ runId, delta }) => {
+  if (runId !== activeRunId || !activeReplyMessage || typeof delta !== 'string') return;
+  if (activeReplyMessage.text === 'Thinking…') activeReplyMessage.text = '';
+  activeReplyMessage.text += delta;
+  if (activeConversationId === activeReplyConversationId) {
+    const bubble = [...conversation.querySelectorAll('.message.assistant-message')].at(-1);
+    if (bubble) bubble.textContent = activeReplyMessage.text;
+  }
+});
 window.obavenus.onAgentProgress((progress) => {
   if (progress.runId !== activeTeamRunId) return;
   runStatus.textContent = `${progress.label}…`;
