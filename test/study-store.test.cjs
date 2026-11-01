@@ -20,13 +20,14 @@ test('study space is encrypted, persists courses, plans, notes, and cards', asyn
   const store = createStudyStore({ filePath, safeStorage: encryptedMock(), now: () => 100 });
   const course = await store.createCourse({ name: 'Statistics', term: 'Fall' });
   const courseId = course.courses[0].id;
+  const withSource = await store.addSource({ courseId, name: 'Week 1.pdf', content: 'Page 1\nMean and variance.' });
   const stepId = '10000000-0000-4000-8000-000000000002';
   const assignmentId = '10000000-0000-4000-8000-000000000003';
   const noteId = '10000000-0000-4000-8000-000000000004';
   const deckId = '10000000-0000-4000-8000-000000000005';
   const cardId = '10000000-0000-4000-8000-000000000006';
   const saved = await store.save({
-    ...course,
+    ...withSource,
     assignments: [{ id: assignmentId, courseId, title: 'Problem set', dueAt: 200, steps: [{ id: stepId, text: 'Read the prompt', done: false }] }],
     notes: [{ id: noteId, courseId, title: 'Variance', body: 'E[X²] − E[X]²' }],
     decks: [{ id: deckId, courseId, title: 'Definitions', cards: [{ id: cardId, front: 'Variance?', back: 'Expected squared deviation.' }] }],
@@ -36,6 +37,7 @@ test('study space is encrypted, persists courses, plans, notes, and cards', asyn
   assert.deepEqual(await store.load(), saved);
   assert.equal(saved.assignments[0].steps[0].done, false);
   assert.equal(saved.decks[0].cards[0].ease, 2.5);
+  assert.equal(saved.sources[0].name, 'Week 1.pdf');
   const reviewed = await store.reviewCard(deckId, cardId, 2, 2000);
   assert.equal(reviewed.decks[0].cards[0].repetitions, 1);
   assert.equal(reviewed.decks[0].cards[0].dueAt, 2000 + 24 * 60 * 60 * 1000);

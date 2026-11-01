@@ -34,6 +34,7 @@ const { createChromeBridge } = require('./chrome-bridge.cjs');
 const { createStudyStore } = require('./study-store.cjs');
 const { dueCards } = require('./study-review.cjs');
 const { createCanvasConnector } = require('./canvas-connector.cjs');
+const { searchStudySources } = require('./study-search.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -366,6 +367,16 @@ ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
 ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
 ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
 ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
+ipcMain.handle('study:search-sources', async (_event, { query, courseId = '' }) => searchStudySources(await getStudyStore().load(), query, courseId));
+ipcMain.handle('study:import-file', async (_event, courseId = '') => {
+  const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Study files', extensions: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json', 'html', 'png', 'jpg', 'jpeg', 'webp'] }] });
+  if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  const selectedPath = result.filePaths[0];
+  const extracted = await readProjectFile(path.dirname(selectedPath), path.basename(selectedPath), { ocrImage: getLocalOcr() });
+  if (extracted.truncated) throw new Error('This file is too large to import completely. Split it into smaller files and try again.');
+  const data = await getStudyStore().addSource({ courseId, name: path.basename(selectedPath), content: extracted.content });
+  return { cancelled: false, name: path.basename(selectedPath), data };
+});
 ipcMain.handle('study:canvas-status', () => getCanvasConnector().status());
 ipcMain.handle('study:canvas-connect', (_event, credentials) => getCanvasConnector().connect(credentials));
 ipcMain.handle('study:canvas-disconnect', () => getCanvasConnector().disconnect());

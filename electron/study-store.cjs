@@ -4,7 +4,7 @@ const path = require('node:path');
 const { scheduleReview } = require('./study-review.cjs');
 
 const MAX_STORE_BYTES = 5 * 1024 * 1024;
-const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [] });
+const EMPTY_STUDY_DATA = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [] });
 
 function cleanText(value, label, max, { optional = false } = {}) {
   if (optional && (value === undefined || value === null)) return '';
@@ -23,7 +23,8 @@ function normalizeStudyData(value) {
   const assignments = Array.isArray(value.assignments) ? value.assignments : [];
   const notes = Array.isArray(value.notes) ? value.notes : [];
   const decks = Array.isArray(value.decks) ? value.decks : [];
-  if (courses.length > 100 || assignments.length > 1000 || notes.length > 1000 || decks.length > 100) throw new RangeError('Study space has reached its local item limit.');
+  const sources = Array.isArray(value.sources) ? value.sources : [];
+  if (courses.length > 100 || assignments.length > 1000 || notes.length > 1000 || decks.length > 100 || sources.length > 40) throw new RangeError('Study space has reached its local item limit.');
   const ids = new Set();
   const uniqueId = (id, label) => {
     validId(id, label);
@@ -88,7 +89,18 @@ function normalizeStudyData(value) {
       })),
     };
   });
-  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks };
+  const normalizedSources = sources.map((source) => {
+    const courseId = source.courseId ? validId(source.courseId, 'Study file course') : '';
+    if (courseId && !courseIds.has(courseId)) throw new TypeError('Study files must belong to a saved course.');
+    return {
+      id: uniqueId(source.id, 'Study file'), courseId,
+      name: cleanText(source.name, 'Study file name', 240),
+      content: cleanText(source.content, 'Study file text', 200_000),
+      updatedAt: Number.isFinite(source.updatedAt) ? source.updatedAt : Date.now(),
+    };
+  });
+  if (normalizedSources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) > 4 * 1024 * 1024) throw new RangeError('Imported study text is over its 4 MB local limit.');
+  return { version: 1, courses: normalizedCourses, assignments: normalizedAssignments, notes: normalizedNotes, decks: normalizedDecks, sources: normalizedSources };
 }
 
 function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
@@ -139,6 +151,13 @@ function createStudyStore({ filePath, safeStorage, now = () => Date.now() }) {
       return serialize(async () => {
         const data = await read();
         data.courses.push({ id: randomUUID(), name, term, createdAt: now() });
+        return write(data);
+      });
+    },
+    async addSource({ courseId = '', name, content }) {
+      return serialize(async () => {
+        const data = await read();
+        data.sources.push({ id: randomUUID(), courseId, name, content, updatedAt: now() });
         return write(data);
       });
     },
