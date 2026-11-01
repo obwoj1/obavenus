@@ -1,7 +1,7 @@
 {
   "name": "obavenus",
   "productName": "Obavenus",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "private": true,
   "description": "Obavenus, a local-first Electron desktop assistant.",
   "author": "Obavenus",
@@ -63,6 +63,8 @@
       "category": "public.app-category.productivity",
       "icon": "assets/Obavenus.icns",
       "identity": "-",
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
       "target": [
         "dmg"
       ]
