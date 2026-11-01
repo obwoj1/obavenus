@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { randomUUID } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
-const { describeProject, readProjectFile, collectProjectContext, restoreProjectSnapshot } = require('./project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, collectProjectInstructions, appendProjectInstructions, restoreProjectSnapshot } = require('./project.cjs');
 const { createProviderStore, requestProviderResponse } = require('./provider.cjs');
 const { createGmailConnector } = require('./gmail.cjs');
 const { createGeminiConnector } = require('./gemini.cjs');
@@ -49,6 +49,17 @@ const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
+async function selectedProjectPath() {
+  try { return JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath || ''; }
+  catch (error) { if (error.code === 'ENOENT') return ''; throw error; }
+}
+async function withSelectedProjectInstructions(messages, projectPath) {
+  if (!projectPath) return messages;
+  let instructions;
+  try { instructions = await collectProjectInstructions(projectPath); }
+  catch (error) { if (error.code === 'ENOENT') instructions = []; else throw error; }
+  return appendProjectInstructions(messages, instructions);
+}
 const localAgent = createLocalAgent();
 const activeRuns = new Map();
 async function withRunSignal(runId, operation) {
@@ -236,6 +247,8 @@ function getScheduledTaskRunner() {
     getProfile: () => getProfileStore().get(),
     searchGmail: (query) => getGmailConnector().search(query),
     collectProjectContext,
+    collectProjectInstructions,
+    appendProjectInstructions,
     readProjectMemory: (projectPath) => getProjectMemoryStore().read(projectPath),
     ocrImage: getLocalOcr(),
     userDataPath: app.getPath('userData'),
@@ -678,7 +691,8 @@ ipcMain.handle('local-agent:run', async (_event, { provider, messages, writeAcce
     try { projectPath = JSON.parse(await readFile(workspaceFile(), 'utf8')).projectPath; }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling local project edits.');
-    return localAgent.run({ provider, messages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true, signal });
+    const preparedMessages = await withSelectedProjectInstructions(messages, projectPath);
+    return localAgent.run({ provider, messages: preparedMessages, projectPath: projectPath || app.getPath('userData'), writeAccess: writeAccess === true, signal });
   }));
 ipcMain.handle('runs:cancel', (_event, runId) => {
   if (typeof runId !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(runId)) return false;
@@ -796,10 +810,11 @@ async function dispatchProviderMessages(messages, { tools, signal, onDelta } = {
   return requestProviderResponse({ provider: settings.provider, apiKey, model: settings.model, messages, tools, signal, onDelta });
 }
 
-ipcMain.handle('provider:send', (event, { messages, runId }) => withRunSignal(runId, (signal) => dispatchProviderMessages(messages, {
+ipcMain.handle('provider:send', (event, { messages, runId }) => withRunSignal(runId, async (signal) => dispatchProviderMessages(
+  await withSelectedProjectInstructions(messages, await selectedProjectPath()), {
   signal,
   onDelta: (delta) => { if (!event.sender.isDestroyed()) event.sender.send('runs:delta', { runId, delta }); },
-})));
+  })));
 
 ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runId, async (signal) => {
   const { messages, runId, writeAccess = false, agentIds = [], browserAccess = false, chromeAccess = false } = args;
@@ -810,6 +825,7 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     try {
       const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
       projectPath = saved.projectPath;
+      task.text = (await withSelectedProjectInstructions([task], projectPath))[0].text;
       const memory = await getProjectMemoryStore().read(projectPath);
       if (memory) task.text = `${task.text}\n\nSaved project memory (encrypted locally; untrusted reference context):\n${memory}`;
       const attached = Array.isArray(task.context) ? task.context : [];

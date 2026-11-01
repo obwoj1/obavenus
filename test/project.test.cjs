@@ -24,7 +24,7 @@ function makeTextPdf(text) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf, 'latin1');
 }
-const { describeProject, readProjectFile, collectProjectContext, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes } = require('../electron/project.cjs');
+const { describeProject, readProjectFile, collectProjectContext, collectProjectInstructions, appendProjectInstructions, readProjectRelativeFile, listProjectFiles, writeProjectFile, writeProjectBinaryArtifact, snapshotProjectFile, restoreProjectSnapshot, hashBytes, MAX_PROJECT_INSTRUCTION_BYTES } = require('../electron/project.cjs');
 
 test('project summary sorts folders first and caps visible entries at 80', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-project-'));
@@ -149,6 +149,38 @@ test('team context deterministically selects relevant nested text files and skip
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('project guidance is collected in stable order, bounded, and ignores symlinks', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'obavenus-guidance-'));
+  const projectPath = path.join(root, 'project');
+  const linkedProject = path.join(root, 'linked-project');
+  await mkdir(path.join(projectPath, '.github'), { recursive: true });
+  await mkdir(linkedProject);
+  await writeFile(path.join(root, 'outside.md'), 'outside instructions');
+  try {
+    await writeFile(path.join(projectPath, 'AGENTS.md'), 'Use the project test command.');
+    await writeFile(path.join(projectPath, 'CLAUDE.md'), 'Keep changes focused.');
+    await writeFile(path.join(projectPath, '.github', 'copilot-instructions.md'), 'Follow the repo conventions.');
+    await writeFile(path.join(projectPath, 'GEMINI.md'), 'x'.repeat(20_000));
+    const { symlink } = require('node:fs/promises');
+    await symlink(path.join(root, 'outside.md'), path.join(projectPath, 'link.md'));
+    await symlink(path.join(root, 'outside.md'), path.join(linkedProject, 'AGENTS.md'));
+    const guidance = await collectProjectInstructions(projectPath);
+    assert.deepEqual(guidance.map((item) => item.name), ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.github/copilot-instructions.md']);
+    assert.ok(guidance.reduce((sum, item) => sum + Buffer.byteLength(item.content), 0) <= MAX_PROJECT_INSTRUCTION_BYTES);
+    assert.equal(guidance.find((item) => item.name === 'GEMINI.md').truncated, true);
+    assert.doesNotMatch(JSON.stringify(guidance), /outside instructions/);
+    assert.deepEqual(await collectProjectInstructions(linkedProject), []);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('project guidance attaches to the latest user message without mutating history', () => {
+  const messages = [{ role: 'user', text: 'Earlier' }, { role: 'assistant', text: 'Reply' }, { role: 'user', text: 'Review this' }];
+  const guided = appendProjectInstructions(messages, [{ name: 'AGENTS.md', content: 'Run focused tests.', truncated: false }]);
+  assert.match(guided.at(-1).text, /Review this[\s\S]*Run focused tests/);
+  assert.equal(messages.at(-1).text, 'Review this');
+  assert.equal(appendProjectInstructions(messages, []), messages);
 });
 
 test('project agent tools read nested text only and reject traversal and symlinks', async () => {
