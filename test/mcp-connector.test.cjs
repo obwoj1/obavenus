@@ -74,3 +74,46 @@ test('legacy MCP server falls back to initialization and keeps its session for t
     assert.equal(server.readOnlyTools[0], 'lookup');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('advertised MCP resources and simple URI templates are readable and scoped to their server', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-mcp-resources-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, 'mcp.enc');
+  const calls = [];
+  const fetchImpl = async (_url, options) => {
+    const request = JSON.parse(options.body); calls.push({ request, headers: options.headers });
+    if (request.method === 'tools/list') return jsonRpcResponse(request, { tools: [] });
+    if (request.method === 'resources/list') return jsonRpcResponse(request, { resources: [{ uri: 'canvas://course/biology', name: 'Biology course', mimeType: 'text/plain' }] });
+    if (request.method === 'resources/templates/list') return jsonRpcResponse(request, { resourceTemplates: [{ uriTemplate: 'canvas://course/{courseId}/assignments', name: 'Assignments' }] });
+    if (request.method === 'resources/read') return jsonRpcResponse(request, { contents: [{ uri: request.params.uri, mimeType: 'text/plain', text: 'Course assignments and due dates.' }] });
+    throw new Error(`Unexpected method ${request.method}`);
+  };
+  const connector = createMcpConnector({ filePath, safeStorage: secureStorage(), fetchImpl });
+  const server = await connector.addServer({ name: 'Canvas', url: 'https://canvas.example.edu/mcp', token: 'canvas-token' });
+  assert.equal(server.resources.length, 1);
+  assert.equal(server.resourceTemplates.length, 1);
+  assert.equal((await connector.listServers())[0].resources[0].uri, 'canvas://course/biology');
+  const agent = await connector.getAgentTools();
+  assert.equal(agent.definitions.length, 1);
+  const name = agent.definitions[0].name;
+  assert.match((await agent.execute(name, { uri: 'canvas://course/biology' })).text, /assignments and due dates/);
+  assert.match((await agent.execute(name, { uri: 'canvas://course/123/assignments' })).text, /assignments and due dates/);
+  await assert.rejects(agent.execute(name, { uri: 'https://attacker.example/steal' }), /not advertised/);
+  assert.equal(calls.filter(({ request }) => request.method === 'resources/read').length, 2);
+  assert.ok(calls.every(({ headers }) => headers.Authorization === 'Bearer canvas-token'));
+});
+
+test('MCP resources remain optional for servers that do not implement resource methods', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'obavenus-mcp-no-resources-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fetchImpl = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    if (request.method === 'tools/list') return jsonRpcResponse(request, { tools: [] });
+    return jsonRpcResponse(request, null, { error: 'method unavailable' });
+  };
+  const connector = createMcpConnector({ filePath: path.join(directory, 'mcp.enc'), safeStorage: secureStorage(), fetchImpl });
+  const server = await connector.addServer({ name: 'Tools only', url: 'https://tools.example.edu/mcp' });
+  assert.deepEqual(server.resources, []);
+  assert.deepEqual(server.resourceTemplates, []);
+  assert.deepEqual((await connector.getAgentTools()).definitions, []);
+});

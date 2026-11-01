@@ -5,7 +5,10 @@ const path = require('node:path');
 const MCP_VERSION = '2026-07-28';
 const MAX_SERVERS = 12;
 const MAX_TOOLS_PER_SERVER = 40;
+const MAX_RESOURCES_PER_SERVER = 40;
+const MAX_RESOURCE_TEMPLATES_PER_SERVER = 20;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_RESOURCE_OUTPUT_BYTES = 60_000;
 
 function cleanMcpUrl(value) {
   if (typeof value !== 'string' || value.length > 1500) throw new TypeError('Enter the MCP server URL.');
@@ -19,6 +22,43 @@ function readOnlyTool(tool) {
   if (tool.annotations?.readOnlyHint !== true || tool.annotations?.destructiveHint === true) return false;
   if (!tool.inputSchema || tool.inputSchema.type !== 'object' || (tool.inputSchema.properties !== undefined && (typeof tool.inputSchema.properties !== 'object' || Array.isArray(tool.inputSchema.properties)))) return false;
   return Buffer.byteLength(JSON.stringify(tool.inputSchema)) <= 24_000;
+}
+
+function cleanResource(resource) {
+  if (!resource || typeof resource.uri !== 'string' || resource.uri.length > 1200 || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(resource.uri)) return null;
+  return {
+    uri: resource.uri,
+    name: String(resource.name || resource.uri).slice(0, 160),
+    title: typeof resource.title === 'string' ? resource.title.slice(0, 160) : '',
+    description: typeof resource.description === 'string' ? resource.description.slice(0, 500) : '',
+    mimeType: typeof resource.mimeType === 'string' ? resource.mimeType.slice(0, 120) : '',
+  };
+}
+
+function cleanResourceTemplate(template) {
+  if (!template || typeof template.uriTemplate !== 'string' || template.uriTemplate.length > 1200 || !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(template.uriTemplate)) return null;
+  return {
+    uriTemplate: template.uriTemplate,
+    name: String(template.name || template.uriTemplate).slice(0, 160),
+    title: typeof template.title === 'string' ? template.title.slice(0, 160) : '',
+    description: typeof template.description === 'string' ? template.description.slice(0, 500) : '',
+    mimeType: typeof template.mimeType === 'string' ? template.mimeType.slice(0, 120) : '',
+  };
+}
+
+function resourceUriAllowed(uri, resources, templates) {
+  if (typeof uri !== 'string' || uri.length > 1200) return false;
+  if (resources.some((resource) => resource.uri === uri)) return true;
+  return templates.some(({ uriTemplate }) => {
+    const parts = uriTemplate.split(/(\{[a-zA-Z_][a-zA-Z0-9_]*\})/g);
+    if (parts.some((part) => (part.includes('{') || part.includes('}')) && !/^\{[a-zA-Z_][a-zA-Z0-9_]*\}$/.test(part))) return false;
+    const pattern = parts.map((part) => /^\{[a-zA-Z_][a-zA-Z0-9_]*\}$/.test(part) ? '[^/?#]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
+    return new RegExp(`^${pattern}$`).test(uri);
+  });
+}
+
+function unsupportedMethod(error) {
+  return [400, 404, 405, 406, 415, 501].includes(error.status) || [-32601, -32002].includes(error.rpcCode);
 }
 
 function decodeResponse(body, contentType) {
@@ -70,7 +110,7 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
     const temporary = `${filePath}.${randomUUID()}.tmp`;
     try {
       const encrypted = safeStorage.encryptString(JSON.stringify(config)).toString('base64');
-      const servers = config.servers.map(({ id, name, url, tools = [] }) => ({ id, name, url, tools }));
+      const servers = config.servers.map(({ id, name, url, tools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, tools, resources, resourceTemplates }));
       await writeFile(temporary, JSON.stringify({ version: 1, servers, encrypted }), { mode: 0o600 });
       await rename(temporary, filePath);
       cachedConfig = config;
@@ -142,6 +182,47 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
     return { connection, tools: tools.slice(0, MAX_TOOLS_PER_SERVER) };
   }
 
+  async function listCatalog(config, connection, method, key, limit, cleaner) {
+    const items = [];
+    let cursor;
+    for (let page = 0; page < 5; page += 1) {
+      let response;
+      try {
+        response = await post(config, method, cursor ? { cursor } : {}, { version: connection.version, sessionId: connection.sessionId });
+      } catch (error) {
+        if (unsupportedMethod(error)) return [];
+        throw error;
+      }
+      const result = response.result;
+      if (!Array.isArray(result?.[key])) return [];
+      items.push(...result[key].map(cleaner).filter(Boolean));
+      cursor = result.nextCursor;
+      if (!cursor || items.length >= limit) break;
+    }
+    return items.slice(0, limit);
+  }
+
+  async function discoverCatalog(config, connection) {
+    const [resources, resourceTemplates] = await Promise.all([
+      listCatalog(config, connection, 'resources/list', 'resources', MAX_RESOURCES_PER_SERVER, cleanResource),
+      listCatalog(config, connection, 'resources/templates/list', 'resourceTemplates', MAX_RESOURCE_TEMPLATES_PER_SERVER, cleanResourceTemplate),
+    ]);
+    return { resources, resourceTemplates };
+  }
+
+  async function readRemoteResource(server, connection, resources, resourceTemplates, uri) {
+    if (!resourceUriAllowed(uri, resources, resourceTemplates)) throw new Error('That resource URI was not advertised by this MCP server.');
+    const response = await post(server, 'resources/read', { uri }, { version: connection.version, sessionId: connection.sessionId });
+    const contents = Array.isArray(response.result?.contents) ? response.result.contents : [];
+    const output = contents.slice(0, 40).map((item) => {
+      if (typeof item.text === 'string') return `[${String(item.uri || uri).slice(0, 1200)}${item.mimeType ? ` · ${String(item.mimeType).slice(0, 120)}` : ''}]\n${item.text}`;
+      if (typeof item.blob === 'string') return `[${String(item.uri || uri).slice(0, 1200)} · binary content omitted]`;
+      return '';
+    }).filter(Boolean).join('\n\n');
+    if (Buffer.byteLength(output) > MAX_RESOURCE_OUTPUT_BYTES) throw new RangeError('MCP resource output is over 60 KB and was not passed to the assistant.');
+    return { text: output, isError: false };
+  }
+
   async function callRemote(config, connection, name, args) {
     const response = await post(config, 'tools/call', { name, arguments: args }, { version: connection.version, sessionId: connection.sessionId, toolName: name });
     const content = Array.isArray(response.result?.content) ? response.result.content : [];
@@ -156,7 +237,7 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
     async listServers() {
       try {
         const envelope = JSON.parse(await readFile(filePath, 'utf8'));
-        return Array.isArray(envelope.servers) ? envelope.servers.map(({ id, name, url, tools = [] }) => ({ id, name, url, readOnlyTools: tools })) : [];
+        return Array.isArray(envelope.servers) ? envelope.servers.map(({ id, name, url, tools = [], resources = [], resourceTemplates = [] }) => ({ id, name, url, readOnlyTools: tools, resources, resourceTemplates })) : [];
       } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
     },
     async addServer({ name, url, token = '' }) {
@@ -166,11 +247,13 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
       const current = await readConfig();
       if (current.servers.length >= MAX_SERVERS) throw new RangeError(`Obavenus supports up to ${MAX_SERVERS} MCP servers.`);
       if (current.servers.some((server) => server.url === config.url)) throw new Error('That MCP server URL is already connected.');
-      const { tools } = await listTools(config);
+      const { connection, tools } = await listTools(config);
       config.tools = tools.filter(readOnlyTool).map((tool) => tool.name);
+      try { Object.assign(config, await discoverCatalog(config, connection)); }
+      catch { config.resources = []; config.resourceTemplates = []; }
       current.servers.push(config);
       await writeConfig(current);
-      return { id: config.id, name: config.name, url: config.url, readOnlyTools: config.tools };
+      return { id: config.id, name: config.name, url: config.url, readOnlyTools: config.tools, resources: config.resources, resourceTemplates: config.resourceTemplates };
     },
     async removeServer(id) {
       const current = await readConfig();
@@ -188,16 +271,30 @@ function createMcpConnector({ filePath, safeStorage, fetchImpl = globalThis.fetc
       for (const server of current.servers) {
         try {
           const { connection, tools } = await listTools(server);
+          let catalog = { resources: [], resourceTemplates: [] };
+          try { catalog = await discoverCatalog(server, connection); }
+          catch (error) { failures.push(`${server.name} resources: ${error.message || 'discovery failed'}`); }
           for (const tool of tools.filter(readOnlyTool)) {
             const exposedName = `mcp_${server.id.replace(/-/g, '').slice(0, 12)}_${tool.name}`.slice(0, 64);
             definitions.push({ name: exposedName, description: `[${server.name}] ${String(tool.description || tool.title || tool.name).slice(0, 700)}`, parameters: { ...tool.inputSchema, properties: tool.inputSchema.properties || {} } });
             mapping.set(exposedName, { server, connection, tool });
+          }
+          if (catalog.resources.length || catalog.resourceTemplates.length) {
+            const exposedName = `mcp_${server.id.replace(/-/g, '').slice(0, 12)}_read_resource`;
+            const candidates = [...catalog.resources.map((item) => item.uri), ...catalog.resourceTemplates.map((item) => item.uriTemplate)];
+            definitions.push({
+              name: exposedName,
+              description: `[${server.name}] Read a resource advertised by this MCP server. Available URIs/templates: ${candidates.join(', ').slice(0, 1800)}`,
+              parameters: { type: 'object', properties: { uri: { type: 'string', maxLength: 1200, description: 'Exact advertised resource URI or URI matching one of the listed templates.' } }, required: ['uri'], additionalProperties: false },
+            });
+            mapping.set(exposedName, { server, connection, resources: catalog.resources, resourceTemplates: catalog.resourceTemplates });
           }
         } catch (error) { failures.push(`${server.name}: ${error.message || 'connection failed'}`); }
       }
       return { definitions, failures, execute: async (name, args) => {
         const entry = mapping.get(name);
         if (!entry) throw new Error('This MCP tool is no longer available. Refresh the connection and try again.');
+        if (!entry.tool) return readRemoteResource(entry.server, entry.connection, entry.resources, entry.resourceTemplates, args?.uri);
         return callRemote(entry.server, entry.connection, entry.tool.name, args);
       } };
     },
