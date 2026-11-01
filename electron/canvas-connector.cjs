@@ -3,6 +3,30 @@ const { randomUUID } = require('node:crypto');
 const path = require('node:path');
 
 const MAX_PAGES = 25;
+const MAX_CANVAS_DOWNLOAD = 10 * 1024 * 1024;
+
+async function readLimitedResponse(response, limit) {
+  const declaredLength = Number(response.headers?.get?.('content-length') || 0);
+  if (declaredLength > limit) throw new RangeError('Canvas file exceeds the local download limit.');
+  if (!response.body?.getReader) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > limit) throw new RangeError('Canvas file exceeds the local download limit.');
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) { await reader.cancel(); throw new RangeError('Canvas file exceeds the local download limit.'); }
+      chunks.push(Buffer.from(value));
+    }
+  } finally { reader.releaseLock?.(); }
+  return Buffer.concat(chunks, size);
+}
 
 function cleanCanvasBaseUrl(value) {
   if (typeof value !== 'string' || value.length > 500) throw new TypeError('Enter your Canvas school URL.');
@@ -15,7 +39,7 @@ function plainText(value) {
   return String(value || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/\s+/g, ' ').replace(/\s+([,.;!?])/g, '$1').trim().slice(0, 20_000);
 }
 
-function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.fetch, now = () => Date.now() }) {
+function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.fetch, extractFile, now = () => Date.now() }) {
   async function readConfig() {
     try {
       const envelope = JSON.parse(await readFile(filePath, 'utf8'));
@@ -101,9 +125,13 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
       const courses = await pages(config, `${config.baseUrl}/api/v1/courses?enrollment_state=active&per_page=100`);
       const data = await studyStore.load();
       if (!Array.isArray(data.modules)) data.modules = [];
+      if (!Array.isArray(data.sources)) data.sources = [];
       let importedCourses = 0;
       let importedAssignments = 0;
       let syncedModules = 0;
+      let filesImported = 0;
+      let filesSkipped = 0;
+      let downloadedBytes = 0;
       for (const canvasCourse of courses.filter((course) => Number.isInteger(course.id) && course.name)) {
         let course = data.courses.find((item) => String(item.canvasId || '') === String(canvasCourse.id));
         if (!course) {
@@ -136,6 +164,7 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
             position: Number.isInteger(canvasModule.position) ? canvasModule.position : 0,
             items: items.filter((entry) => Number.isInteger(entry.id)).slice(0, 300).map((entry) => ({
               canvasId: String(entry.id), title: String(entry.title || entry.type || 'Untitled item').slice(0, 240),
+              contentId: entry.content_id === undefined || entry.content_id === null ? '' : String(entry.content_id),
               type: String(entry.type || 'Unknown').slice(0, 40), position: Number.isInteger(entry.position) ? entry.position : 0,
               locked: entry.locked_for_user === true || entry.content_details?.locked_for_user === true,
             })),
@@ -145,12 +174,50 @@ function createCanvasConnector({ filePath, safeStorage, fetchImpl = globalThis.f
           if (existing) Object.assign(existing, record, { id: existing.id });
           else data.modules.push(record);
           syncedModules += 1;
+          for (const item of record.items) {
+            if (item.type !== 'File' || item.locked || !/^\d+$/.test(item.contentId) || typeof extractFile !== 'function') continue;
+            const oldSource = data.sources.find((source) => source.courseId === course.id && source.canvasId === item.contentId);
+            try {
+              const fileResponse = await request(config, `${config.baseUrl}/api/v1/files/${item.contentId}`);
+              const file = await fileResponse.json();
+              if (!file || !Number.isFinite(file.size) || file.size < 0 || file.size > MAX_CANVAS_DOWNLOAD || typeof file.url !== 'string' || typeof file.filename !== 'string') throw new Error('Canvas file is missing a safe download URL or is over 10 MB.');
+              const revision = String(file.updated_at || file.modified_at || '');
+              if (oldSource && revision && oldSource.remoteUpdatedAt === revision) continue;
+              if (downloadedBytes + file.size > 20 * 1024 * 1024) { filesSkipped += 1; continue; }
+              const downloadUrl = new URL(file.url);
+              if (downloadUrl.protocol !== 'https:' || downloadUrl.username || downloadUrl.password) throw new Error('Canvas returned an unsafe file URL.');
+              const headers = { Accept: '*/*' };
+              if (downloadUrl.origin === config.baseUrl) headers.Authorization = `Bearer ${config.token}`;
+              const download = await fetchImpl(downloadUrl, { headers, redirect: 'error' });
+              if (!download.ok) throw new Error(`Canvas file download failed (${download.status}).`);
+              const bytes = await readLimitedResponse(download, MAX_CANVAS_DOWNLOAD);
+              if (!bytes.length || bytes.length > MAX_CANVAS_DOWNLOAD || downloadedBytes + bytes.length > 20 * 1024 * 1024) throw new Error('Canvas file exceeds the local download limit.');
+              downloadedBytes += bytes.length;
+              const extracted = await extractFile(file.filename, bytes);
+              let content = String(extracted?.content || '').trim();
+              if (!content) throw new Error('No readable text was found in this Canvas file.');
+              const truncated = content.length > 200_000;
+              if (truncated) content = `${content.slice(0, 199_960)}\n\n[Local import truncated at 200,000 characters.]`;
+              const storedBytes = data.sources.reduce((total, source) => total + Buffer.byteLength(source.content), 0) - (oldSource ? Buffer.byteLength(oldSource.content) : 0);
+              if (!oldSource && data.sources.length >= 40 || storedBytes + Buffer.byteLength(content) > 4 * 1024 * 1024) { filesSkipped += 1; continue; }
+              const source = {
+                id: oldSource?.id || randomUUID(), courseId: course.id,
+                name: String(file.filename).slice(0, 240), content, canvasId: item.contentId,
+                remoteUpdatedAt: revision.slice(0, 80), updatedAt: now(),
+              };
+              if (oldSource) Object.assign(oldSource, source);
+              else data.sources.push(source);
+              filesImported += 1;
+            } catch {
+              filesSkipped += 1;
+            }
+          }
         }
       }
       await studyStore.save(data);
-      return { courses: importedCourses, assignments: importedAssignments, modules: syncedModules, syncedAt: now() };
+      return { courses: importedCourses, assignments: importedAssignments, modules: syncedModules, filesImported, filesSkipped, syncedAt: now() };
     },
   };
 }
 
-module.exports = { cleanCanvasBaseUrl, createCanvasConnector };
+module.exports = { cleanCanvasBaseUrl, createCanvasConnector, readLimitedResponse };
