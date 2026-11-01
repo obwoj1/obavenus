@@ -1670,6 +1670,7 @@ const studyDialog = document.querySelector('#study-dialog');
 let studyData = null;
 let studySaveQueue = Promise.resolve();
 let activeStudyQuiz = null;
+const studyAssignmentAnalysis = new Map();
 const emptyStudyData = () => ({ version: 1, courses: [], assignments: [], notes: [], decks: [], sources: [], modules: [] });
 
 function setStudyStatus(message = '') {
@@ -1748,6 +1749,24 @@ function renderStudySpace() {
     meta.textContent = `${course?.name || 'Course'} · ${assignment.dueAt ? `Due ${new Date(assignment.dueAt).toLocaleString()}` : 'No due date'} · ${assignment.status === 'done' ? 'Complete' : `${assignment.steps.filter((step) => step.done).length}/${assignment.steps.length} steps`}`;
     card.append(title, meta);
     if (assignment.instructions) { const instructions = document.createElement('p'); instructions.textContent = assignment.instructions; card.append(instructions); }
+    const analyze = document.createElement('button'); analyze.type = 'button'; analyze.dataset.analyzeAssignment = 'true'; analyze.textContent = studyAssignmentAnalysis.has(assignment.id) ? 'Refresh requirement check' : 'Check requirements';
+    card.append(analyze);
+    const analysis = studyAssignmentAnalysis.get(assignment.id);
+    if (analysis) {
+      const panel = document.createElement('div'); panel.className = 'study-assignment-analysis';
+      const label = document.createElement('small'); label.textContent = 'Local requirement scan · verify against the original prompt'; panel.append(label);
+      const details = [
+        ['Deliverables', analysis.deliverables], ['Quantity', analysis.quantityRequirements],
+        ['Format', analysis.formatRequirements], ['Citation style', analysis.citations], ['Explicit requirements', analysis.evidence],
+      ];
+      for (const [heading, values] of details) {
+        if (!values.length) continue;
+        const line = document.createElement('p'); line.textContent = `${heading}: ${values.join(' · ')}`; panel.append(line);
+      }
+      if (analysis.dueDate) { const dueText = document.createElement('p'); dueText.textContent = `Due: ${new Date(analysis.dueDate).toLocaleString()}`; panel.append(dueText); }
+      if (details.every(([, values]) => !values.length) && !analysis.dueDate) { const empty = document.createElement('p'); empty.textContent = 'No explicit deliverable, quantity, format, or citation requirement was detected.'; panel.append(empty); }
+      card.append(panel);
+    }
     const suggest = document.createElement('button'); suggest.type = 'button'; suggest.dataset.suggestSteps = 'true'; suggest.textContent = assignment.instructions ? 'Draft checklist from instructions' : 'Draft a starter checklist';
     card.append(suggest);
     for (const step of assignment.steps) {
@@ -2043,6 +2062,13 @@ document.querySelector('#study-assignment-list').addEventListener('change', asyn
 document.querySelector('#study-assignment-list').addEventListener('click', async (event) => {
   const card = event.target.closest('[data-assignment-id]'); if (!card) return;
   const assignment = studyData.assignments.find((item) => item.id === card.dataset.assignmentId); if (!assignment) return;
+  if (event.target.closest('[data-analyze-assignment]')) {
+    try {
+      studyAssignmentAnalysis.set(assignment.id, await window.obavenus.analyzeStudyAssignment({ title: assignment.title, instructions: assignment.instructions, dueAt: assignment.dueAt }));
+      renderStudySpace();
+    } catch (error) { setStudyStatus(error.message || 'Could not check assignment requirements.'); }
+    return;
+  }
   if (event.target.closest('[data-suggest-steps]')) {
     try {
       const suggestion = await window.obavenus.suggestAssignmentSteps(assignment.instructions || '');

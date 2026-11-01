@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('obavenus', {
   generateStudyAids: (sourceId) => ipcRenderer.invoke('study:generate-aids', sourceId),
   buildStudyQuiz: (deckId) => ipcRenderer.invoke('study:build-quiz', deckId),
   suggestAssignmentSteps: (instructions) => ipcRenderer.invoke('study:suggest-assignment-steps', instructions),
+  analyzeStudyAssignment: (assignment) => ipcRenderer.invoke('study:analyze-assignment', assignment),
   setStudyReminders: (enabled) => ipcRenderer.invoke('study:set-reminders', enabled),
   reviewStudyCard: (deckId, cardId, rating, reviewedAt) => ipcRenderer.invoke('study:review-card', { deckId, cardId, rating, reviewedAt }),
   getDueStudyCards: () => ipcRenderer.invoke('study:due-cards'),

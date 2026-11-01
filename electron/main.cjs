@@ -39,6 +39,7 @@ const { createCanvasConnector } = require('./canvas-connector.cjs');
 const { searchStudySources } = require('./study-search.cjs');
 const { buildPracticeQuiz } = require('./study-generation.cjs');
 const { suggestAssignmentSteps } = require('./assignment-planner.cjs');
+const { analyzeAssignment } = require('./assignment-analysis.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -420,6 +421,7 @@ ipcMain.handle('study:build-quiz', async (_event, deckId) => {
   return buildPracticeQuiz(deck);
 });
 ipcMain.handle('study:suggest-assignment-steps', (_event, instructions) => suggestAssignmentSteps(instructions));
+ipcMain.handle('study:analyze-assignment', (_event, assignment) => analyzeAssignment(assignment));
 ipcMain.handle('study:set-reminders', async (_event, enabled) => {
   const data = await getStudyStore().setRemindersEnabled(enabled);
   const remindersSent = enabled ? await checkStudyReminders() : 0;
