@@ -31,6 +31,8 @@ const { createConversationStore } = require('./conversations.cjs');
 const { readResumeFile } = require('./resume-file.cjs');
 const { createWorkspaceStore } = require('./workspaces.cjs');
 const { createChromeBridge } = require('./chrome-bridge.cjs');
+const { createStudyStore } = require('./study-store.cjs');
+const { dueCards } = require('./study-review.cjs');
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 const localAgent = createLocalAgent();
@@ -70,6 +72,7 @@ let conversationStore;
 let chromeBridge;
 let remoteMachineStore;
 let remoteJobStore;
+let studyStore;
 
 function getWorkspaceStore() {
   if (!workspaceStore) workspaceStore = createWorkspaceStore({ filePath: workspaceFile(), describeProject });
@@ -78,6 +81,11 @@ function getWorkspaceStore() {
 function getConversationStore() {
   if (!conversationStore) conversationStore = createConversationStore({ filePath: path.join(app.getPath('userData'), 'conversations.json'), safeStorage });
   return conversationStore;
+}
+
+function getStudyStore() {
+  if (!studyStore) studyStore = createStudyStore({ filePath: path.join(app.getPath('userData'), 'study-space.enc'), safeStorage });
+  return studyStore;
 }
 
 function getRemoteMachineStore() {
@@ -346,6 +354,11 @@ ipcMain.handle('project:undo-change', async (_event, undoToken) => {
 });
 ipcMain.handle('conversations:load', () => getConversationStore().load());
 ipcMain.handle('conversations:save', (_event, conversations) => getConversationStore().save(conversations));
+ipcMain.handle('study:load', () => getStudyStore().load());
+ipcMain.handle('study:save', (_event, data) => getStudyStore().save(data));
+ipcMain.handle('study:create-course', (_event, course) => getStudyStore().createCourse(course));
+ipcMain.handle('study:review-card', (_event, { deckId, cardId, rating, reviewedAt }) => getStudyStore().reviewCard(deckId, cardId, rating, reviewedAt));
+ipcMain.handle('study:due-cards', async () => dueCards((await getStudyStore().load()).decks));
 ipcMain.handle('conversation:export', async (_event, conversation) => {
   const markdown = formatConversationMarkdown(conversation);
   const result = await dialog.showSaveDialog({
