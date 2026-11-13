@@ -286,6 +286,20 @@ async function openProjectFile(fileName) {
   attachButton.className = 'context-action';
   attachButton.textContent = '＋ Add to next message';
   attachButton.addEventListener('click', () => attachProjectContext(fileName, result.content));
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (['docx', 'pptx', 'xlsx'].includes(extension)) {
+    try {
+      const rendered = await window.obavenus.previewOfficeFile(fileName);
+      const image = document.createElement('img');
+      image.className = 'office-preview';
+      image.alt = `${rendered.description} rendered locally with macOS Quick Look`;
+      image.src = rendered.dataUrl;
+      contextCard.append(heading, openButton, image, preview, attachButton, note);
+      return;
+    } catch (error) {
+      note.textContent += ` · rendered preview unavailable: ${error.message || 'open in the default app'}`;
+    }
+  }
   contextCard.append(heading, openButton, preview, attachButton, note);
 }
 

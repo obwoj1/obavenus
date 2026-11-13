@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.108: Project previews now show an on-device macOS Quick Look thumbnail for Word, Excel, and PowerPoint files alongside locally extracted text; unsupported renderers fail gracefully and the first page/slide preview is clearly identified.
 - 0.1.107: Browser page reading now returns bounded 20,000-character chunks with continuation offsets and a 200,000-character cap, so long assignment and reference pages can be read in sequence.
 - 0.1.106: Added text-targeted scrolling to the isolated Research Browser and paired Chrome. The agent scrolls only when one visible text section matches; ambiguous matches are rejected and scrolling never activates controls.
 - 0.1.105: Configured MCP write actions are available with native per-call approval showing the server, operation, and exact bounded arguments; declined calls never reach the server.

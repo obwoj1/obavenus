@@ -48,6 +48,8 @@ const { createStudyDigestScheduler } = require('./study-digest-scheduler.cjs');
 const { isWithinQuietHours } = require('./study-reminders.cjs');
 const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
+const { createQuickLookPreview } = require('./quick-look-preview.cjs');
+const quickLookPreview = createQuickLookPreview();
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 async function selectedProjectPath() {
@@ -509,6 +511,10 @@ ipcMain.handle('project:close', () => getWorkspaceStore().close());
 ipcMain.handle('project:read-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
   return readProjectFile(saved.projectPath, fileName, { ocrImage: getLocalOcr() });
+});
+ipcMain.handle('project:preview-office', async (_event, fileName) => {
+  const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));
+  return quickLookPreview(saved.projectPath, fileName);
 });
 ipcMain.handle('project:open-file', async (_event, fileName) => {
   const saved = JSON.parse(await readFile(workspaceFile(), 'utf8'));

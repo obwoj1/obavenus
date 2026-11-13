@@ -1,6 +1,6 @@
 # Local setup
 
-Project previews support plain text files up to 64 KB plus PDF and Office files up to 10 MB. PDF and Office extraction happens locally and is capped at 60,000 text characters; PDFs are limited to 200 pages. The bundled OCR engine recognizes up to 20 scanned PDF pages on this Mac. Previews stay on the Mac unless you explicitly add the extracted text to a message; attached context is shown in the composer before sending.
+Project previews support plain text files up to 64 KB plus PDF and Office files up to 10 MB. PDF and Office extraction happens locally and is capped at 60,000 text characters; PDFs are limited to 200 pages. On macOS, Word, Excel, and PowerPoint previews also show a Quick Look-rendered thumbnail of the first page, slide, or workbook view. The bundled OCR engine recognizes up to 20 scanned PDF pages on this Mac. Previews stay on the Mac unless you explicitly add the extracted text to a message; attached context is shown in the composer before sending.
 
 The personal profile can import a resume from TXT, Markdown, DOCX, or PDF. Scanned PDF pages are recognized with the bundled offline OCR engine; up to 20 scanned pages are processed and the saved profile text is limited to 50,000 characters. Resume extraction stays on this Mac.
 
