@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { Readable } = require('node:stream');
-const { BASE_URL, listOllamaModels, makeMessages, requestOllamaResponse } = require('../electron/ollama.cjs');
+const { BASE_URL, getOllamaVisionStatus, listOllamaModels, makeMessages, requestOllamaResponse } = require('../electron/ollama.cjs');
 
 test('Ollama chat uses the fixed local endpoint and returns normal assistant text', async () => {
   let request;
@@ -15,6 +15,21 @@ test('Ollama chat uses the fixed local endpoint and returns normal assistant tex
   assert.equal(request.body.stream, false);
   assert.equal(request.options.headers.Authorization, undefined);
   assert.equal(result, 'Hi there.');
+});
+
+test('Ollama vision sends a bounded screenshot as local base64 image input', async () => {
+  const screenshot = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  let body;
+  const answer = await requestOllamaResponse({
+    model: 'gemma4', messages: [{ role: 'user', text: 'Read the diagram labels.', images: [screenshot] }],
+    fetchImpl: async (url, options) => { body = JSON.parse(options.body); assert.equal(url, `${BASE_URL}/api/chat`); return { ok: true, json: async () => ({ message: { content: 'A points to B.' } }) }; },
+  });
+  assert.equal(body.messages[1].content, 'Read the diagram labels.');
+  assert.deepEqual(body.messages[1].images, [screenshot.toString('base64')]);
+  assert.equal(answer, 'A points to B.');
+  assert.throws(() => makeMessages([{ role: 'user', text: 'image', images: [Buffer.from('not an image')] }]), /JPEG or PNG/);
+  assert.throws(() => makeMessages([{ role: 'user', text: 'image', images: [Buffer.concat([screenshot, Buffer.alloc(4 * 1024 * 1024)])] }]), /4 MB/);
+  assert.throws(() => makeMessages([{ role: 'assistant', text: 'image', images: [screenshot] }]), /user image/);
 });
 
 test('Ollama exposes native tools and normalizes tool calls for Obavenus agent loops', async () => {
@@ -35,6 +50,22 @@ test('Ollama local model discovery reports installed tags and offline status', a
   const offline = await listOllamaModels({ fetchImpl: async () => { throw new Error('offline'); } });
   assert.equal(offline.connected, false);
   assert.match(offline.error, /Start the Ollama app/);
+});
+
+test('Ollama vision is enabled only for installed local models that advertise vision', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, body: options?.body ? JSON.parse(options.body) : null });
+    if (url.endsWith('/api/tags')) return { ok: true, json: async () => ({ models: [{ name: 'gemma4' }] }) };
+    return { ok: true, json: async () => ({ capabilities: ['completion', 'vision'] }) };
+  };
+  assert.deepEqual(await getOllamaVisionStatus('gemma4', { fetchImpl }), { available: true });
+  assert.deepEqual(requests.map((request) => request.url), [`${BASE_URL}/api/tags`, `${BASE_URL}/api/show`]);
+  assert.deepEqual(requests[1].body, { model: 'gemma4' });
+  assert.deepEqual(await getOllamaVisionStatus('gemma4:cloud', { fetchImpl: async () => ({ ok: true, json: async () => ({ models: [{ name: 'gemma4:cloud', remote_host: 'https://ollama.example' }] }) }) }), { available: false, reason: 'Screenshot analysis is disabled for Ollama cloud or remote models; choose a local vision model to keep screenshots on this Mac.' });
+  assert.deepEqual(await getOllamaVisionStatus('text-model', { fetchImpl: async (url) => url.endsWith('/api/tags') ? { ok: true, json: async () => ({ models: [{ name: 'text-model' }] }) } : { ok: true, json: async () => ({ capabilities: ['completion'] }) } }), { available: false, reason: 'The selected Ollama model does not advertise vision support.' });
+  assert.deepEqual(await getOllamaVisionStatus('remote-model', { fetchImpl: async () => ({ ok: true, json: async () => ({ models: [{ name: 'remote-model', remote_host: 'https://ollama.example' }] }) }) }), { available: false, reason: 'Screenshot analysis is disabled for Ollama cloud or remote models; choose a local vision model to keep screenshots on this Mac.' });
+  assert.equal((await getOllamaVisionStatus('', { fetchImpl: async () => { throw new Error('should not request'); } })).available, false);
 });
 
 test('Ollama propagates Stop as a user cancellation', async () => {

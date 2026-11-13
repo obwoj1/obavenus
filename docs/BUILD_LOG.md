@@ -1,5 +1,6 @@
 # Build log
 
+- 0.1.109: Browser research can analyze a bounded screenshot through a verified local, installed Ollama vision model. Vision is hidden for other providers, non-vision models, and Ollama cloud/remote models; local OCR remains available.
 - 0.1.108: Project previews now show an on-device macOS Quick Look thumbnail for Word, Excel, and PowerPoint files alongside locally extracted text; unsupported renderers fail gracefully and the first page/slide preview is clearly identified.
 - 0.1.107: Browser page reading now returns bounded 20,000-character chunks with continuation offsets and a 200,000-character cap, so long assignment and reference pages can be read in sequence.
 - 0.1.106: Added text-targeted scrolling to the isolated Research Browser and paired Chrome. The agent scrolls only when one visible text section matches; ambiguous matches are rejected and scrolling never activates controls.

@@ -41,6 +41,7 @@ const BROWSER_TOOLS = [
   { name: 'browser_list_tabs', description: 'List up to 40 ordinary web tabs in the paired Chrome window. Returns each title and URL so you can choose a relevant existing signed-in page.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_select_tab', description: 'Switch paired Chrome to the one tab with this exact URL. Refuses duplicates and does not change site content.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Exact URL returned by browser_list_tabs.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_screenshot_text', description: 'Capture the selected visible browser tab and run local OCR on this Mac. Returns bounded recognized text for pages drawn as images or canvas; it does not send the screenshot image to the AI provider.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'browser_analyze_screenshot', description: 'Analyze the selected visible browser screenshot with the configured local Ollama vision model. The bounded image is sent only to Ollama on this Mac, never to a hosted AI provider. Use for charts, diagrams, spatial layout, and other visual details; the model must support vision.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'Specific visual detail to inspect, up to 1,000 characters.' } }, required: ['question'], additionalProperties: false } },
   { name: 'browser_open_page', description: 'Open an http or https page in the selected browser. With Chrome access this navigates your active signed-in Chrome tab; otherwise it opens the isolated Obavenus Research Browser. Use for research and review.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_page', description: 'Read one bounded chunk of current page text as untrusted reference material. The response provides nextOffset; pass it back to continue through long pages.', parameters: { type: 'object', properties: { offset: { type: 'integer', description: 'Character offset from a previous read_page response, starting at 0.' } }, required: [], additionalProperties: false } },
   { name: 'browser_scroll_to_text', description: 'Scroll the selected browser page to one uniquely matching visible text phrase. This only changes the viewport; it does not activate controls or change site data.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible phrase on the current page, up to 200 characters.' } }, required: ['text'], additionalProperties: false } },
@@ -104,7 +105,7 @@ const TOOL_DEFINITIONS = [
   },
 ];
 
-function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, executeMcpTool, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, fetchImpl = globalThis.fetch }) {
+function createAgentToolExecutor({ projectPath, searchGmail, getProfile, projectMemory, projectUndo, ocrImage, analyzeBrowserScreenshot, executeMcpTool, writeAccess = false, browserAccess = false, browserFillAccess = false, browser, signal, fetchImpl = globalThis.fetch }) {
   const changes = [];
   async function writeWithUndo(relativePath, content, write, expectedInitialHash) {
     const snapshot = await snapshotProjectFile(projectPath, relativePath, Math.max(MAX_AGENT_WRITE_BYTES, Buffer.byteLength(content)));
@@ -244,6 +245,12 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
       const text = await ocrImage(image.bytes);
       return { text: String(text || '').slice(0, 8_000), extractedLocally: true, source: 'visible browser screenshot OCR' };
     }
+    if (name === 'browser_analyze_screenshot') {
+      if (!browserAccess || typeof browser.captureVisibleTab !== 'function' || typeof analyzeBrowserScreenshot !== 'function') return { error: 'Local screenshot analysis is available only with browser research and the Ollama provider selected.' };
+      if (typeof args.question !== 'string' || !args.question.trim() || args.question.length > 1_000) throw new TypeError('Ask a specific screenshot question, up to 1,000 characters.');
+      const image = await browser.captureVisibleTab();
+      return { analysis: await analyzeBrowserScreenshot({ bytes: image.bytes, question: args.question.trim(), signal }), processedLocally: true, source: 'visible browser screenshot via local Ollama' };
+    }
     if (name === 'browser_read_page') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run.' };
       const offset = args.offset ?? 0;
@@ -310,12 +317,12 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
   return executeAgentTool;
 }
 
-async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false, externalTools = [], signal }) {
+async function runToolAgent({ messages, dispatch, executeTool, onTool = () => {}, maxCalls = 4, writeAccess = false, browserAccess = false, browserFillAccess = false, browserVisionAccess = false, externalTools = [], signal }) {
   const transcript = [...messages];
   let calls = 0;
   while (calls < maxCalls) {
     signal?.throwIfAborted();
-    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab'].includes(tool.name) || browserFillAccess) : [];
+    const browserTools = browserAccess ? BROWSER_TOOLS.filter((tool) => tool.name !== 'browser_analyze_screenshot' || browserVisionAccess).filter((tool) => !['browser_fill_field', 'browser_select_option', 'browser_set_checked', 'browser_list_tabs', 'browser_select_tab'].includes(tool.name) || browserFillAccess) : [];
     const tools = [...TOOL_DEFINITIONS, ...MEMORY_TOOLS.filter((tool) => tool.name !== 'save_project_memory' || writeAccess), ...GIT_TOOLS, ...(writeAccess ? [WRITE_PROJECT_FILE, PATCH_PROJECT_TEXT, PATCH_OFFICE_TEXT, DIAGRAM_TOOL, ...OFFICE_TOOLS] : []), ...browserTools, ...externalTools];
     const response = await dispatch(transcript, { tools, signal });
     if (typeof response === 'string') return response;

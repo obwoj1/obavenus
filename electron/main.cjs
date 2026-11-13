@@ -23,7 +23,7 @@ const { createTaskStore, nextRecurringRunAt } = require('./tasks.cjs');
 const { createSkillStore } = require('./skill-store.cjs');
 const { createAgentStore } = require('./agent-store.cjs');
 const { createResearchBrowser } = require('./research-browser.cjs');
-const { requestOllamaResponse, listOllamaModels } = require('./ollama.cjs');
+const { requestOllamaResponse, listOllamaModels, getOllamaVisionStatus } = require('./ollama.cjs');
 const { createProjectMemoryStore } = require('./project-memory.cjs');
 const { createProjectUndoStore } = require('./project-undo.cjs');
 const { createLocalOcr } = require('./local-ocr.cjs');
@@ -893,6 +893,10 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     }
   }
   if (writeAccess && !projectPath) throw new Error('Choose a project folder before enabling project-file writes.');
+  const providerSettings = await getProviderStore().getPublicSettings();
+  const browserResearchEnabled = browserAccess === true || chromeAccess === true;
+  const visionStatus = providerSettings.provider === 'ollama' && browserResearchEnabled ? await getOllamaVisionStatus(providerSettings.model) : { available: false };
+  const browserVisionAccess = visionStatus.available;
   const externalMcp = await getMcpConnector().getAgentTools();
   const executeTool = createAgentToolExecutor({
     projectPath,
@@ -904,6 +908,8 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     projectMemory: getProjectMemoryStore(),
     projectUndo: getProjectUndoStore(),
     ocrImage: getLocalOcr(),
+    analyzeBrowserScreenshot: browserVisionAccess ? ({ bytes, question, signal: runSignal }) => requestOllamaResponse({ model: providerSettings.model, messages: [{ role: 'user', text: question, images: [bytes] }], signal: runSignal }) : undefined,
+    signal,
     searchGmail: (query) => getGmailConnector().search(query),
     executeMcpTool: (name, args) => externalMcp.execute(name, args),
   });
@@ -919,6 +925,8 @@ ipcMain.handle('agents:run-team', async (event, args) => withRunSignal(args.runI
     writeAccess: writeAccess === true && Boolean(projectPath),
     browserAccess: browserAccess === true || chromeAccess === true,
     browserFillAccess: chromeAccess === true,
+    browserVisionAccess,
+    browserVisionReason: providerSettings.provider === 'ollama' ? visionStatus.reason || '' : '',
     specialists: selectedAgents.map(({ id, name, instructions }) => ({ id, name, instructions })),
     autoSelectSpecialists: requestedIds.length === 0 && customAgents.length > 0,
     onProgress: (progress) => {

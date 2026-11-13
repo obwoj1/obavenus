@@ -212,9 +212,27 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.deepEqual(await allowed('browser_read_page', { offset: 20_000 }), { url: 'https://example.com', text: 'continued page text', offset: 20_000, nextOffset: null });
   await assert.rejects(allowed('browser_read_page', { offset: 200_001 }), /offset/);
   assert.deepEqual(await allowed('browser_scroll_to_text', { text: 'Assignment due date' }), { found: true, text: 'Assignment due date', url: 'https://example.com' });
+  assert.match((await allowed('browser_analyze_screenshot', { question: 'What is on screen?' })).error, /Ollama provider/);
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });
   assert.deepEqual(visited, ['https://example.com']);
+});
+
+test('local Ollama screenshot reasoning analyzes one captured image and exposes its locality', async () => {
+  const calls = [];
+  const executor = createAgentToolExecutor({
+    browserAccess: true,
+    browser: { captureVisibleTab: async () => ({ bytes: Buffer.from('jpeg-data') }) },
+    analyzeBrowserScreenshot: async (request) => { calls.push(request); return 'The chart trends upward.'; },
+    signal: AbortSignal.abort(),
+  });
+  assert.deepEqual(await executor('browser_analyze_screenshot', { question: 'Describe the chart.' }), {
+    analysis: 'The chart trends upward.', processedLocally: true, source: 'visible browser screenshot via local Ollama',
+  });
+  assert.equal(calls[0].bytes.toString(), 'jpeg-data');
+  assert.equal(calls[0].question, 'Describe the chart.');
+  assert.equal(calls[0].signal.aborted, true);
+  await assert.rejects(executor('browser_analyze_screenshot', { question: 'x'.repeat(1_001) }), /1,000/);
 });
 
 test('tab list and tab switching tools are exposed only to paired Chrome runs', async () => {
@@ -226,6 +244,9 @@ test('tab list and tab switching tools are exposed only to paired Chrome runs', 
   assert.equal(pairedTools.some((tool) => tool.name === 'browser_list_tabs'), true);
   assert.equal(pairedTools.some((tool) => tool.name === 'browser_select_tab'), true);
   assert.equal(pairedTools.some((tool) => tool.name === 'browser_read_screenshot_text'), true);
+  const ollamaVisionTools = [];
+  await runToolAgent({ messages: [{ role: 'user', text: 'research' }], executeTool: async () => {}, browserAccess: true, browserVisionAccess: true, dispatch: async (_messages, options) => { ollamaVisionTools.push(...options.tools); return 'Done'; } });
+  assert.equal(ollamaVisionTools.some((tool) => tool.name === 'browser_analyze_screenshot'), true);
 });
 
 test('paired Chrome screenshot OCR stays local and returns bounded recognized text', async () => {
