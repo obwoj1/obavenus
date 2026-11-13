@@ -56,7 +56,7 @@ function makeChoice({ label, type = 'checkbox', checked = false }) {
   };
 }
 
-function makeBridge(fields, selects = [], choices = [], openTabs = null) {
+function makeBridge(fields, selects = [], choices = [], openTabs = null, pageElements = []) {
   let onMessage;
   let socket;
   const responses = [];
@@ -89,7 +89,7 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null) {
   const document = {
     title: 'Application',
     body: { innerText: 'Application form' },
-      querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : selector === 'input[type=checkbox],input[type=radio]' ? choices : [],
+      querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : selector === 'input[type=checkbox],input[type=radio]' ? choices : selector === 'body *' ? pageElements : [],
   };
   const context = vm.createContext({
     chrome,
@@ -122,6 +122,23 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null) {
     },
   };
 }
+
+test('Chrome extension scrolls to one visible text match and refuses ambiguous text', async () => {
+  let scrolled = 0;
+  const makeText = (text, children = []) => ({ innerText: text, textContent: text, children, getBoundingClientRect: () => ({ width: 100, height: 24 }), scrollIntoView: () => { scrolled++; } });
+  const target = makeText('Assignment instructions and due date');
+  const bridge = makeBridge([], [], [], null, [target]);
+  await bridge.connect();
+  assert.deepEqual(await bridge.send({ id: 'scroll', command: 'scrollToText', args: { text: 'due date' } }), {
+    found: true, text: 'Assignment instructions and due date', pageUrl: 'https://example.com/apply',
+  });
+  assert.equal(scrolled, 1);
+  const ambiguous = makeBridge([], [], [], null, [makeText('Assignment due date'), makeText('Project due date')]);
+  await ambiguous.connect();
+  assert.deepEqual(await ambiguous.send({ id: 'ambiguous-scroll', command: 'scrollToText', args: { text: 'due date' } }), {
+    found: false, message: 'More than one visible text section matches. Use a more specific phrase.',
+  });
+});
 
 test('Chrome extension lists ordinary web tabs and selects one exact URL', async () => {
   const tabs = [

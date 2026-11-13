@@ -196,6 +196,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     captureVisibleTab: async () => ({ mimeType: 'image/jpeg', bytes: Buffer.from('image') }),
     open: async (url) => { visited.push(url); return { url }; },
     readPage: async () => ({ url: 'https://example.com', text: 'Public page text' }),
+    scrollToText: async (text) => ({ found: true, text, url: 'https://example.com' }),
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
     clickControl: async (text) => ({ approved: true, label: text }),
     selectOption: async (label, option) => ({ approved: true, label, option }),
@@ -208,6 +209,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   await assert.rejects(allowed('browser_select_tab', { url: 'x'.repeat(2_001) }), /2,000/);
   assert.deepEqual(await allowed('browser_open_page', { url: 'https://example.com' }), { url: 'https://example.com' });
   assert.equal((await allowed('browser_read_page')).text, 'Public page text');
+  assert.deepEqual(await allowed('browser_scroll_to_text', { text: 'Assignment due date' }), { found: true, text: 'Assignment due date', url: 'https://example.com' });
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });
   assert.deepEqual(visited, ['https://example.com']);

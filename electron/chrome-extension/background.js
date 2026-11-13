@@ -45,6 +45,19 @@ async function inspect(tab, action, argument) {
   const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (kind, value) => {
     const norm = (text) => (text || '').replace(/\s+/g, ' ').trim();
     if (kind === 'readPage') return { url: location.href, title: document.title, text: (document.body?.innerText || '').slice(0, 20_000) };
+    if (kind === 'scrollToText') {
+      const needle = norm(value).toLocaleLowerCase();
+      if (!needle) return { found: false, message: 'Provide a visible text phrase to scroll to.' };
+      const matches = [...document.querySelectorAll('body *')].filter((el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && norm(el.innerText || el.textContent).toLocaleLowerCase().includes(needle);
+      });
+      const leaves = matches.filter((el) => ![...el.children].some((child) => norm(child.innerText || child.textContent).toLocaleLowerCase().includes(needle)));
+      if (leaves.length !== 1) return { found: false, message: leaves.length ? 'More than one visible text section matches. Use a more specific phrase.' : 'No visible page text matches that phrase.' };
+      const item = leaves[0];
+      item.scrollIntoView({ block: 'center', behavior: 'instant' });
+      return { found: true, text: norm(item.innerText || item.textContent).slice(0, 300), pageUrl: location.href };
+    }
     if (kind === 'followLink') {
       const links = [...document.querySelectorAll('a[href]')].filter((a) => norm(a.innerText || a.getAttribute('aria-label')).toLowerCase().includes(value.toLowerCase()));
       if (links.length !== 1) return { error: links.length ? 'That link label is ambiguous.' : 'No matching link was found.' };
@@ -184,6 +197,7 @@ async function execute(command, args) {
   }
   const tab = await activeTab();
   if (command === 'readPage') return inspect(tab, 'readPage');
+  if (command === 'scrollToText') return inspect(tab, 'scrollToText', String(args.text || '').slice(0, 200));
   if (command === 'followLink') return inspect(tab, 'followLink', String(args.text || '').slice(0, 200));
   if (command === 'findControl') {
     approvedControl = { tabId: tab.id, pageUrl: tab.url, label: String(args.text || '').slice(0, 200) };

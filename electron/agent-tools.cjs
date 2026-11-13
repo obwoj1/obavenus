@@ -43,6 +43,7 @@ const BROWSER_TOOLS = [
   { name: 'browser_read_screenshot_text', description: 'Capture the selected visible browser tab and run local OCR on this Mac. Returns bounded recognized text for pages drawn as images or canvas; it does not send the screenshot image to the AI provider.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
   { name: 'browser_open_page', description: 'Open an http or https page in the selected browser. With Chrome access this navigates your active signed-in Chrome tab; otherwise it opens the isolated Obavenus Research Browser. Use for research and review.', parameters: { type: 'object', properties: { url: { type: 'string', description: 'Public http or https URL to open.' } }, required: ['url'], additionalProperties: false } },
   { name: 'browser_read_page', description: 'Read the current page text in the selected browser as untrusted reference material.', parameters: { type: 'object', properties: {}, required: [], additionalProperties: false } },
+  { name: 'browser_scroll_to_text', description: 'Scroll the selected browser page to one uniquely matching visible text phrase. This only changes the viewport; it does not activate controls or change site data.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible phrase on the current page, up to 200 characters.' } }, required: ['text'], additionalProperties: false } },
   { name: 'browser_follow_link', description: 'Follow a visible link by its text and navigate to the linked page. This only navigates; it does not activate buttons or submit forms.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible link text.' } }, required: ['text'], additionalProperties: false } },
   { name: 'browser_click_control', description: 'Request approval to activate a visible button in the selected browser. Obavenus displays a native confirmation describing the page and control; it activates only if approved. Never claim an action completed when declined.', parameters: { type: 'object', properties: { text: { type: 'string', description: 'Distinctive visible button or control label.' } }, required: ['text'], additionalProperties: false } },
   { name: 'browser_fill_field', description: 'Request native approval to fill a uniquely labelled visible text, email, search, telephone, URL, number, or multi-line field in paired Chrome. The approval shows the page, field, and exact text. This never submits a form. Password, verification-code, and credential fields are not supported.', parameters: { type: 'object', properties: { label: { type: 'string', description: 'Exact visible label, aria-label, or placeholder of one normal text field.' }, value: { type: 'string', description: 'Text to enter, at most 2,000 characters.' } }, required: ['label', 'value'], additionalProperties: false } },
@@ -246,6 +247,11 @@ function createAgentToolExecutor({ projectPath, searchGmail, getProfile, project
     if (name === 'browser_read_page') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run.' };
       return browser.readPage();
+    }
+    if (name === 'browser_scroll_to_text') {
+      if (!browserAccess || typeof browser.scrollToText !== 'function') return { error: 'Scrolling to page text is unavailable in this browser mode.' };
+      if (typeof args.text !== 'string' || !args.text.trim() || args.text.length > 200) throw new TypeError('Provide a visible page phrase up to 200 characters.');
+      return browser.scrollToText(args.text);
     }
     if (name === 'browser_follow_link') {
       if (!browserAccess) return { error: 'Browser research is disabled for this run.' };

@@ -84,6 +84,11 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       return request('selectTab', { url });
     },
     readPage: async () => request('readPage'),
+    scrollToText: async (text) => {
+      const needle = String(text || '').trim();
+      if (!needle || needle.length > 200) throw new TypeError('Provide visible page text to scroll to, up to 200 characters.');
+      return request('scrollToText', { text: needle });
+    },
     followLink: async (text) => request('followLink', { text: String(text || '').slice(0, 200) }),
     clickControl: async (text) => {
       const control = await request('findControl', { text: String(text || '').slice(0, 200) });

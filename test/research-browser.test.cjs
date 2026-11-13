@@ -51,6 +51,20 @@ test('research browser exposes a bounded local JPEG capture for OCR', async () =
   assert.equal(capture.bytes.subarray(0, 2).toString('hex'), 'ffd8');
 });
 
+test('research browser scrolls to visible page text without activating controls', async () => {
+  let script = '';
+  class FakeBrowserWindow {
+    constructor() { this.destroyed = false; this.webContents = { isLoading: () => false, setWindowOpenHandler: () => {}, on: () => {}, executeJavaScript: async (value) => { script = value; return { found: true, text: 'Assignment due date', url: 'https://school.example/course' }; } }; }
+    isDestroyed() { return this.destroyed; }
+    async loadURL() {}
+  }
+  const browser = createResearchBrowser({ BrowserWindow: FakeBrowserWindow });
+  await browser.open('https://school.example/course');
+  assert.deepEqual(await browser.scrollToText('due date'), { found: true, text: 'Assignment due date', url: 'https://school.example/course' });
+  assert.match(script, /scrollIntoView/);
+  await assert.rejects(browser.scrollToText(''), /page text/);
+});
+
 test('research browser preserves its isolated login session and can explicitly clear it', async () => {
   let options;
   const cleared = [];

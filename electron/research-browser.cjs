@@ -27,6 +27,12 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     const active = current();
     return active.webContents.executeJavaScript(`(() => ({ title: document.title.slice(0, 300), url: location.href, text: (document.body?.innerText || '').slice(0, 20000) }))()`);
   }
+  async function scrollToText(text) {
+    if (typeof text !== 'string' || !text.trim() || text.length > 200) throw new TypeError('Provide page text to scroll to, up to 200 characters.');
+    const active = current();
+    const result = await active.webContents.executeJavaScript(`(() => { const needle = ${JSON.stringify(text.trim().toLocaleLowerCase())}; const norm = (value) => (value || '').replace(/\\s+/g, ' ').trim().toLocaleLowerCase(); const matches = [...document.querySelectorAll('body *')].filter((el) => { const rect = el.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && norm(el.innerText || el.textContent).includes(needle); }); const leaves = matches.filter((el) => ![...el.children].some((child) => norm(child.innerText || child.textContent).includes(needle))); if (leaves.length !== 1) return { found: false, message: leaves.length ? 'More than one visible text section matches. Use a more specific phrase.' : 'No visible page text matches that phrase.' }; const item = leaves[0]; item.scrollIntoView({ block: 'center', behavior: 'instant' }); return { found: true, text: (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 300), url: location.href }; })()`);
+    return result;
+  }
   async function captureVisibleTab() {
     const active = current();
     if (typeof active.webContents.capturePage !== 'function') throw new Error('Screenshot capture is unavailable in this Research Browser window.');
@@ -63,7 +69,7 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     await session.clearCache();
     return { cleared: true };
   }
-  return { open, readPage, captureVisibleTab, followLink, clickControl, clearSession };
+  return { open, readPage, scrollToText, captureVisibleTab, followLink, clickControl, clearSession };
 }
 
 module.exports = { createResearchBrowser, validateHttpUrl };
