@@ -64,6 +64,14 @@ async function inspect(tab, action, argument) {
       item.scrollIntoView({ block: 'center', behavior: 'instant' });
       return { found: true, text: norm(item.innerText || item.textContent).slice(0, 300), pageUrl: location.href };
     }
+    if (kind === 'scrollPage') {
+      const direction = value?.direction;
+      const pages = value?.pages;
+      if (!['up', 'down'].includes(direction) || !Number.isInteger(pages) || pages < 1 || pages > 5) return { error: 'Scroll direction must be up or down and distance must be 1–5 pages.' };
+      window.scrollBy({ left: 0, top: (direction === 'down' ? 1 : -1) * window.innerHeight * pages, behavior: 'instant' });
+      const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      return { direction, pages, scrollY: window.scrollY, viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight, atBoundary: direction === 'down' ? window.scrollY >= maxScrollY : window.scrollY <= 0, pageUrl: location.href };
+    }
     if (kind === 'followLink') {
       const links = [...document.querySelectorAll('a[href]')].filter((a) => norm(a.innerText || a.getAttribute('aria-label')).toLowerCase().includes(value.toLowerCase()));
       if (links.length !== 1) return { error: links.length ? 'That link label is ambiguous.' : 'No matching link was found.' };
@@ -204,6 +212,7 @@ async function execute(command, args) {
   const tab = await activeTab();
   if (command === 'readPage') return inspect(tab, 'readPage', { offset: args.offset ?? 0 });
   if (command === 'scrollToText') return inspect(tab, 'scrollToText', String(args.text || '').slice(0, 200));
+  if (command === 'scrollPage') return inspect(tab, 'scrollPage', args);
   if (command === 'followLink') return inspect(tab, 'followLink', String(args.text || '').slice(0, 200));
   if (command === 'findControl') {
     approvedControl = { tabId: tab.id, pageUrl: tab.url, label: String(args.text || '').slice(0, 200) };

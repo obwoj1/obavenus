@@ -197,6 +197,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
     open: async (url) => { visited.push(url); return { url }; },
     readPage: async (offset = 0) => ({ url: 'https://example.com', text: offset ? 'continued page text' : 'Public page text', offset, nextOffset: offset ? null : 20_000 }),
     scrollToText: async (text) => ({ found: true, text, url: 'https://example.com' }),
+    scrollPage: async (direction, pages) => ({ direction, pages, scrollY: pages * 800 }),
     followLink: async (text) => ({ text, url: 'https://example.com/about' }),
     clickControl: async (text) => ({ approved: true, label: text }),
     selectOption: async (label, option) => ({ approved: true, label, option }),
@@ -212,6 +213,7 @@ test('browser tools are unavailable outside browser mode and only navigate when 
   assert.deepEqual(await allowed('browser_read_page', { offset: 20_000 }), { url: 'https://example.com', text: 'continued page text', offset: 20_000, nextOffset: null });
   await assert.rejects(allowed('browser_read_page', { offset: 200_001 }), /offset/);
   assert.deepEqual(await allowed('browser_scroll_to_text', { text: 'Assignment due date' }), { found: true, text: 'Assignment due date', url: 'https://example.com' });
+  assert.deepEqual(await allowed('browser_scroll_page', { direction: 'down', pages: 2 }), { direction: 'down', pages: 2, scrollY: 1600 });
   assert.match((await allowed('browser_analyze_screenshot', { question: 'What is on screen?' })).error, /Ollama provider/);
   assert.equal((await allowed('browser_follow_link', { text: 'About' })).url, 'https://example.com/about');
   assert.deepEqual(await allowed('browser_click_control', { text: 'Search' }), { approved: true, label: 'Search' });

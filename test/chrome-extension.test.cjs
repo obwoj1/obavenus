@@ -63,6 +63,8 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
   const tab = { id: 7, url: 'https://example.com/apply' };
   const tabs = openTabs || [{ ...tab, title: 'Application', active: true }];
   const location = { href: tab.url, assign: () => {} };
+  let scrollY = 0;
+  const window = { innerHeight: 800, get scrollY() { return scrollY; }, scrollBy: ({ top }) => { scrollY = Math.max(0, Math.min(3_200, scrollY + top)); } };
   const chrome = {
     runtime: { onMessage: { addListener: (fn) => { onMessage = fn; } } },
     storage: { local: { set: () => {} } },
@@ -89,6 +91,7 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
   const document = {
     title: 'Application',
     body: { innerText: pageText },
+    documentElement: { scrollHeight: 4_000 },
       querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : selector === 'input[type=checkbox],input[type=radio]' ? choices : selector === 'body *' ? pageElements : [],
   };
   const context = vm.createContext({
@@ -97,6 +100,7 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
     URL,
     document,
     location,
+    window,
     InputEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     Event: class { constructor(type) { this.type = type; } },
     setTimeout,
@@ -122,6 +126,21 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
     },
   };
 }
+
+test('Chrome extension scrolls the viewport in bounded page increments and reports boundaries', async () => {
+  const bridge = makeBridge([]);
+  await bridge.connect();
+  assert.deepEqual(await bridge.send({ id: 'down', command: 'scrollPage', args: { direction: 'down', pages: 2 } }), {
+    direction: 'down', pages: 2, scrollY: 1_600, viewportHeight: 800, documentHeight: 4_000, atBoundary: false, pageUrl: 'https://example.com/apply',
+  });
+  const bottom = await bridge.send({ id: 'bottom', command: 'scrollPage', args: { direction: 'down', pages: 5 } });
+  assert.equal(bottom.scrollY, 3_200);
+  assert.equal(bottom.atBoundary, true);
+  const up = await bridge.send({ id: 'up', command: 'scrollPage', args: { direction: 'up', pages: 5 } });
+  assert.equal(up.scrollY, 0);
+  assert.equal(up.atBoundary, true);
+  assert.match((await bridge.send({ id: 'invalid', command: 'scrollPage', args: { direction: 'down', pages: 6 } })).error, /1–5 pages/);
+});
 
 test('Chrome extension reads long page text in bounded, resumable chunks', async () => {
   const pageText = 'a'.repeat(45_000);

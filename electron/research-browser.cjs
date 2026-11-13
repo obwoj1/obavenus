@@ -37,6 +37,11 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     const result = await active.webContents.executeJavaScript(`(() => { const needle = ${JSON.stringify(text.trim().toLocaleLowerCase())}; const norm = (value) => (value || '').replace(/\\s+/g, ' ').trim().toLocaleLowerCase(); const matches = [...document.querySelectorAll('body *')].filter((el) => { const rect = el.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && norm(el.innerText || el.textContent).includes(needle); }); const leaves = matches.filter((el) => ![...el.children].some((child) => norm(child.innerText || child.textContent).includes(needle))); if (leaves.length !== 1) return { found: false, message: leaves.length ? 'More than one visible text section matches. Use a more specific phrase.' : 'No visible page text matches that phrase.' }; const item = leaves[0]; item.scrollIntoView({ block: 'center', behavior: 'instant' }); return { found: true, text: (item.innerText || item.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 300), url: location.href }; })()`);
     return result;
   }
+  async function scrollPage(direction, pages = 1) {
+    if (!['up', 'down'].includes(direction) || !Number.isInteger(pages) || pages < 1 || pages > 5) throw new TypeError('Scroll direction must be up or down and distance must be 1–5 pages.');
+    const active = current();
+    return active.webContents.executeJavaScript(`(() => { const direction = ${JSON.stringify(direction)}; const pages = ${pages}; window.scrollBy({ left: 0, top: (direction === 'down' ? 1 : -1) * window.innerHeight * pages, behavior: 'instant' }); const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight); return { direction, pages, scrollY: window.scrollY, viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight, atBoundary: direction === 'down' ? window.scrollY >= maxScrollY : window.scrollY <= 0, url: location.href }; })()`);
+  }
   async function captureVisibleTab() {
     const active = current();
     if (typeof active.webContents.capturePage !== 'function') throw new Error('Screenshot capture is unavailable in this Research Browser window.');
@@ -73,7 +78,7 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     await session.clearCache();
     return { cleared: true };
   }
-  return { open, readPage, scrollToText, captureVisibleTab, followLink, clickControl, clearSession };
+  return { open, readPage, scrollToText, scrollPage, captureVisibleTab, followLink, clickControl, clearSession };
 }
 
 module.exports = { createResearchBrowser, validateHttpUrl, PAGE_CHUNK_CHARACTERS, MAX_PAGE_CHARACTERS };

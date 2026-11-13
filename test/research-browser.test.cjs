@@ -65,6 +65,21 @@ test('research browser scrolls to visible page text without activating controls'
   await assert.rejects(browser.scrollToText(''), /page text/);
 });
 
+test('research browser supports bounded viewport scrolling and validates direction', async () => {
+  let script = '';
+  class FakeBrowserWindow {
+    constructor() { this.destroyed = false; this.webContents = { isLoading: () => false, setWindowOpenHandler: () => {}, on: () => {}, executeJavaScript: async (value) => { script = value; return { direction: 'down', pages: 2, scrollY: 1600, atBoundary: false }; } }; }
+    isDestroyed() { return this.destroyed; }
+    async loadURL() {}
+  }
+  const browser = createResearchBrowser({ BrowserWindow: FakeBrowserWindow });
+  await browser.open('https://school.example/course');
+  assert.deepEqual(await browser.scrollPage('down', 2), { direction: 'down', pages: 2, scrollY: 1600, atBoundary: false });
+  assert.match(script, /window\.scrollBy/);
+  await assert.rejects(browser.scrollPage('left'), /direction must be up or down/);
+  await assert.rejects(browser.scrollPage('down', 6), /1–5 pages/);
+});
+
 test('research browser reads page text in bounded chunks and rejects invalid offsets', async () => {
   let script = '';
   class FakeBrowserWindow {

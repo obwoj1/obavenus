@@ -92,6 +92,10 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       if (!needle || needle.length > 200) throw new TypeError('Provide visible page text to scroll to, up to 200 characters.');
       return request('scrollToText', { text: needle });
     },
+    scrollPage: async (direction, pages = 1) => {
+      if (!['up', 'down'].includes(direction) || !Number.isInteger(pages) || pages < 1 || pages > 5) throw new TypeError('Scroll direction must be up or down and distance must be 1–5 pages.');
+      return request('scrollPage', { direction, pages });
+    },
     followLink: async (text) => request('followLink', { text: String(text || '').slice(0, 200) }),
     clickControl: async (text) => {
       const control = await request('findControl', { text: String(text || '').slice(0, 200) });
