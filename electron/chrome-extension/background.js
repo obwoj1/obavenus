@@ -44,7 +44,13 @@ async function activeTab() {
 async function inspect(tab, action, argument) {
   const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: (kind, value) => {
     const norm = (text) => (text || '').replace(/\s+/g, ' ').trim();
-    if (kind === 'readPage') return { url: location.href, title: document.title, text: (document.body?.innerText || '').slice(0, 20_000) };
+    if (kind === 'readPage') {
+      const fullText = (document.body?.innerText || '').slice(0, 200_000);
+      const offset = Number.isInteger(value?.offset) ? value.offset : 0;
+      if (offset < 0 || offset > 200_000) return { error: 'Page text offset must be between 0 and 200,000.' };
+      const nextOffset = Math.min(offset + 20_000, fullText.length);
+      return { url: location.href, title: document.title, text: fullText.slice(offset, nextOffset), offset, totalCharacters: fullText.length, nextOffset: nextOffset < fullText.length ? nextOffset : null, truncated: fullText.length === 200_000 };
+    }
     if (kind === 'scrollToText') {
       const needle = norm(value).toLocaleLowerCase();
       if (!needle) return { found: false, message: 'Provide a visible text phrase to scroll to.' };
@@ -196,7 +202,7 @@ async function execute(command, args) {
     return { navigated: true, url: url.toString() };
   }
   const tab = await activeTab();
-  if (command === 'readPage') return inspect(tab, 'readPage');
+  if (command === 'readPage') return inspect(tab, 'readPage', { offset: args.offset ?? 0 });
   if (command === 'scrollToText') return inspect(tab, 'scrollToText', String(args.text || '').slice(0, 200));
   if (command === 'followLink') return inspect(tab, 'followLink', String(args.text || '').slice(0, 200));
   if (command === 'findControl') {

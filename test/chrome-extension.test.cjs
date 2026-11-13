@@ -56,7 +56,7 @@ function makeChoice({ label, type = 'checkbox', checked = false }) {
   };
 }
 
-function makeBridge(fields, selects = [], choices = [], openTabs = null, pageElements = []) {
+function makeBridge(fields, selects = [], choices = [], openTabs = null, pageElements = [], pageText = 'Application form') {
   let onMessage;
   let socket;
   const responses = [];
@@ -88,7 +88,7 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
   }
   const document = {
     title: 'Application',
-    body: { innerText: 'Application form' },
+    body: { innerText: pageText },
       querySelectorAll: (selector) => selector === 'input,textarea' ? fields : selector === 'select' ? selects : selector === 'input[type=checkbox],input[type=radio]' ? choices : selector === 'body *' ? pageElements : [],
   };
   const context = vm.createContext({
@@ -122,6 +122,23 @@ function makeBridge(fields, selects = [], choices = [], openTabs = null, pageEle
     },
   };
 }
+
+test('Chrome extension reads long page text in bounded, resumable chunks', async () => {
+  const pageText = 'a'.repeat(45_000);
+  const bridge = makeBridge([], [], [], null, [], pageText);
+  await bridge.connect();
+  const first = await bridge.send({ id: 'read-first', command: 'readPage', args: { offset: 0 } });
+  assert.equal(first.text.length, 20_000);
+  assert.equal(first.totalCharacters, 45_000);
+  assert.equal(first.nextOffset, 20_000);
+  const second = await bridge.send({ id: 'read-second', command: 'readPage', args: { offset: first.nextOffset } });
+  assert.equal(second.text.length, 20_000);
+  assert.equal(second.nextOffset, 40_000);
+  const third = await bridge.send({ id: 'read-third', command: 'readPage', args: { offset: second.nextOffset } });
+  assert.equal(third.text.length, 5_000);
+  assert.equal(third.nextOffset, null);
+  assert.match((await bridge.send({ id: 'read-invalid', command: 'readPage', args: { offset: 200_001 } })).error, /offset/);
+});
 
 test('Chrome extension scrolls to one visible text match and refuses ambiguous text', async () => {
   let scrolled = 0;

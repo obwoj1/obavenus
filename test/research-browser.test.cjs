@@ -65,6 +65,20 @@ test('research browser scrolls to visible page text without activating controls'
   await assert.rejects(browser.scrollToText(''), /page text/);
 });
 
+test('research browser reads page text in bounded chunks and rejects invalid offsets', async () => {
+  let script = '';
+  class FakeBrowserWindow {
+    constructor() { this.destroyed = false; this.webContents = { isLoading: () => false, setWindowOpenHandler: () => {}, on: () => {}, executeJavaScript: async (value) => { script = value; return { text: 'page chunk', offset: 20_000, nextOffset: 40_000, totalCharacters: 50_000 }; } }; }
+    isDestroyed() { return this.destroyed; }
+    async loadURL() {}
+  }
+  const browser = createResearchBrowser({ BrowserWindow: FakeBrowserWindow });
+  await browser.open('https://school.example/course');
+  assert.deepEqual(await browser.readPage(20_000), { text: 'page chunk', offset: 20_000, nextOffset: 40_000, totalCharacters: 50_000 });
+  assert.match(script, /slice\(offset, nextOffset\)/);
+  await assert.rejects(browser.readPage(200_001), /offset/);
+});
+
 test('research browser preserves its isolated login session and can explicitly clear it', async () => {
   let options;
   const cleared = [];

@@ -5,6 +5,9 @@ function validateHttpUrl(value) {
   return url;
 }
 
+const PAGE_CHUNK_CHARACTERS = 20_000;
+const MAX_PAGE_CHARACTERS = 200_000;
+
 function createResearchBrowser({ BrowserWindow, session = null, confirmAction = async () => false }) {
   let window;
   function current() {
@@ -23,9 +26,10 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
     await window.loadURL(url.toString());
     return { url: url.toString() };
   }
-  async function readPage() {
+  async function readPage(offset = 0) {
+    if (!Number.isInteger(offset) || offset < 0 || offset > MAX_PAGE_CHARACTERS) throw new RangeError(`Page text offset must be between 0 and ${MAX_PAGE_CHARACTERS}.`);
     const active = current();
-    return active.webContents.executeJavaScript(`(() => ({ title: document.title.slice(0, 300), url: location.href, text: (document.body?.innerText || '').slice(0, 20000) }))()`);
+    return active.webContents.executeJavaScript(`(() => { const fullText = (document.body?.innerText || '').slice(0, ${MAX_PAGE_CHARACTERS}); const offset = ${offset}; const nextOffset = Math.min(offset + ${PAGE_CHUNK_CHARACTERS}, fullText.length); return { title: document.title.slice(0, 300), url: location.href, text: fullText.slice(offset, nextOffset), offset, totalCharacters: fullText.length, nextOffset: nextOffset < fullText.length ? nextOffset : null, truncated: fullText.length === ${MAX_PAGE_CHARACTERS} }; })()`);
   }
   async function scrollToText(text) {
     if (typeof text !== 'string' || !text.trim() || text.length > 200) throw new TypeError('Provide page text to scroll to, up to 200 characters.');
@@ -72,4 +76,4 @@ function createResearchBrowser({ BrowserWindow, session = null, confirmAction = 
   return { open, readPage, scrollToText, captureVisibleTab, followLink, clickControl, clearSession };
 }
 
-module.exports = { createResearchBrowser, validateHttpUrl };
+module.exports = { createResearchBrowser, validateHttpUrl, PAGE_CHUNK_CHARACTERS, MAX_PAGE_CHARACTERS };

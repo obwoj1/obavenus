@@ -83,7 +83,10 @@ function createChromeBridge({ WebSocketServer, confirmPairing, confirmAction, po
       const url = safeUrl(rawUrl);
       return request('selectTab', { url });
     },
-    readPage: async () => request('readPage'),
+    readPage: async (offset = 0) => {
+      if (!Number.isInteger(offset) || offset < 0 || offset > 200_000) throw new RangeError('Page text offset must be between 0 and 200,000.');
+      return request('readPage', { offset });
+    },
     scrollToText: async (text) => {
       const needle = String(text || '').trim();
       if (!needle || needle.length > 200) throw new TypeError('Provide visible page text to scroll to, up to 200 characters.');
