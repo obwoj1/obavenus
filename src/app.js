@@ -19,6 +19,15 @@ let activeRunId = null;
 let activeReplyMessage = null;
 let activeReplyConversationId = null;
 
+window.obavenus?.onNexusDraftPrompt?.((prompt) => {
+  if (typeof prompt !== 'string') return;
+  promptInput.value = prompt.slice(0, 2000);
+  promptInput.focus();
+  promptInput.dispatchEvent(new Event('input', { bubbles: true }));
+  runStatus.hidden = false;
+  runStatus.textContent = 'A draft prompt from Nexus is ready. Review it and press Send when you choose.';
+});
+
 const providerDialog = document.querySelector('#provider-dialog');
 const providerForm = document.querySelector('#provider-form');
 const providerModelInput = document.querySelector('#provider-model');

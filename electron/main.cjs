@@ -50,7 +50,8 @@ const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 const { createQuickLookPreview } = require('./quick-look-preview.cjs');
 const quickLookPreview = createQuickLookPreview();
-const { isObavenusOpenUrl } = require('./deep-link.cjs');
+const { parseObavenusOpenUrl } = require('./deep-link.cjs');
+let pendingNexusDraftPrompt = null;
 
 function focusMainWindow() {
   const window = BrowserWindow.getAllWindows()[0];
@@ -66,7 +67,14 @@ if (process.defaultApp && process.argv[1]) {
 }
 app.on('open-url', (event, rawUrl) => {
   event.preventDefault();
-  if (isObavenusOpenUrl(rawUrl)) focusMainWindow();
+  const link = parseObavenusOpenUrl(rawUrl);
+  if (!link) return;
+  focusMainWindow();
+  if (link.prompt) {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window || window.webContents.isLoading()) pendingNexusDraftPrompt = link.prompt;
+    else window.webContents.send('nexus:draft-prompt', link.prompt);
+  }
 });
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
@@ -1016,6 +1024,12 @@ function createWindow() {
     if (url !== pathToFileURL(entryFile).href) event.preventDefault();
   });
   window.loadFile(entryFile);
+  window.webContents.once('did-finish-load', () => {
+    if (!pendingNexusDraftPrompt) return;
+    const prompt = pendingNexusDraftPrompt;
+    pendingNexusDraftPrompt = null;
+    window.webContents.send('nexus:draft-prompt', prompt);
+  });
 }
 
 app.whenReady().then(async () => {
