@@ -1,12 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('obavenus', {
-  onNexusDraftPrompt: (callback) => {
-    if (typeof callback !== 'function') return () => {};
-    const listener = (_event, prompt) => callback(prompt);
-    ipcRenderer.on('nexus:draft-prompt', listener);
-    return () => ipcRenderer.removeListener('nexus:draft-prompt', listener);
-  },
   chooseProject: () => ipcRenderer.invoke('project:choose'),
   getLastProject: () => ipcRenderer.invoke('project:last'),
   listProjects: () => ipcRenderer.invoke('project:list'),
