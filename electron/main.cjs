@@ -50,6 +50,20 @@ const { buildDocument } = require('./artifacts.cjs');
 const { createMcpConnector } = require('./mcp-connector.cjs');
 const { createQuickLookPreview } = require('./quick-look-preview.cjs');
 const quickLookPreview = createQuickLookPreview();
+const { isObavenusOpenUrl } = require('./deep-link.cjs');
+
+function focusMainWindow() {
+  const window = BrowserWindow.getAllWindows()[0];
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.focus();
+}
+
+app.setAsDefaultProtocolClient('obavenus');
+app.on('open-url', (event, rawUrl) => {
+  event.preventDefault();
+  if (isObavenusOpenUrl(rawUrl)) focusMainWindow();
+});
 
 const workspaceFile = () => path.join(app.getPath('userData'), 'workspace.json');
 async function selectedProjectPath() {

@@ -1,7 +1,7 @@
 {
   "name": "obavenus",
   "productName": "Obavenus",
-  "version": "0.1.110",
+  "version": "0.1.111",
   "private": true,
   "description": "Obavenus, a local-first Electron desktop assistant.",
   "author": "Obavenus",
@@ -61,6 +61,12 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "protocols": [
+        {
+          "name": "Obavenus",
+          "schemes": ["obavenus"]
+        }
+      ],
       "icon": "assets/Obavenus.icns",
       "identity": "-",
       "entitlements": "assets/entitlements.mac.plist",
