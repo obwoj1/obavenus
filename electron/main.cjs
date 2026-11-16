@@ -59,7 +59,11 @@ function focusMainWindow() {
   window.focus();
 }
 
-app.setAsDefaultProtocolClient('obavenus');
+if (process.defaultApp && process.argv[1]) {
+  app.setAsDefaultProtocolClient('obavenus', process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient('obavenus');
+}
 app.on('open-url', (event, rawUrl) => {
   event.preventDefault();
   if (isObavenusOpenUrl(rawUrl)) focusMainWindow();
